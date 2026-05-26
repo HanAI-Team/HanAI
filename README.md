@@ -18,7 +18,7 @@
 
 ## 기술 스택
 - **Backend**: Python, Flask
-- **AI**: Claude Haiku, OpenAI Whisper (음성인식)
+- **AI**: Claude Haiku,Clova Speech
 - **Database**: SQLite → PostgreSQL
 - **Frontend**: HTML / CSS / JavaScript (반응형)
 
@@ -26,15 +26,6 @@
 - 한의대 교과서 처방 데이터 2,290건 (신계/간계/심계/폐계/비계내과학)
 - 실제 임상 데이터 (한약 처방, 침 처방, 다이어트, 피부미용)
 - 지식재산처 한국전통 처방정보 API (신청 중)
-
-## 개발 현황
-- [x] 시장조사 (12명 설문 완료)
-- [x] 데이터 수집 (공공데이터 + 임상 데이터)
-- [x] 백엔드 개발 (면허 인증, 환자 기록)
-- [x] AI 모델 연결 (진단 + 오토 차팅)
-- [ ] 프론트엔드 완성
-- [ ] API 결제 및 테스트
-- [ ] 배포
 
 ## 로드맵
 1. MVP 출시
