@@ -1,10 +1,17 @@
-from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-db = SQLAlchemy()
+from app.core.config import settings
 
-class Doctor(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    license_number = db.Column(db.String(20), unique=True, nullable=False)
-    name = db.Column(db.String(50), nullable=False)
-    is_verified = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
+_db_url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+engine = create_async_engine(_db_url, echo=False)
+
+Base = declarative_base()
+
+AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
