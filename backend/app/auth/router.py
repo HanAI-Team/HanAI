@@ -1,54 +1,79 @@
-from flask import Flask, request, jsonify
-from database import db, Doctor
-from patient import add_patient as create_patient
+from uuid import UUID
 
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///handoc.db'
-db.init_app(app)
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-@app.route('/register', methods=['POST'])
-def register():
-    data = request.json
-    license_number = data.get('license_number')
-    name = data.get('name')
+from app.auth import service
+from app.auth.schema import (
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    RegisterResponse,
+    TokenResponse,
+)
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.deps import get_current_doctor
+from app.core.models import Doctor
 
-    if not license_number or not license_number.isdigit() or len(license_number) != 8:
-        return jsonify({'error': '올바른 면허번호를 입력해주세요 (8자리 숫자)'}), 400
+router = APIRouter(tags=["auth"])
 
-    existing = Doctor.query.filter_by(license_number=license_number).first()
-    if existing:
-        return jsonify({'error': '이미 등록된 면허번호입니다'}), 400
 
-    doctor = Doctor(license_number=license_number, name=name, is_verified=True)
-    db.session.add(doctor)
-    db.session.commit()
-    return jsonify({'message': f'{name} 선생님, 인증이 완료됐습니다!'}), 200
+@router.post(
+    "/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED
+)
+async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    if not service.validate_license_format(data.license_number):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="면허번호는 8자리 숫자여야 합니다.",
+        )
 
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.json
-    license_number = data.get('license_number')
+    doctor = await service.register_doctor(db, data)
 
-    doctor = Doctor.query.filter_by(license_number=license_number).first()
-    if not doctor:
-        return jsonify({'error': '등록되지 않은 면허번호입니다'}), 401
-    return jsonify({'message': f'{doctor.name} 선생님, 환영합니다!'}), 200
+    return RegisterResponse(
+        doctor_id=doctor.id,
+        name=str(doctor.name),
+        clinic_name=data.clinic_name,
+        message=f"{doctor.name} 선생님, 회원가입이 완료되었습니다.",
+    )
 
-@app.route('/patients', methods=['POST'])
-def add_patient():
-    data = request.json
-    name = data.get('name')
-    age = data.get('age')
-    gender = data.get('gender')
-    doctor_id = data.get('doctor_id')
 
-    if not name or not age or not gender or not doctor_id:
-        return jsonify({'error': '모든 필수 정보를 입력해주세요'}), 400
+@router.post("/login", response_model=LoginResponse)
+async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
+    doctor = await service.get_doctor_by_license(db, data.license_number)
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="등록되지 않은 면허번호입니다.",
+        )
 
-    patient = create_patient(name=name, age=age, gender=gender, doctor_id=doctor_id)
-    return jsonify({'message': '환자 정보가 추가되었습니다', 'patient': {'id': patient.id, 'name': patient.name}}), 201
+    # TODO: CODEF 간편인증 요청 연동
+    return LoginResponse(
+        callback_id="temp_callback_id",
+        expires_in=180,
+    )
 
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
+
+@router.get("/codef/status/{callback_id}", response_model=TokenResponse)
+async def codef_status(callback_id: str, db: AsyncSession = Depends(get_db)):
+    # TODO: CODEF 인증 상태 실제 조회 (Redis에서 callback_id → doctor_id 매핑 조회)
+    if settings.DEBUG:
+        result = await db.execute(select(Doctor))
+        doctor = result.scalars().first()
+        if not doctor:
+            raise HTTPException(
+                status_code=404,
+                detail="테스트용 doctor 없음. 먼저 /register 호출하세요",
+            )
+        token = service.create_access_token(UUID(str(doctor.id)))
+        return TokenResponse(access_token=token, token_type="bearer", expires_in=3600)
+    else:
+        raise HTTPException(status_code=501, detail="CODEF 연동 준비 중")
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(current_doctor: Doctor = Depends(get_current_doctor)):
+    # TODO: Redis 블랙리스트에 토큰 추가
+    return {"message": "로그아웃되었습니다."}
