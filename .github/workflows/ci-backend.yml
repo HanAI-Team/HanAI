@@ -1,0 +1,16 @@
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'backend/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install dependencies
+        run: cd backend && uv venv && uv pip install -r requirements.txt
+      - name: Run pytest
+        run: cd backend && source .venv/bin/activate && pytest tests/ -v
