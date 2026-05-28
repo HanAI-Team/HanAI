@@ -6,8 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import service
 from app.auth.schema import (
     AdminApproveResponse,
+    LoginRequest,
     RegisterRequest,
     RegisterResponse,
+    TokenResponse,
 )
 from app.core.config import settings
 from app.core.database import get_db
@@ -34,6 +36,25 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
         name=str(doctor.name),
         clinic_name=data.clinic_name,
         message="면허 확인 후 최대 24시간 내 승인됩니다.",
+    )
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
+    doctor = await service.get_doctor_by_license(db, data.license_number)
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="등록되지 않은 면허번호입니다.",
+        )
+    if not doctor.is_approved:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="승인 대기 중입니다.",
+        )
+    return TokenResponse(
+        access_token=service.create_access_token(doctor.id),
+        expires_in=settings.JWT_EXPIRE_MINUTES * 60,
     )
 
 

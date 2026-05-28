@@ -21,6 +21,10 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class LoginRequest(BaseModel):
+    license_number: str
+
+
 class RegisterResponse(BaseModel):
     doctor_id: UUID
     name: str
