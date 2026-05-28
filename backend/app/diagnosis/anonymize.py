@@ -1,6 +1,7 @@
 import re
 
-
+# 텍스트 직접 입력 진단 경로 전용 (diagnosis/router.py → claude_client.py)
+# STT 파이프라인 경로는 app/pipeline/deidentifier.py 사용
 def anonymize(text: str) -> str:
     # 주민등록번호 (000000-0000000)
     text = re.sub(r"\d{6}-[1-4]\d{6}", "[주민번호]", text)
