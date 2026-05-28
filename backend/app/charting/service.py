@@ -1,50 +1,53 @@
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'api'))
+import uuid as uuid_mod
 
-import whisper
-import sounddevice as sd
-import numpy as np
-import scipy.io.wavfile as wav
-import tempfile
-from models.diagnosis import diagnose
-from api.patient import add_record
+from fastapi import UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
-model = whisper.load_model("base")
+from app.charting.stt.client import clova_client
+from app.diagnosis.claude_client import diagnose
+from app.core.models import AIResult, MedicalRecord
+from app.pipeline.deidentifier import deidentifier
 
-def record_audio(duration=60, samplerate=16000):
-    print(f"녹음 시작... ({duration}초)")
-    audio = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype='float32')
-    sd.wait()
-    print("녹음 완료!")
-    return audio, samplerate
 
-def transcribe_audio(audio, samplerate):
-    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
-        wav.write(f.name, samplerate, (audio * 32767).astype(np.int16))
-        result = model.transcribe(f.name, language='ko')
-        os.unlink(f.name)
-    return result['text']
+async def process_chart(
+    audio_file: UploadFile,
+    patient_id: uuid_mod.UUID,
+    doctor_id: uuid_mod.UUID,
+    hospital_id: uuid_mod.UUID,
+    db: AsyncSession,
+) -> dict:
+    # 1. STT
+    audio_bytes = await audio_file.read()
+    raw_text = await clova_client.transcribe(audio_bytes)
 
-def record_and_transcribe(duration=60):
-    audio, samplerate = record_audio(duration)
-    text = transcribe_audio(audio, samplerate)
-    return text
+    # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
+    deid = deidentifier.process(raw_text)
 
-def auto_chart(patient_id, duration=60):
-    text = record_and_transcribe(duration)
-    print(f"\n[인식된 텍스트]\n{text}")
-    
-    print("\n분석 중...")
-    result = diagnose(text)
-    print(f"\n[진단 결과]\n{result}")
-    
-    add_record(
+    # 3. AI 진단
+    diagnosis = diagnose(deid.cleaned)
+
+    # 4. DB 저장
+    record = MedicalRecord(
         patient_id=patient_id,
-        symptoms=text,
-        diagnosis=result,
-        prescription="처방 자동 추출 예정"
+        doctor_id=doctor_id,
+        hospital_id=hospital_id,
+        raw_transcription=deid.original,
+        chart_structured=deid.cleaned,
+        status="completed",
     )
-    print("\n차트 자동 저장 완료!")
-    return result
+    db.add(record)
+    await db.flush()
+
+    ai_result = AIResult(
+        medical_record_id=record.id,
+        diagnosis_suggestion=diagnosis,
+    )
+    db.add(ai_result)
+    await db.commit()
+    await db.refresh(record)
+
+    return {
+        "record_id": record.id,
+        "transcription": deid.cleaned,
+        "diagnosis": diagnosis,
+    }
