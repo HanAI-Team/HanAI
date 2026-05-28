@@ -2,13 +2,15 @@ import pandas as pd
 import os
 import anthropic
 from dotenv import load_dotenv
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from app.diagnosis.prompt import PROMPT_TEMPLATE
 from app.diagnosis.anonymize import anonymize
 
 load_dotenv(override=True)
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "../../../../data"))
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "../../../data"))
 
 def load_public_data():
     files = {
@@ -45,12 +47,43 @@ def load_public_data():
     return '\n'.join(lines[:400])
 
 
+def _load_cafe_df() -> pd.DataFrame:
+    path = os.path.join(DATA_DIR, "cafe_diagnosis_data.csv")
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    df = pd.read_csv(path, encoding='utf-8-sig')
+    df = df[df['board'] == 'ADvi_임상자료실'].copy()
+    df['text'] = df['title'].fillna('') + ' ' + df['content'].fillna('')
+    return df.reset_index(drop=True)
+
+
+_cafe_df = _load_cafe_df()
+_tfidf = TfidfVectorizer(analyzer='char', ngram_range=(2, 3)) if not _cafe_df.empty else None
+_cafe_matrix = _tfidf.fit_transform(_cafe_df['text']) if _tfidf is not None else None
+
+
+def find_relevant_cases(query: str, n: int = 5) -> str:
+    if _cafe_df.empty or _tfidf is None:
+        return ""
+    query_vec = _tfidf.transform([query])
+    scores = cosine_similarity(query_vec, _cafe_matrix).flatten()
+    top_idx = scores.argsort()[-n:][::-1]
+    lines = []
+    for i in top_idx:
+        row = _cafe_df.iloc[i]
+        snippet = str(row['content'])[:300].replace('\n', ' ').strip()
+        lines.append(f"- [{row['title']}] {snippet}")
+    return '\n'.join(lines)
+
+
 PUBLIC_DATA = load_public_data()
 
 def diagnose(transcription: str) -> str:
+    cafe_data = find_relevant_cases(transcription)
     prompt = PROMPT_TEMPLATE.format(
         transcription=anonymize(transcription),
         public_data=PUBLIC_DATA,
+        cafe_data=cafe_data,
     )
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
