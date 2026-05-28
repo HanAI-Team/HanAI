@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -27,17 +28,14 @@ class RegisterResponse(BaseModel):
     message: str
 
 
-class LoginRequest(BaseModel):
-    license_number: str
-    auth_type: str = "naver"
-
-
-class LoginResponse(BaseModel):
-    callback_id: str
-    expires_in: int
-
-
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+class AdminApproveResponse(BaseModel):
+    doctor_id: UUID
+    name: str
+    access_token: str
+    approved_at: datetime

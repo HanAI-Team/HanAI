@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -32,6 +32,8 @@ class Doctor(Base):
     license_number = Column(String, unique=True, nullable=False)
     license_kind = Column(String)
     license_verified_at = Column(DateTime)
+    is_approved = Column(Boolean, default=False, nullable=False)
+    approved_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     hospital = relationship("Hospital", back_populates="doctors")
