@@ -10,5 +10,7 @@ frontend/.next/
 frontend/node_modules/
 frontend/out/
 frontend/.vercel
+chrome_profile/
+instance/
 .DS_Store
 Thumbs.db
