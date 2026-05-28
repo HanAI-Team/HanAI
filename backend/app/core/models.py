@@ -1,7 +1,18 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Date,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -46,7 +57,9 @@ class Subscription(Base):
     __tablename__ = "subscriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), unique=True, nullable=False)
+    doctor_id = Column(
+        UUID(as_uuid=True), ForeignKey("doctors.id"), unique=True, nullable=False
+    )
     tier = Column(String, default="basic")
     status = Column(String, default="active")
     started_at = Column(DateTime)
@@ -62,7 +75,7 @@ class Patient(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
     name = Column(String, nullable=False)
-    birth_date = Column(String)
+    birth_date = Column(Date)
     gender = Column(String)
     phone = Column(String)
     memo = Column(Text)
@@ -97,7 +110,12 @@ class AIResult(Base):
     __tablename__ = "ai_results"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id"), unique=True, nullable=False)
+    medical_record_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("medical_records.id"),
+        unique=True,
+        nullable=False,
+    )
     diagnosis_suggestion = Column(Text)
     constitution_result = Column(Text)
     prescription_suggestion = Column(Text)
@@ -113,7 +131,9 @@ class Feedback(Base):
     __tablename__ = "feedbacks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ai_result_id = Column(UUID(as_uuid=True), ForeignKey("ai_results.id"), nullable=False)
+    ai_result_id = Column(
+        UUID(as_uuid=True), ForeignKey("ai_results.id"), nullable=False
+    )
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
     category = Column(String)
     score = Column(Integer)
@@ -128,7 +148,9 @@ class Prescription(Base):
     __tablename__ = "prescriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id"), nullable=False)
+    medical_record_id = Column(
+        UUID(as_uuid=True), ForeignKey("medical_records.id"), nullable=False
+    )
     prescription_name = Column(String)
     ingredients = Column(Text)
     dosage = Column(String)
