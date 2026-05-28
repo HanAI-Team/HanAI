@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     CODEF_PUBLIC_KEY: Optional[str] = None
     UPSTASH_REDIS_URL: Optional[str] = None
     UPSTASH_REDIS_TOKEN: Optional[str] = None
+    ADMIN_API_KEY: str = ""
 
 
 settings = Settings()

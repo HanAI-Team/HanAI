@@ -19,7 +19,9 @@ def validate_license_format(license_number: str) -> bool:
 def create_access_token(doctor_id: UUID) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
     payload = {"sub": str(doctor_id), "exp": expire}
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(
+        payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+    )
 
 
 async def register_doctor(db: AsyncSession, data: RegisterRequest) -> Doctor:
@@ -69,3 +71,24 @@ async def get_doctor_by_license(db: AsyncSession, license_number: str) -> Doctor
         select(Doctor).where(Doctor.license_number == license_number)
     )
     return result.scalar_one_or_none()
+
+
+async def approve_doctor(db: AsyncSession, doctor_id: UUID) -> dict:
+    result = await db.execute(select(Doctor).where(Doctor.id == doctor_id))
+    doctor = result.scalar_one_or_none()
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="의사를 찾을 수 없습니다."
+        )
+    if doctor.is_approved:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="이미 승인된 의사입니다."
+        )
+
+    doctor.is_approved = True
+    doctor.approved_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(doctor)
+
+    access_token = create_access_token(doctor.id)
+    return {"doctor": doctor, "access_token": access_token}
