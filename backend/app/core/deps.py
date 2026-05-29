@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -33,10 +34,11 @@ async def get_current_doctor(
         doctor_id: str | None = payload.get("sub")
         if doctor_id is None:
             raise _401
-    except JWTError:
+        doctor_uuid = UUID(doctor_id)
+    except (JWTError, ValueError):
         raise _401
 
-    result = await db.execute(select(Doctor).where(Doctor.id == doctor_id))
+    result = await db.execute(select(Doctor).where(Doctor.id == doctor_uuid))
     doctor = result.scalar_one_or_none()
     if doctor is None:
         raise _401
