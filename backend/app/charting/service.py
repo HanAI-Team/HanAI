@@ -1,3 +1,4 @@
+import json
 import uuid as uuid_mod
 
 from fastapi import UploadFile
@@ -41,7 +42,7 @@ async def process_chart(
 
     ai_result = AIResult(
         medical_record_id=record.id,
-        diagnosis_suggestion=diagnosis,
+        diagnosis_suggestion=json.dumps(diagnosis, ensure_ascii=False),
     )
     db.add(ai_result)
     await db.commit()
