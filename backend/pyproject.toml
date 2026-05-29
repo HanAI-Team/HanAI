@@ -22,7 +22,8 @@ dependencies = [
     "sqlalchemy>=2.0.50",
     "uvicorn[standard]>=0.48.0",
     "pydub>=0.25.1",
-    "sentry-sdk[fastapi]>=2.0.0"
+    "sentry-sdk[fastapi]>=2.0.0",
+    "upstash-redis>=1.0.0",
 ]
 
 [dependency-groups]
