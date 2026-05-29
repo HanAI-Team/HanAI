@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.models import Doctor, Subscription
+from app.core.redis import is_token_blacklisted
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -24,7 +25,9 @@ async def get_current_doctor(
 ) -> Doctor:
     if credentials is None:
         raise _401
-
+    is_blacklist = await is_token_blacklisted(credentials.credentials)
+    if is_blacklist:
+        raise _401
     try:
         payload = jwt.decode(
             credentials.credentials,

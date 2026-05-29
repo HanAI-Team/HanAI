@@ -2,6 +2,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from app.core.redis import add_token_blacklist
 
 from app.auth import service
 from app.auth.schema import (
@@ -17,6 +19,7 @@ from app.core.deps import get_current_doctor
 from app.core.models import Doctor
 
 router = APIRouter(tags=["auth"])
+bearer_scheme = HTTPBearer()
 
 
 @router.post(
@@ -32,7 +35,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     doctor = await service.register_doctor(db, data)
 
     return RegisterResponse(
-        doctor_id=doctor.id,
+        doctor_id=UUID(str(doctor.id)),
         name=str(doctor.name),
         clinic_name=data.clinic_name,
         message="면허 확인 후 최대 24시간 내 승인됩니다.",
@@ -47,20 +50,25 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="등록되지 않은 면허번호입니다.",
         )
-    if not doctor.is_approved:
+    if not bool(doctor.is_approved):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="승인 대기 중입니다.",
         )
     return TokenResponse(
-        access_token=service.create_access_token(doctor.id),
+        access_token=service.create_access_token(UUID(str(doctor.id))),
         expires_in=settings.JWT_EXPIRE_MINUTES * 60,
     )
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout(current_doctor: Doctor = Depends(get_current_doctor)):
-    # TODO: Redis 블랙리스트에 토큰 추가
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    current_doctor: Doctor = Depends(get_current_doctor),
+):
+    await add_token_blacklist(
+        credentials.credentials, expire_seconds=settings.JWT_EXPIRE_MINUTES * 60
+    )
     return {"message": "로그아웃되었습니다."}
 
 
@@ -72,7 +80,8 @@ async def admin_approve(
 ):
     if x_admin_key != settings.ADMIN_API_KEY:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="유효하지 않은 관리자 키입니다."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="유효하지 않은 관리자 키입니다.",
         )
 
     result = await service.approve_doctor(db, doctor_id)

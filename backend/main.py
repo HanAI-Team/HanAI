@@ -5,6 +5,7 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from app.core.redis import check_rate_limit
 from app.auth.router import router as auth_router
 from app.diagnosis.router import router as diagnosis_router
 from app.core.config import settings
@@ -21,6 +22,7 @@ from app.charting.router import router as charting_router
 from app.patients.router import router as patients_router
 from app.subscription.router import router as subscription_router
 
+
 async def notify_discord(message: str):
     if not settings.DISCORD_WEBHOOK_URL:
         return
@@ -36,11 +38,36 @@ async def discord_error_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
         if response.status_code >= 500:
-            await notify_discord(f"🚨 500 에러 발생\nPath: {request.method} {request.url.path}")
+            await notify_discord(
+                f"500 에러 발생\nPath: {request.method} {request.url.path}"
+            )
         return response
     except Exception as e:
-        await notify_discord(f"🚨 서버 에러\nPath: {request.method} {request.url.path}\nError: {str(e)}")
-        return JSONResponse(status_code=500, content={"detail": "서버 오류가 발생했습니다."})
+        await notify_discord(
+            f"서버 에러\nPath: {request.method} {request.url.path}\nError: {str(e)}"
+        )
+        return JSONResponse(
+            status_code=500, content={"detail": "서버 오류가 발생했습니다."}
+        )
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path == "/api/auth/login":
+        ip = request.client.host if request.client else "unknown"
+
+        allowed = await check_rate_limit(
+            key=f"{ip}:{request.url.path}", limit=5, window_seconds=60
+        )
+
+        if not allowed:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."},
+            )
+    response = await call_next(request)
+    return response
+
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(diagnosis_router, prefix="/api/diagnosis", tags=["diagnosis"])
