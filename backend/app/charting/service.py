@@ -3,7 +3,7 @@ import uuid as uuid_mod
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.charting.stt.client import clova_client
+from app.charting.stt.chunker import transcribe_chunks
 from app.diagnosis.claude_client import diagnose
 from app.core.models import AIResult, MedicalRecord
 from app.pipeline.deidentifier import deidentifier
@@ -18,7 +18,8 @@ async def process_chart(
 ) -> dict:
     # 1. STT
     audio_bytes = await audio_file.read()
-    raw_text = await clova_client.transcribe(audio_bytes)
+    fmt = (audio_file.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
+    raw_text = await transcribe_chunks(audio_bytes, format=fmt)
 
     # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
     deid = deidentifier.process(raw_text)
