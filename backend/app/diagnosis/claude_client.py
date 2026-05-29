@@ -47,17 +47,37 @@ def load_public_data():
     return '\n'.join(lines[:400])
 
 
-def _load_cafe_df() -> pd.DataFrame:
-    path = os.path.join(DATA_DIR, "cafe_diagnosis_data.csv")
-    if not os.path.exists(path):
+def _load_combined_df() -> pd.DataFrame:
+    frames = []
+
+    # 임상자료실 (진단/처방 케이스)
+    path1 = os.path.join(DATA_DIR, "cafe_diagnosis_data.csv")
+    if os.path.exists(path1):
+        df1 = pd.read_csv(path1, encoding='utf-8-sig')
+        df1 = df1[df1['board'] == 'ADvi_임상자료실'].copy()
+        frames.append(df1)
+
+    # 혈위 검색 결과 (침 처방 특화)
+    path2 = os.path.join(DATA_DIR, "cafe_acupuncture_data.csv")
+    if os.path.exists(path2):
+        df2 = pd.read_csv(path2, encoding='utf-8-sig')
+        frames.append(df2)
+
+    # 침처방 검색 결과
+    path3 = os.path.join(DATA_DIR, "cafe_침처방_data.csv")
+    if os.path.exists(path3):
+        df3 = pd.read_csv(path3, encoding='utf-8-sig')
+        frames.append(df3)
+
+    if not frames:
         return pd.DataFrame()
-    df = pd.read_csv(path, encoding='utf-8-sig')
-    df = df[df['board'] == 'ADvi_임상자료실'].copy()
+
+    df = pd.concat(frames, ignore_index=True)
     df['text'] = df['title'].fillna('') + ' ' + df['content'].fillna('')
     return df.reset_index(drop=True)
 
 
-_cafe_df = _load_cafe_df()
+_cafe_df = _load_combined_df()
 _tfidf = TfidfVectorizer(analyzer='char', ngram_range=(2, 3)) if not _cafe_df.empty else None
 _cafe_matrix = _tfidf.fit_transform(_cafe_df['text']) if _tfidf is not None else None
 
