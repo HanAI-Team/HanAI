@@ -6,4 +6,4 @@ class DiagnosisRequest(BaseModel):
 
 
 class DiagnosisResponse(BaseModel):
-    result: str
+    result: dict

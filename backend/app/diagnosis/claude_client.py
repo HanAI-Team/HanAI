@@ -1,3 +1,4 @@
+import json
 import pandas as pd
 import os
 import anthropic
@@ -98,16 +99,17 @@ def find_relevant_cases(query: str, n: int = 5) -> str:
 
 PUBLIC_DATA = load_public_data()
 
-def diagnose(transcription: str) -> str:
+def diagnose(transcription: str) -> dict:
     cafe_data = find_relevant_cases(transcription)
     prompt = PROMPT_TEMPLATE.format(
         transcription=anonymize(transcription),
-        public_data=PUBLIC_DATA,
-        cafe_data=cafe_data,
+        public_data=PUBLIC_DATA if PUBLIC_DATA else "DB 데이터 없음",
+        cafe_data=cafe_data if cafe_data else "임상 사례 없음",
     )
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=2048,
+        temperature=0.2,
         messages=[{"role": "user", "content": prompt}]
     )
-    return message.content[0].text
+    return json.loads(message.content[0].text)
