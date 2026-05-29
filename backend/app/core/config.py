@@ -5,8 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    DATABASE_URL: str
-    JWT_SECRET_KEY: str
+    DATABASE_URL: str = ""
+    JWT_SECRET_KEY: str = ""
 
     DEBUG: bool = False
 
@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     UPSTASH_REDIS_URL: Optional[str] = None
     UPSTASH_REDIS_TOKEN: Optional[str] = None
     ADMIN_API_KEY: str = ""
+    SENTRY_DSN: str = ""
+    DISCORD_WEBHOOK_URL: Optional[str] = None
 
 
 settings = Settings()

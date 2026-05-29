@@ -2,7 +2,7 @@ on:
   pull_request:
     branches: [develop, main]
     paths:
-      - 'backend/**'
+      - "backend/**"
 
 jobs:
   test:
@@ -13,4 +13,11 @@ jobs:
       - name: Install dependencies
         run: cd backend && uv sync --dev
       - name: Run pytest
-        run: cd backend && uv run pytest tests/ -v
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          CLOVA_CLIENT_ID: ${{ secrets.CLOVA_CLIENT_ID }}
+          CLOVA_CLIENT_SECRET: ${{ secrets.CLOVA_CLIENT_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+        run: cd backend && source .venv/bin/activate && pytest tests/ -v
