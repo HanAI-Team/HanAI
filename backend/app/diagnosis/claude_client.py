@@ -1,12 +1,16 @@
 import json
+import logging
 import pandas as pd
 import os
 import anthropic
 from dotenv import load_dotenv
+from fastapi import HTTPException
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from app.diagnosis.prompt import PROMPT_TEMPLATE
 from app.diagnosis.anonymize import anonymize
+
+logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -99,6 +103,16 @@ def find_relevant_cases(query: str, n: int = 5) -> str:
 
 PUBLIC_DATA = load_public_data()
 
+def _call_claude(prompt: str) -> str:
+    message = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2048,
+        temperature=0.2,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return message.content[0].text
+
+
 def diagnose(transcription: str) -> dict:
     cafe_data = find_relevant_cases(transcription)
     prompt = PROMPT_TEMPLATE.format(
@@ -106,10 +120,12 @@ def diagnose(transcription: str) -> dict:
         public_data=PUBLIC_DATA if PUBLIC_DATA else "DB 데이터 없음",
         cafe_data=cafe_data if cafe_data else "임상 사례 없음",
     )
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=2048,
-        temperature=0.2,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return json.loads(message.content[0].text)
+
+    for attempt in range(2):
+        raw = _call_claude(prompt)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(f"[diagnosis] JSON 파싱 실패 (시도 {attempt + 1}/2): {raw[:200]}")
+
+    raise HTTPException(status_code=502, detail="AI 진단 결과를 파싱할 수 없습니다. 잠시 후 다시 시도해주세요.")
