@@ -1,4 +1,5 @@
 import uuid
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,8 +23,8 @@ async def chart(
     result = await service.process_chart(
         audio_file=audio,
         patient_id=patient_id,
-        doctor_id=current_doctor.id,
-        hospital_id=current_doctor.hospital_id,
+        doctor_id=UUID(str(current_doctor.id)),
+        hospital_id=UUID(str(current_doctor.hospital_id)),
         db=db,
     )
     return ChartingResponse(**result)
