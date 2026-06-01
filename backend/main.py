@@ -9,6 +9,7 @@ from app.core.redis import check_rate_limit
 from app.auth.router import router as auth_router
 from app.diagnosis.router import router as diagnosis_router
 from app.core.config import settings
+from fastapi.middleware.cors import CORSMiddleware
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -32,6 +33,16 @@ async def notify_discord(message: str):
 
 app = FastAPI(title="HanAI API")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://zinmac.ai",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.middleware("http")
 async def discord_error_middleware(request: Request, call_next):
