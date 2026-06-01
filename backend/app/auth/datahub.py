@@ -8,6 +8,9 @@ from app.core.config import settings
 
 
 def encrypt_jumin(jumin: str) -> str:
+    if not settings.DATAHUB_ENC_KEY or not settings.DATAHUB_ENC_IV:
+        raise ValueError("DATAHUB_ENC_KEY 또는 DATAHUB_ENC_IV가 설정되지 않았습니다.")
+
     key = settings.DATAHUB_ENC_KEY.encode("utf-8")
     iv = settings.DATAHUB_ENC_IV.encode("utf-8")
     cipher = AES.new(key, AES.MODE_CBC, iv)
