@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from app.diagnosis.prompt import PROMPT_TEMPLATE
+from app.diagnosis.prompt import PROMPT_TEMPLATE, QA_PROMPT_TEMPLATE
 from app.diagnosis.anonymize import anonymize
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def load_public_data():
         if pd.notna(row['출전']) and row['출전']:
             line += f", 출전={row['출전']}"
         lines.append(line)
-    return '\n'.join(lines[:400])
+    return '\n'.join(lines[:80])
 
 
 def _load_combined_df() -> pd.DataFrame:
@@ -87,7 +87,7 @@ _tfidf = TfidfVectorizer(analyzer='char', ngram_range=(2, 3)) if not _cafe_df.em
 _cafe_matrix = _tfidf.fit_transform(_cafe_df['text']) if _tfidf is not None else None
 
 
-def find_relevant_cases(query: str, n: int = 5) -> str:
+def find_relevant_cases(query: str, n: int = 3) -> str:
     if _cafe_df.empty or _tfidf is None:
         return ""
     query_vec = _tfidf.transform([query])
@@ -106,11 +106,16 @@ PUBLIC_DATA = load_public_data()
 def _call_claude(prompt: str) -> str:
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=2048,
+        max_tokens=3000,
         temperature=0.2,
         messages=[{"role": "user", "content": prompt}]
     )
-    return message.content[0].text
+    text = message.content[0].text.strip()
+    # 모델이 ```json ... ``` 블록으로 감쌀 경우 제거
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1]
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
 
 
 def diagnose(transcription: str) -> dict:
@@ -129,3 +134,13 @@ def diagnose(transcription: str) -> dict:
             logger.warning(f"[diagnosis] JSON 파싱 실패 (시도 {attempt + 1}/2): {raw[:200]}")
 
     raise HTTPException(status_code=502, detail="AI 진단 결과를 파싱할 수 없습니다. 잠시 후 다시 시도해주세요.")
+
+
+def ask(question: str) -> str:
+    cafe_data = find_relevant_cases(question)
+    prompt = QA_PROMPT_TEMPLATE.format(
+        question=question,
+        public_data=PUBLIC_DATA if PUBLIC_DATA else "DB 데이터 없음",
+        cafe_data=cafe_data if cafe_data else "임상 사례 없음",
+    )
+    return _call_claude(prompt)
