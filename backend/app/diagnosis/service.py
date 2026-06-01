@@ -6,7 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import AIResult, MedicalRecord
-from app.diagnosis.claude_client import diagnose
+from app.diagnosis.claude_client import ask, diagnose
+
+
+def run_ask(question: str) -> str:
+    return ask(question)
 
 
 def run_diagnosis(transcription: str) -> dict:

@@ -14,3 +14,11 @@ class DiagnosisResponse(BaseModel):
 class DiagnosisRecordResponse(BaseModel):
     record_id: UUID
     diagnosis: dict
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+class AskResponse(BaseModel):
+    answer: str
