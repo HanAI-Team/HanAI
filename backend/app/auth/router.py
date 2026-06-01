@@ -44,7 +44,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.post("/verify/login")
+@router.post("/register/verify")
 async def register_verify(
     data: RegisterVerifyRequest,
     db: AsyncSession = Depends(get_db),
@@ -64,14 +64,19 @@ async def register_verify(
     register_data = RegisterRequest(
         name=data.name,
         license_number=data.license_number,
+        password=data.password,
         clinic_name=data.clinic_name,
         clinic_address=data.clinic_address,
         clinic_phone=data.clinic_phone,
     )
     doctor = await service.register_doctor(db, register_data)
-    await service.approve_doctor(db, UUID(str(doctor.id)))
-    token = service.create_access_token(UUID(str(doctor.id)))
+    result = await service.approve_doctor(db, UUID(str(doctor.id)))
 
+    token = service.create_access_token(
+        UUID(str(result["doctor"].id)),
+        UUID(str(result["doctor"].hospital_id)),
+        str(result["doctor"].role),
+    )
     return TokenResponse(
         access_token=token, expires_in=settings.JWT_EXPIRE_MINUTES * 60
     )
@@ -85,13 +90,23 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="등록되지 않은 면허번호입니다.",
         )
+    is_verfied = service.pwd_context.verify(data.password, str(doctor.password_hash))
+
+    if not is_verfied:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="비밀번호가 일치하지 않습니다.",
+        )
+
     if not bool(doctor.is_approved):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="승인 대기 중입니다.",
         )
     return TokenResponse(
-        access_token=service.create_access_token(UUID(str(doctor.id))),
+        access_token=service.create_access_token(
+            UUID(str(doctor.id)), UUID(str(doctor.hospital_id)), str(doctor.role)
+        ),
         expires_in=settings.JWT_EXPIRE_MINUTES * 60,
     )
 

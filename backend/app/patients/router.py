@@ -21,7 +21,7 @@ async def get_patients(
     db: AsyncSession = Depends(get_db),
     doctor: Doctor = Depends(get_current_doctor),
     page: int = 1,
-    size: int = 1,
+    size: int = 20,
     search: str | None = None,
 ):
     patients, total = await service.get_patients(db, doctor, page, size, search)
