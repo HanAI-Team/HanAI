@@ -15,6 +15,7 @@ class RegisterVerifyRequest(BaseModel):
     clinic_name: str
     clinic_address: Optional[str] = None
     clinic_phone: Optional[str] = None
+    telecom_gubun: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):
