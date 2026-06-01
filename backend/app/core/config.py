@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     CODEF_PUBLIC_KEY: Optional[str] = None
     UPSTASH_REDIS_URL: Optional[str] = None
     UPSTASH_REDIS_TOKEN: Optional[str] = None
+    DATAHUB_TOKEN: Optional[str] = None
+    DATAHUB_ENC_KEY: Optional[str] = None
+    DATAHUB_ENC_IV: Optional[str] = None
+    DATAHUB_URL: str = "https://datahub-dev.scraping.co.kr"
     ADMIN_API_KEY: str = ""
     SENTRY_DSN: str = ""
     DISCORD_WEBHOOK_URL: Optional[str] = None
