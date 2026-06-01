@@ -6,6 +6,17 @@ from uuid import UUID
 from pydantic import BaseModel, field_validator
 
 
+class RegisterVerifyRequest(BaseModel):
+    name: str
+    license_number: str
+    jumin: str
+    phone: str
+    login_option: str = "5"
+    clinic_name: str
+    clinic_address: Optional[str] = None
+    clinic_phone: Optional[str] = None
+
+
 class RegisterRequest(BaseModel):
     name: str
     license_number: str

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.redis import add_token_blacklist
+from app.auth.datahub import verify_medical_license
 
 from app.auth import service
 from app.auth.schema import (
@@ -12,10 +13,11 @@ from app.auth.schema import (
     RegisterRequest,
     RegisterResponse,
     TokenResponse,
+    RegisterVerifyRequest,
 )
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import get_current_doctor
+from app.core.deps import get_current_doctor, _401
 from app.core.models import Doctor
 
 router = APIRouter(tags=["auth"])
@@ -42,6 +44,39 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.post("/verify/login")
+async def register_verify(
+    data: RegisterVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await verify_medical_license(
+        name=data.name,
+        jumin=data.jumin,
+        phone=data.phone,
+        login_option=data.login_option,
+    )
+    if not result.get("verified"):
+        raise HTTPException(status_code=401, detail="면허 인증에 실패했습니다.")
+
+    if result.get("license_number") != data.license_number:
+        raise HTTPException(status_code=400, detail="면허번호가 일치하지 않습니다.")
+
+    register_data = RegisterRequest(
+        name=data.name,
+        license_number=data.license_number,
+        clinic_name=data.clinic_name,
+        clinic_address=data.clinic_address,
+        clinic_phone=data.clinic_phone,
+    )
+    doctor = await service.register_doctor(db, register_data)
+    await service.approve_doctor(db, UUID(str(doctor.id)))
+    token = service.create_access_token(UUID(str(doctor.id)))
+
+    return TokenResponse(
+        access_token=token, expires_in=settings.JWT_EXPIRE_MINUTES * 60
+    )
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     doctor = await service.get_doctor_by_license(db, data.license_number)
@@ -64,7 +99,6 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    current_doctor: Doctor = Depends(get_current_doctor),
 ):
     await add_token_blacklist(
         credentials.credentials, expire_seconds=settings.JWT_EXPIRE_MINUTES * 60
