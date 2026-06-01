@@ -22,10 +22,10 @@ async def verify_medical_license(
     login_option: str,
 ) -> dict:
     payload = {
-        "name": name,
-        "jumin": encrypt_jumin(jumin),
-        "phone": phone,
-        "loginoption": login_option,
+        "LOGINOPTION": login_option,
+        "JUMIN": encrypt_jumin(jumin),
+        "DSNM": name,
+        "PHONENUM": phone,
     }
     headers = {
         "Authorization": f"Token {settings.DATAHUB_TOKEN}",
@@ -34,7 +34,7 @@ async def verify_medical_license(
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{settings.DATAHUB_URL}/v1/mydata/medicareer",
+            f"{settings.DATAHUB_URL}/scrap/common/mohw/MedicalLicenseInquirySimple",
             json=payload,
             headers=headers,
             timeout=15.0,
@@ -44,11 +44,11 @@ async def verify_medical_license(
 
     license_list = data.get("LICENSELIST", [])
     for item in license_list:
-        if item.get("LICGB") == "한의사":
+        if item.get("LICENSEKIND") == "한의사":
             return {
                 "verified": True,
-                "license_number": item.get("LICNO", ""),
-                "license_date": item.get("LICDATE", ""),
+                "license_number": item.get("LICENSENUM", ""),
+                "license_date": item.get("LICENSEDATE", ""),
             }
 
     return {"verified": False}
