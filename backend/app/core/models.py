@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
     JSON,
@@ -10,7 +9,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
     Date,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -30,8 +28,12 @@ class Hospital(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     doctors = relationship("Doctor", back_populates="hospital")
+    staff_accounts = relationship("StaffAccount", back_populates="hospital")
     patients = relationship("Patient", back_populates="hospital")
     medical_records = relationship("MedicalRecord", back_populates="hospital")
+    subscription = relationship(
+        "Subscription", back_populates="hospital", uselist=False
+    )
 
 
 class Doctor(Base):
@@ -42,31 +44,48 @@ class Doctor(Base):
     name = Column(String, nullable=False)
     license_number = Column(String, unique=True, nullable=False)
     license_kind = Column(String)
-    license_verified_at = Column(DateTime)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, default="owner")  # owner / associate
     is_approved = Column(Boolean, default=False, nullable=False)
     approved_at = Column(DateTime, nullable=True)
+    license_verified_at = Column(DateTime)
     created_at = Column(DateTime, server_default=func.now())
 
     hospital = relationship("Hospital", back_populates="doctors")
-    subscription = relationship("Subscription", back_populates="doctor", uselist=False)
     medical_records = relationship("MedicalRecord", back_populates="doctor")
     feedbacks = relationship("Feedback", back_populates="doctor")
+
+
+class StaffAccount(Base):
+    __tablename__ = "staff_accounts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, default="nurse")  # nurse / receptionist
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    hospital = relationship("Hospital", back_populates="staff_accounts")
 
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    doctor_id = Column(
-        UUID(as_uuid=True), ForeignKey("doctors.id"), unique=True, nullable=False
+    hospital_id = Column(
+        UUID(as_uuid=True), ForeignKey("hospitals.id"), unique=True, nullable=False
     )
     tier = Column(String, default="basic")
     status = Column(String, default="active")
+    staff_limit = Column(Integer, default=2)
     started_at = Column(DateTime)
     expired_at = Column(DateTime)
     created_at = Column(DateTime, server_default=func.now())
 
-    doctor = relationship("Doctor", back_populates="subscription")
+    hospital = relationship("Hospital", back_populates="subscription")
 
 
 class Patient(Base):
