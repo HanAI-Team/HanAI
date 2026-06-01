@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.diagnosis import service
-from app.diagnosis.schema import DiagnosisRecordResponse, DiagnosisRequest, DiagnosisResponse
+from app.diagnosis.schema import AskRequest, AskResponse, DiagnosisRecordResponse, DiagnosisRequest, DiagnosisResponse
 
 router = APIRouter(tags=["diagnosis"])
 
@@ -18,6 +18,15 @@ async def diagnose_text(
 ):
     result = service.run_diagnosis(data.transcription)
     return DiagnosisResponse(result=result)
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask(
+    data: AskRequest,
+    current_doctor=Depends(get_current_doctor),
+):
+    answer = service.run_ask(data.question)
+    return AskResponse(answer=answer)
 
 
 @router.post("/{record_id}", response_model=DiagnosisRecordResponse)
