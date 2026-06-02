@@ -65,13 +65,15 @@ async def approved_doctor(db, client):
         hospital_id=hospital.id,
         name="홍길동",
         license_number="12345678",
+        password_hash="hashed_password",
+        role="owner",
         is_approved=True,
         approved_at=datetime.now(timezone.utc),
     )
     db.add(doctor)
     await db.flush()
 
-    db.add(Subscription(doctor_id=doctor.id, tier="basic", status="active"))
+    db.add(Subscription(hospital_id=hospital.id, tier="basic", status="active"))
     await db.commit()
     await db.refresh(doctor)
 
