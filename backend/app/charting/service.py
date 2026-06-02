@@ -8,6 +8,7 @@ from app.charting.stt.chunker import transcribe_chunks
 from app.diagnosis.claude_client import diagnose
 from app.core.models import AIResult, MedicalRecord
 from app.pipeline.deidentifier import deidentifier
+from app.pipeline.postprocessor import postprocessor
 
 
 async def process_chart(
@@ -25,16 +26,19 @@ async def process_chart(
     # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
     deid = deidentifier.process(raw_text)
 
-    # 3. AI 진단
-    diagnosis = diagnose(deid.cleaned)
+    # 3. 한의학 용어 후처리 ← 추가
+    corrected_text = postprocessor.correct(deid.cleaned)
 
-    # 4. DB 저장
+    # 4. AI 진단
+    diagnosis = diagnose(corrected_text)
+
+    # 5. DB 저장
     record = MedicalRecord(
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
         raw_transcription=deid.original,
-        chart_structured=deid.cleaned,
+        chart_structured=corrected_text,
         status="completed",
     )
     db.add(record)
@@ -50,6 +54,6 @@ async def process_chart(
 
     return {
         "record_id": record.id,
-        "transcription": deid.cleaned,
+        "transcription": corrected_text,
         "diagnosis": diagnosis,
     }
