@@ -3,8 +3,8 @@ import os
 # DATABASE_URL must be set before any app module is imported
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
-from datetime import datetime
-
+from datetime import datetime, timezone
+from uuid import UUID
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -20,7 +20,9 @@ TEST_ENGINE = create_async_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
-TEST_SESSION = async_sessionmaker(TEST_ENGINE, class_=AsyncSession, expire_on_commit=False)
+TEST_SESSION = async_sessionmaker(
+    TEST_ENGINE, class_=AsyncSession, expire_on_commit=False
+)
 
 
 @pytest_asyncio.fixture
@@ -45,7 +47,9 @@ async def client(_tables):
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         yield ac
     app.dependency_overrides.clear()
 
@@ -64,7 +68,7 @@ async def approved_doctor(db, client):
         password_hash="hashed_password",
         role="owner",
         is_approved=True,
-        approved_at=datetime.utcnow(),
+        approved_at=datetime.now(timezone.utc),
     )
     db.add(doctor)
     await db.flush()
@@ -73,5 +77,7 @@ async def approved_doctor(db, client):
     await db.commit()
     await db.refresh(doctor)
 
-    token = create_access_token(doctor.id, hospital.id, "owner")
+    token = create_access_token(
+        UUID(str(doctor.id)), UUID(str(doctor.hospital_id)), str(doctor.role)
+    )
     return doctor, {"Authorization": f"Bearer {token}"}
