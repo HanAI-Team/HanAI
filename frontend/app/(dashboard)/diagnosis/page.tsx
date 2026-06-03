@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getPatients, createPatient, getPatientRecords } from '@/lib/api/patients'
+import { getPatients, createPatient, getPatientRecords, importPatientsFromCsv } from '@/lib/api/patients'
 import { uploadAndAnalyze, askDiagnosis, diagnoseText } from '@/lib/api/diagnosis'
 import { Patient, DiagnosisResult } from '@/types'
 
@@ -31,6 +31,21 @@ export default function DiagnosisPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const mediaRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const csvInputRef = useRef<HTMLInputElement | null>(null)
+
+  async function handleCsvImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const result = await importPatientsFromCsv(file)
+      alert(`가져오기 완료: ${result.inserted}명 등록, ${result.skipped}건 스킵`)
+      getPatients().then(setPatients).catch(console.error)
+    } catch {
+      alert('CSV 가져오기에 실패했습니다.')
+    } finally {
+      e.target.value = ''
+    }
+  }
 
   useEffect(() => {
     getPatients().then(setPatients).catch(console.error)
@@ -223,8 +238,18 @@ ${result.acupuncture?.join(', ')}
           )}
         </div>
         <div className="p-3 border-t border-[#D4CCC4] flex flex-col gap-2">
-          <button className="w-full border border-[#C8BFB6] rounded-md py-2 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center justify-center gap-1.5">
-            📥 동의보감에서 가져오기
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleCsvImport}
+          />
+          <button
+            onClick={() => csvInputRef.current?.click()}
+            className="w-full border border-[#C8BFB6] rounded-md py-2 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center justify-center gap-1.5"
+          >
+            📥 환자 정보 가져오기
           </button>
           <button
             onClick={() => setShowAddModal(true)}

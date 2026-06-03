@@ -34,6 +34,19 @@ export async function getPatientRecords(patientId: string) {
   }>
 }
 
+export async function importPatientsFromCsv(file: File) {
+  const token = localStorage.getItem('token')
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${BASE_URL}/api/patients/import/csv`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+  if (!res.ok) throw new Error('CSV 가져오기 실패')
+  return res.json() as Promise<{ inserted: number; skipped: number }>
+}
+
 export async function createPatient(data: {
   name: string
   birth_date?: string
