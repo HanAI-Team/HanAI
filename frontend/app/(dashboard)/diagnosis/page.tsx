@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getPatients, createPatient, getPatientRecords, importPatientsFromCsv } from '@/lib/api/patients'
+import { getPatients, createPatient, getPatientRecords } from '@/lib/api/patients'
 import { uploadAndAnalyze, askDiagnosis, diagnoseText } from '@/lib/api/diagnosis'
 import { Patient, DiagnosisResult } from '@/types'
 
@@ -28,24 +28,10 @@ export default function DiagnosisPage() {
   const [symptomText, setSymptomText] = useState('')
   const [records, setRecords] = useState<{ id: string; recorded_at: string | null; chart_structured: string | null }[]>([])
   const [recordsLoading, setRecordsLoading] = useState(false)
+  const [showSyncModal, setShowSyncModal] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const mediaRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
-  const csvInputRef = useRef<HTMLInputElement | null>(null)
-
-  async function handleCsvImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    try {
-      const result = await importPatientsFromCsv(file)
-      alert(`가져오기 완료: ${result.inserted}명 등록, ${result.skipped}건 스킵`)
-      getPatients().then(setPatients).catch(console.error)
-    } catch {
-      alert('CSV 가져오기에 실패했습니다.')
-    } finally {
-      e.target.value = ''
-    }
-  }
 
   useEffect(() => {
     getPatients().then(setPatients).catch(console.error)
@@ -238,15 +224,8 @@ ${result.acupuncture?.join(', ')}
           )}
         </div>
         <div className="p-3 border-t border-[#D4CCC4] flex flex-col gap-2">
-          <input
-            ref={csvInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={handleCsvImport}
-          />
           <button
-            onClick={() => csvInputRef.current?.click()}
+            onClick={() => setShowSyncModal(true)}
             className="w-full border border-[#C8BFB6] rounded-md py-2 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center justify-center gap-1.5"
           >
             📥 환자 정보 가져오기
@@ -611,6 +590,41 @@ ${result.acupuncture?.join(', ')}
                 {addLoading ? '등록 중...' : '등록 완료'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 동기화 에이전트 안내 모달 */}
+      {showSyncModal && (
+        <div className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-[440px] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#D4CCC4]">
+              <div className="text-sm font-medium text-[#232323]">환자 정보 자동 동기화 설정</div>
+              <button onClick={() => setShowSyncModal(false)} className="text-[#8A8480] text-xl">✕</button>
+            </div>
+            <div className="p-5 flex flex-col gap-4 text-sm text-[#232323]">
+              <p className="text-[#8A8480] text-xs leading-relaxed">
+                기존 차팅 프로그램의 환자 데이터를 Zinmac으로 자동으로 가져옵니다.<br />
+                한의맥 또는 네오보감이 설치된 Windows 컴퓨터에서 아래 스크립트를 한 번만 실행하면 이후 1시간마다 자동 동기화됩니다.
+              </p>
+              <div className="flex flex-col gap-3">
+                {[
+                  { name: '한의맥', file: 'hanimac_setup.bat', color: 'bg-[#EEF4FF] border-[#C7D9F8] text-[#2563EB]' },
+                  { name: '네오보감', file: 'neobogam_setup.bat', color: 'bg-[#F0FDF4] border-[#BBF7D0] text-[#16A34A]' },
+                ].map(({ name, file, color }) => (
+                  <div key={name} className={`rounded-lg border p-4 ${color}`}>
+                    <div className="font-medium mb-2">{name}</div>
+                    <ol className="text-xs leading-relaxed list-decimal list-inside flex flex-col gap-1 text-[#232323]">
+                      <li>관리자에게 <span className="font-mono font-semibold">{file}</span> 파일 요청</li>
+                      <li>{name} Windows 컴퓨터에서 파일 실행</li>
+                      <li>Zinmac 면허번호 · 비밀번호 입력</li>
+                      <li>완료 — 이후 자동 동기화</li>
+                    </ol>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-[#B0AAA4]">문의: 관리자에게 연락하세요.</p>
+            </div>
           </div>
         </div>
       )}
