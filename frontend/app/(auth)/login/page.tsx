@@ -6,6 +6,7 @@ import { login } from '@/lib/api/auth'
 export default function LoginPage() {
   const router = useRouter()
   const [licenseNumber, setLicenseNumber] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -14,7 +15,7 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     try {
-      const data = await login(licenseNumber)
+      const data = await login(licenseNumber, password)
       localStorage.setItem('token', data.access_token)
       router.push('/home')
     } catch (e: any) {
@@ -50,6 +51,17 @@ export default function LoginPage() {
                 onChange={e => setLicenseNumber(e.target.value)}
                 className="w-full bg-white border border-[#C8BFB6] rounded-md px-4 py-3 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
                 placeholder="면허번호를 입력하세요"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#8A8480] uppercase tracking-wider mb-1.5">비밀번호</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full bg-white border border-[#C8BFB6] rounded-md px-4 py-3 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                placeholder="비밀번호를 입력하세요"
                 required
               />
             </div>

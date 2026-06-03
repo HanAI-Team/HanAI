@@ -13,6 +13,7 @@ export async function getPatients(search?: string) {
     ? `${BASE_URL}/api/patients/?search=${search}`
     : `${BASE_URL}/api/patients/`
   const res = await fetch(url, { headers: getHeaders() })
+  if (res.status === 404) return []
   if (!res.ok) throw new Error('환자 목록 조회 실패')
   const data = await res.json()
   return Array.isArray(data) ? data : (data.items || [])
