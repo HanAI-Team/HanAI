@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getPatients, createPatient } from '@/lib/api/patients'
+import { getPatients, createPatient, getPatientRecords } from '@/lib/api/patients'
 import { uploadAndAnalyze, askDiagnosis, diagnoseText } from '@/lib/api/diagnosis'
 import { Patient, DiagnosisResult } from '@/types'
 
@@ -26,6 +26,8 @@ export default function DiagnosisPage() {
   const [askLoading, setAskLoading] = useState(false)
   const [askMode, setAskMode] = useState<'ask' | 'diagnose'>('ask')
   const [symptomText, setSymptomText] = useState('')
+  const [records, setRecords] = useState<{ id: string; recorded_at: string | null; chart_structured: string | null }[]>([])
+  const [recordsLoading, setRecordsLoading] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const mediaRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -33,6 +35,15 @@ export default function DiagnosisPage() {
   useEffect(() => {
     getPatients().then(setPatients).catch(console.error)
   }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'history' || !selectedPatient) return
+    setRecordsLoading(true)
+    getPatientRecords(selectedPatient.id)
+      .then(data => setRecords(data.records))
+      .catch(console.error)
+      .finally(() => setRecordsLoading(false))
+  }, [activeTab, selectedPatient])
 
   async function toggleRecording() {
     if (!isRecording) {
@@ -422,8 +433,27 @@ ${result.acupuncture?.join(', ')}
 
           {/* 진료 이력 탭 */}
           {activeTab === 'history' && (
-            <div className="text-sm text-[#B0AAA4] text-center py-12">
-              진료 이력을 불러오는 중입니다...
+            <div className="overflow-y-auto">
+              {!selectedPatient ? (
+                <div className="text-sm text-[#B0AAA4] text-center py-12">환자를 선택해주세요</div>
+              ) : recordsLoading ? (
+                <div className="text-sm text-[#B0AAA4] text-center py-12">불러오는 중...</div>
+              ) : records.length === 0 ? (
+                <div className="text-sm text-[#B0AAA4] text-center py-12">진료 이력이 없습니다</div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {records.map(r => (
+                    <div key={r.id} className="bg-white border border-[#D4CCC4] rounded-lg p-4">
+                      <div className="text-xs text-[#8A8480] mb-2">
+                        {r.recorded_at ? new Date(r.recorded_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '날짜 미상'}
+                      </div>
+                      <div className="text-sm text-[#232323] whitespace-pre-wrap line-clamp-4">
+                        {r.chart_structured || '차트 내용 없음'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

@@ -24,6 +24,15 @@ export async function getPatient(id: string) {
   return res.json()
 }
 
+export async function getPatientRecords(patientId: string) {
+  const res = await fetch(`${BASE_URL}/api/patients/${patientId}/records`, { headers: getHeaders() })
+  if (!res.ok) throw new Error('진료 이력 조회 실패')
+  return res.json() as Promise<{
+    patient: any
+    records: { id: string; recorded_at: string | null; chart_structured: string | null }[]
+  }>
+}
+
 export async function createPatient(data: {
   name: string
   birth_date?: string
