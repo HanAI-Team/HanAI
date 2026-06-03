@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     name: '',
     license_number: '',
+    password: '',
     clinic_name: '',
     clinic_address: '',
     clinic_phone: '',
@@ -55,6 +56,7 @@ export default function RegisterPage() {
             {[
               { label: '이름', name: 'name', type: 'text', placeholder: '이름을 입력해주세요' },
               { label: '면허번호', name: 'license_number', type: 'text', placeholder: '면허번호를 입력해주세요' },
+              { label: '비밀번호', name: 'password', type: 'password', placeholder: '비밀번호를 입력해주세요' },
               { label: '한의원명', name: 'clinic_name', type: 'text', placeholder: '한의원명을 입력해주세요' },
               { label: '한의원 주소 (선택)', name: 'clinic_address', type: 'text', placeholder: '주소를 입력해주세요' },
               { label: '한의원 전화 (선택)', name: 'clinic_phone', type: 'text', placeholder: '전화번호를 입력해주세요' },
