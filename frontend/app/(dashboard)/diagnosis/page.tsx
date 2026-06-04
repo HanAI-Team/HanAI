@@ -394,6 +394,12 @@ ${result.acupuncture?.join(", ")}
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const filtered = patients.filter((p) => p.name.includes(search));
 
+  function patientSubtext(patient: Patient) {
+    const gender = { male: "남", female: "여", 남성: "남", 여성: "여" }[patient.gender] ?? patient.gender;
+    const birth = patient.birth_date ? patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3") : null;
+    return [gender, birth].filter(Boolean).join(", ") || patient.phone || "-";
+  }
+
   const resultCards: {
     label: string;
     Icon: LucideIcon;
@@ -475,10 +481,7 @@ ${result.acupuncture?.join(", ")}
                     {patient.name}
                   </div>
                   <div className="text-xs text-[#8A8480]">
-                    {[
-                      patient.gender === "male" ? "남" : patient.gender === "female" ? "여" : patient.gender,
-                      patient.birth_date ? patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3") : null,
-                    ].filter(Boolean).join(", ") || patient.phone || "-"}
+                    {patientSubtext(patient)}
                   </div>
                 </div>
                 <button
