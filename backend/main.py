@@ -39,6 +39,7 @@ app.add_middleware(
         "http://localhost:3000",
         "https://zinmac.ai",
         "https://zinmac-git-main-hanaipro123-6041s-projects.vercel.app",
+        "https://zinmac-et9uit7ow-hanaipro123-6041s-projects.vercel.app",
         "https://zinmac.vercel.app",
     ],
     allow_credentials=True,
