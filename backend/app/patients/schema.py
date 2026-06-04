@@ -54,3 +54,7 @@ class RecentRecordSummary(BaseModel):
 
 class PatientDetailResponse(PatientResponse):
     recent_records: list[RecentRecordSummary]
+
+
+class RecordCreate(BaseModel):
+    chart_structured: str

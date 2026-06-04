@@ -821,8 +821,12 @@ ${result.acupuncture?.join(", ")}
                     .map((r) => {
                       const sections = parseChartSections(r.chart_structured);
                       const isOpen = expandedRecord === r.id;
-                      const diagSummary = sections?.["한의학적 진단"]?.split("\n")[0]?.trim();
-                      const prescSummary = sections?.["한약 처방"]?.split("\n")[0]?.trim();
+                      const diagSummary = sections?.["한의학적 진단"]
+                        ?.split("\n")[0]
+                        ?.trim();
+                      const prescSummary = sections?.["한약 처방"]
+                        ?.split("\n")[0]
+                        ?.trim();
                       return (
                         <div
                           key={r.id}
@@ -830,24 +834,31 @@ ${result.acupuncture?.join(", ")}
                         >
                           <div className="flex items-stretch">
                             <button
-                              onClick={() => setExpandedRecord(isOpen ? null : r.id)}
+                              onClick={() =>
+                                setExpandedRecord(isOpen ? null : r.id)
+                              }
                               className="flex-1 flex items-start justify-between px-4 py-3 text-left gap-2"
                             >
                               <div className="flex flex-col gap-0.5 min-w-0">
                                 <span className="text-sm font-medium text-[#232323]">
                                   {r.recorded_at
-                                    ? new Date(r.recorded_at).toLocaleString("ko-KR", {
-                                        year: "numeric",
-                                        month: "long",
-                                        day: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })
+                                    ? new Date(r.recorded_at).toLocaleString(
+                                        "ko-KR",
+                                        {
+                                          year: "numeric",
+                                          month: "long",
+                                          day: "numeric",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        },
+                                      )
                                     : "날짜 미상"}
                                 </span>
                                 {(diagSummary || prescSummary) && (
                                   <span className="text-xs text-[#8A8480] truncate">
-                                    {[diagSummary, prescSummary].filter(Boolean).join(" · ")}
+                                    {[diagSummary, prescSummary]
+                                      .filter(Boolean)
+                                      .join(" · ")}
                                   </span>
                                 )}
                               </div>
@@ -874,7 +885,10 @@ ${result.acupuncture?.join(", ")}
                                   const isAcu = key === "침 처방";
                                   const tags =
                                     (isHerbs || isAcu) && content !== "-"
-                                      ? content.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean)
+                                      ? content
+                                          .split(/[,，\n]/)
+                                          .map((s) => s.trim())
+                                          .filter(Boolean)
                                       : null;
                                   return (
                                     <div key={key}>
@@ -884,13 +898,18 @@ ${result.acupuncture?.join(", ")}
                                       {tags ? (
                                         <div className="flex flex-wrap gap-1">
                                           {tags.map((t, i) => (
-                                            <span key={i} className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]">
+                                            <span
+                                              key={i}
+                                              className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
+                                            >
                                               {t}
                                             </span>
                                           ))}
                                         </div>
                                       ) : (
-                                        <div className="text-sm text-[#232323] whitespace-pre-wrap">{content}</div>
+                                        <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                                          {content}
+                                        </div>
                                       )}
                                     </div>
                                   );
