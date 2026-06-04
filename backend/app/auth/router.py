@@ -9,6 +9,7 @@ from app.auth.datahub import verify_medical_license
 from app.auth import service
 from app.auth.schema import (
     AdminApproveResponse,
+    ChangePasswordRequest,
     LoginRequest,
     RegisterRequest,
     RegisterResponse,
@@ -119,6 +120,22 @@ async def logout(
         credentials.credentials, expire_seconds=settings.JWT_EXPIRE_MINUTES * 60
     )
     return {"message": "로그아웃되었습니다."}
+
+
+@router.put("/password", status_code=status.HTTP_200_OK)
+async def change_password(
+    data: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    if not service.pwd_context.verify(data.current_password, str(doctor.password_hash)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="현재 비밀번호가 일치하지 않습니다.",
+        )
+    doctor.password_hash = service.pwd_context.hash(data.new_password)
+    await db.commit()
+    return {"message": "비밀번호가 변경되었습니다."}
 
 
 @router.post("/admin/approve/{doctor_id}", response_model=AdminApproveResponse)
