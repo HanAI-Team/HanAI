@@ -91,3 +91,8 @@ class StaffResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
