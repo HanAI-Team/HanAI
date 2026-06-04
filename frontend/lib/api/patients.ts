@@ -25,6 +25,16 @@ export async function getPatient(id: string) {
   return res.json()
 }
 
+export async function saveRecord(patientId: string, chartStructured: string) {
+  const res = await fetch(`${BASE_URL}/api/patients/${patientId}/records`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ chart_structured: chartStructured }),
+  })
+  if (!res.ok) throw new Error('저장 실패')
+  return res.json()
+}
+
 export async function getPatientRecords(patientId: string) {
   const res = await fetch(`${BASE_URL}/api/patients/${patientId}/records`, { headers: getHeaders() })
   if (!res.ok) throw new Error('진료 이력 조회 실패')
