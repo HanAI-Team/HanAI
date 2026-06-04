@@ -1,39 +1,86 @@
-from flask import request, jsonify
-from database import db
-from datetime import datetime
+from uuid import UUID
 
-class Patient(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    doctor_id = db.Column(db.Integer, nullable=False)
-    name = db.Column(db.String(50), nullable=False)
-    age = db.Column(db.Integer)
-    gender = db.Column(db.String(10))
-    created_at = db.Column(db.DateTime, default=datetime.now)
+from fastapi import HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-class Record(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False)
-    symptoms = db.Column(db.Text, nullable=False)
-    diagnosis = db.Column(db.Text)
-    prescription = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+from app.core.models import Doctor, MedicalRecord, Patient
+from app.patients.schema import PatientCreate, PatientUpdate
 
-def add_patient(name, age, gender, doctor_id):
-    patient = Patient(name=name, age=age, gender=gender, doctor_id=doctor_id)
-    db.session.add(patient)
-    db.session.commit()
+
+async def create_patient(db: AsyncSession, doctor: Doctor, data: PatientCreate) -> Patient:
+    patient = Patient(
+        hospital_id=doctor.hospital_id,
+        name=data.name,
+        birth_date=data.birth_date,
+        gender=data.gender,
+        phone=data.phone,
+        memo=data.memo,
+    )
+    db.add(patient)
+    await db.commit()
+    await db.refresh(patient)
     return patient
 
-def add_record(patient_id, symptoms, diagnosis, prescription):
-    record = Record(
-        patient_id=patient_id,
-        symptoms=symptoms,
-        diagnosis=diagnosis,
-        prescription=prescription
-    )
-    db.session.add(record)
-    db.session.commit()
-    return record
 
-def get_patient_records(patient_id):
-    return Record.query.filter_by(patient_id=patient_id).all()
+async def get_patients(
+    db: AsyncSession,
+    doctor: Doctor,
+    page: int,
+    size: int,
+    search: str | None,
+) -> tuple[list[Patient], int]:
+    base_query = select(Patient).where(Patient.hospital_id == doctor.hospital_id)
+
+    if search:
+        base_query = base_query.where(Patient.name.ilike(f"%{search}%"))
+
+    count_result = await db.execute(select(func.count()).select_from(base_query.subquery()))
+    total = count_result.scalar_one()
+
+    result = await db.execute(base_query.offset((page - 1) * size).limit(size))
+    patients = list(result.scalars().all())
+
+    return patients, total
+
+
+async def get_patient(db: AsyncSession, doctor: Doctor, patient_id: UUID) -> Patient:
+    result = await db.execute(
+        select(Patient).where(
+            Patient.id == patient_id,
+            Patient.hospital_id == doctor.hospital_id,
+        )
+    )
+    patient = result.scalar_one_or_none()
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="환자를 찾을 수 없습니다.")
+    return patient
+
+
+async def update_patient(
+    db: AsyncSession, doctor: Doctor, patient_id: UUID, data: PatientUpdate
+) -> Patient:
+    patient = await get_patient(db, doctor, patient_id)
+
+    for field, value in data.model_dump(exclude_none=True).items():
+        setattr(patient, field, value)
+
+    await db.commit()
+    await db.refresh(patient)
+    return patient
+
+
+async def get_patient_with_records(
+    db: AsyncSession, doctor: Doctor, patient_id: UUID
+) -> tuple[Patient, list[MedicalRecord]]:
+    patient = await get_patient(db, doctor, patient_id)
+
+    result = await db.execute(
+        select(MedicalRecord)
+        .where(MedicalRecord.patient_id == patient_id)
+        .order_by(MedicalRecord.recorded_at.desc())
+        .limit(5)
+    )
+    records = list(result.scalars().all())
+
+    return patient, records

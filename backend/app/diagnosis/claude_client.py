@@ -1,71 +1,146 @@
+import json
+import logging
 import pandas as pd
 import os
 import anthropic
 from dotenv import load_dotenv
+from fastapi import HTTPException
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from app.diagnosis.prompt import PROMPT_TEMPLATE, QA_PROMPT_TEMPLATE
+from app.diagnosis.anonymize import anonymize
 
-load_dotenv()
+logger = logging.getLogger(__name__)
+
+load_dotenv(override=True)
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "../../../data"))
 
 def load_public_data():
     files = {
-        '신계(신장/비뇨기)': 'data/신계내과학.csv',
-        '간계(간/담낭)': 'data/간계내과학.csv',
-        '심계(심장/순환)': 'data/심계내과학.csv',
-        '폐계(호흡기)': 'data/폐계내과학.csv',
-        '비계(소화기)': 'data/비계내과학.csv',
+        '신계(신장/비뇨기)': os.path.join(DATA_DIR, '신계내과학.csv'),
+        '간계(간/담낭)':     os.path.join(DATA_DIR, '간계내과학.csv'),
+        '심계(심장/순환)':   os.path.join(DATA_DIR, '심계내과학.csv'),
+        '폐계(호흡기)':      os.path.join(DATA_DIR, '폐계내과학.csv'),
+        '비계(소화기)':      os.path.join(DATA_DIR, '비계내과학.csv'),
     }
     result = []
     for category, f in files.items():
         if not os.path.exists(f):
             continue
-        try:
-            df = pd.read_csv(f, encoding='utf-8')
-        except:
-            df = pd.read_csv(f, encoding='cp949')
+        df = pd.read_csv(f, encoding='utf-8-sig')
         grouped = df.groupby(['처방한글명', '처방한자명', '증상한글명', '일반인설명', '출전']).agg({
             '약재한글명': lambda x: ', '.join(x.dropna().unique()),
         }).reset_index()
         grouped['분류'] = category
         result.append(grouped)
+
     if not result:
         return ""
+
     combined = pd.concat(result, ignore_index=True)
-    with_symptoms = combined[combined['증상한글명'].notna()]
+    with_symptoms = combined[combined['증상한글명'].notna() & (combined['증상한글명'] != '')]
     lines = []
     for _, row in with_symptoms.iterrows():
         line = f"- [{row['분류']}] {row['처방한글명']}({row['처방한자명']}): 증상={row['증상한글명']}"
-        if pd.notna(row['일반인설명']):
+        if pd.notna(row['일반인설명']) and row['일반인설명']:
             line += f", 설명={row['일반인설명']}"
-        if pd.notna(row['출전']):
+        if pd.notna(row['출전']) and row['출전']:
             line += f", 출전={row['출전']}"
         lines.append(line)
-    return '\n'.join(lines[:400])
+    return '\n'.join(lines[:80])
+
+
+def _load_combined_df() -> pd.DataFrame:
+    frames = []
+
+    # 임상자료실 (진단/처방 케이스)
+    path1 = os.path.join(DATA_DIR, "cafe_diagnosis_data.csv")
+    if os.path.exists(path1):
+        df1 = pd.read_csv(path1, encoding='utf-8-sig')
+        df1 = df1[df1['board'] == 'ADvi_임상자료실'].copy()
+        frames.append(df1)
+
+    # 혈위 검색 결과 (침 처방 특화)
+    path2 = os.path.join(DATA_DIR, "cafe_acupuncture_data.csv")
+    if os.path.exists(path2):
+        df2 = pd.read_csv(path2, encoding='utf-8-sig')
+        frames.append(df2)
+
+    # 침처방 검색 결과
+    path3 = os.path.join(DATA_DIR, "cafe_침처방_data.csv")
+    if os.path.exists(path3):
+        df3 = pd.read_csv(path3, encoding='utf-8-sig')
+        frames.append(df3)
+
+    if not frames:
+        return pd.DataFrame()
+
+    df = pd.concat(frames, ignore_index=True)
+    df['text'] = df['title'].fillna('') + ' ' + df['content'].fillna('')
+    return df.reset_index(drop=True)
+
+
+_cafe_df = _load_combined_df()
+_tfidf = TfidfVectorizer(analyzer='char', ngram_range=(2, 3)) if not _cafe_df.empty else None
+_cafe_matrix = _tfidf.fit_transform(_cafe_df['text']) if _tfidf is not None else None
+
+
+def find_relevant_cases(query: str, n: int = 3) -> str:
+    if _cafe_df.empty or _tfidf is None:
+        return ""
+    query_vec = _tfidf.transform([query])
+    scores = cosine_similarity(query_vec, _cafe_matrix).flatten()
+    top_idx = scores.argsort()[-n:][::-1]
+    lines = []
+    for i in top_idx:
+        row = _cafe_df.iloc[i]
+        snippet = str(row['content'])[:300].replace('\n', ' ').strip()
+        lines.append(f"- [{row['title']}] {snippet}")
+    return '\n'.join(lines)
+
 
 PUBLIC_DATA = load_public_data()
 
-def diagnose(symptoms):
+def _call_claude(prompt: str) -> str:
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
-        messages=[
-            {
-                "role": "user",
-                "content": f"""당신은 한의학 전문 AI 진단 보조 시스템입니다.
-아래 처방 데이터를 참고하여 환자 증상을 분석해주세요.
-
-[공공데이터 처방 DB - 한의대 교과서 처방]
-{PUBLIC_DATA}
-
-환자 증상: {symptoms}
-
-다음 형식으로 답변해주세요:
-1. 사상체질: (태양인/태음인/소양인/소음인)
-2. 진단:
-3. 한약 처방 추천: (처방명 + 근거 출전 포함)
-4. 생활 습관 조언:
-
-모든 처방은 참고용이며 최종 판단은 한의사 선생님께서 하셔야 합니다."""
-            }
-        ]
+        max_tokens=3000,
+        temperature=0.2,
+        messages=[{"role": "user", "content": prompt}]
     )
-    return message.content[0].text
+    text = message.content[0].text.strip()
+    # 모델이 ```json ... ``` 블록으로 감쌀 경우 제거
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1]
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
+def diagnose(transcription: str) -> dict:
+    cafe_data = find_relevant_cases(transcription)
+    prompt = PROMPT_TEMPLATE.format(
+        transcription=anonymize(transcription),
+        public_data=PUBLIC_DATA if PUBLIC_DATA else "DB 데이터 없음",
+        cafe_data=cafe_data if cafe_data else "임상 사례 없음",
+    )
+
+    for attempt in range(2):
+        raw = _call_claude(prompt)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(f"[diagnosis] JSON 파싱 실패 (시도 {attempt + 1}/2): {raw[:200]}")
+
+    raise HTTPException(status_code=502, detail="AI 진단 결과를 파싱할 수 없습니다. 잠시 후 다시 시도해주세요.")
+
+
+def ask(question: str) -> str:
+    cafe_data = find_relevant_cases(question)
+    prompt = QA_PROMPT_TEMPLATE.format(
+        question=question,
+        public_data=PUBLIC_DATA if PUBLIC_DATA else "DB 데이터 없음",
+        cafe_data=cafe_data if cafe_data else "임상 사례 없음",
+    )
+    return _call_claude(prompt)

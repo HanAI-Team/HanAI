@@ -1,35 +1,94 @@
-from models.diagnosis import diagnose
-from models.recorder import record_and_transcribe, auto_chart
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
-def main():
-    print("=== HanAI ===")
-    print("1. 증상 직접 입력")
-    print("2. 음성 녹음으로 입력")
-    print("3. 오토 차팅 (녹음 → 자동 차트 저장)")
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from app.core.redis import check_rate_limit
+from app.auth.router import router as auth_router
+from app.diagnosis.router import router as diagnosis_router
+from app.core.config import settings
+from fastapi.middleware.cors import CORSMiddleware
 
-    choice = input("\n선택하세요 (1/2/3): ")
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+        traces_sample_rate=0.1,
+        environment="production" if not settings.DEBUG else "development",
+    )
 
-    if choice == "1":
-        symptoms = input("환자 증상을 입력하세요: ")
-        result = diagnose(symptoms)
-        print(f"\n[진단 결과]\n{result}")
+from app.charting.router import router as charting_router
+from app.patients.router import router as patients_router
+from app.subscription.router import router as subscription_router
 
-    elif choice == "2":
-        seconds = input("녹음 시간 (초, 기본 60): ")
-        duration = int(seconds) if seconds else 60
-        symptoms = record_and_transcribe(duration)
-        print(f"\n[인식된 텍스트]\n{symptoms}")
-        result = diagnose(symptoms)
-        print(f"\n[진단 결과]\n{result}")
 
-    elif choice == "3":
-        patient_id = input("환자 ID를 입력하세요: ")
-        seconds = input("녹음 시간 (초, 기본 60): ")
-        duration = int(seconds) if seconds else 60
-        auto_chart(int(patient_id), duration)
+async def notify_discord(message: str):
+    if not settings.DISCORD_WEBHOOK_URL:
+        return
+    async with httpx.AsyncClient() as client:
+        await client.post(settings.DISCORD_WEBHOOK_URL, json={"content": message})
 
-    else:
-        print("잘못된 입력입니다.")
 
-if __name__ == "__main__":
-    main()
+app = FastAPI(title="HanAI API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://zinmac.ai",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def discord_error_middleware(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        if response.status_code >= 500:
+            await notify_discord(
+                f"500 에러 발생\nPath: {request.method} {request.url.path}"
+            )
+        return response
+    except Exception as e:
+        await notify_discord(
+            f"서버 에러\nPath: {request.method} {request.url.path}\nError: {str(e)}"
+        )
+        return JSONResponse(
+            status_code=500, content={"detail": "서버 오류가 발생했습니다."}
+        )
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path == "/api/auth/login":
+        ip = request.client.host if request.client else "unknown"
+
+        allowed = await check_rate_limit(
+            key=f"{ip}:{request.url.path}", limit=5, window_seconds=60
+        )
+
+        if not allowed:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."},
+            )
+    response = await call_next(request)
+    return response
+
+
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(diagnosis_router, prefix="/api/diagnosis", tags=["diagnosis"])
+app.include_router(charting_router, prefix="/api/charting", tags=["charting"])
+app.include_router(patients_router, prefix="/api/patients", tags=["patients"])
+app.include_router(
+    subscription_router, prefix="/api/subscription", tags=["subscription"]
+)
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
