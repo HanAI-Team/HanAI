@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 50279dbfe400
+Revision ID: 90c5783eb847
 Revises: 
-Create Date: 2026-05-27 21:02:43.168761
+Create Date: 2026-06-02 00:47:15.294373
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '50279dbfe400'
+revision: str = '90c5783eb847'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -34,6 +34,10 @@ def upgrade() -> None:
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('license_number', sa.String(), nullable=False),
     sa.Column('license_kind', sa.String(), nullable=True),
+    sa.Column('password_hash', sa.String(), nullable=False),
+    sa.Column('role', sa.String(), nullable=True),
+    sa.Column('is_approved', sa.Boolean(), nullable=False),
+    sa.Column('approved_at', sa.DateTime(), nullable=True),
     sa.Column('license_verified_at', sa.DateTime(), nullable=True),
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['hospital_id'], ['hospitals.id'], ),
@@ -44,13 +48,39 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('hospital_id', sa.UUID(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
-    sa.Column('birth_date', sa.String(), nullable=True),
+    sa.Column('birth_date', sa.Date(), nullable=True),
     sa.Column('gender', sa.String(), nullable=True),
     sa.Column('phone', sa.String(), nullable=True),
     sa.Column('memo', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['hospital_id'], ['hospitals.id'], ),
     sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('staff_accounts',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('hospital_id', sa.UUID(), nullable=False),
+    sa.Column('name', sa.String(), nullable=False),
+    sa.Column('email', sa.String(), nullable=False),
+    sa.Column('password_hash', sa.String(), nullable=False),
+    sa.Column('role', sa.String(), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['hospital_id'], ['hospitals.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('email')
+    )
+    op.create_table('subscriptions',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('hospital_id', sa.UUID(), nullable=False),
+    sa.Column('tier', sa.String(), nullable=True),
+    sa.Column('status', sa.String(), nullable=True),
+    sa.Column('staff_limit', sa.Integer(), nullable=True),
+    sa.Column('started_at', sa.DateTime(), nullable=True),
+    sa.Column('expired_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['hospital_id'], ['hospitals.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('hospital_id')
     )
     op.create_table('medical_records',
     sa.Column('id', sa.UUID(), nullable=False),
@@ -67,18 +97,6 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['hospital_id'], ['hospitals.id'], ),
     sa.ForeignKeyConstraint(['patient_id'], ['patients.id'], ),
     sa.PrimaryKeyConstraint('id')
-    )
-    op.create_table('subscriptions',
-    sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('doctor_id', sa.UUID(), nullable=False),
-    sa.Column('tier', sa.String(), nullable=True),
-    sa.Column('status', sa.String(), nullable=True),
-    sa.Column('started_at', sa.DateTime(), nullable=True),
-    sa.Column('expired_at', sa.DateTime(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
-    sa.ForeignKeyConstraint(['doctor_id'], ['doctors.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('doctor_id')
     )
     op.create_table('ai_results',
     sa.Column('id', sa.UUID(), nullable=False),
@@ -124,8 +142,9 @@ def downgrade() -> None:
     op.drop_table('feedbacks')
     op.drop_table('prescriptions')
     op.drop_table('ai_results')
-    op.drop_table('subscriptions')
     op.drop_table('medical_records')
+    op.drop_table('subscriptions')
+    op.drop_table('staff_accounts')
     op.drop_table('patients')
     op.drop_table('doctors')
     op.drop_table('hospitals')

@@ -8,7 +8,104 @@ from app.charting.stt.chunker import transcribe_chunks
 from app.diagnosis.claude_client import diagnose
 from app.core.models import AIResult, MedicalRecord
 from app.pipeline.deidentifier import deidentifier
-from app.pipeline.postprocessor import postprocessor
+from uuid import UUID
+from datetime import datetime, timezone
+from sqlalchemy import select
+from fastapi import HTTPException, status
+from app.core.models import MedicalRecord, Patient, Doctor
+
+
+async def create_medical_record(db, doctor, patient_id: UUID) -> MedicalRecord:
+
+    result = await db.execute(
+        select(Patient).where(
+            Patient.id == patient_id, Patient.hospital_id == doctor.hospital_id
+        )
+    )
+    patient = result.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="등록된 회원이 아닙니다."
+        )
+    medical_record = MedicalRecord(
+        patient_id=patient_id,
+        doctor_id=doctor.id,
+        hospital_id=doctor.hospital_id,
+        status="recording",
+        recorded_at=datetime.utcnow(),
+    )
+    db.add(medical_record)
+    await db.commit()
+    await db.refresh(medical_record)
+    return medical_record
+
+
+async def update_record_status(db, record_id: UUID, new_status: str) -> MedicalRecord:
+    result = await db.execute(
+        select(MedicalRecord).where(MedicalRecord.id == record_id)
+    )
+    medical_record = result.scalar_one_or_none()
+    if not medical_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="존재하지않는 의료기록입니다..",
+        )
+    medical_record.status = new_status
+    await db.commit()
+    await db.refresh()
+    return medical_record
+
+
+async def get_medical_record(
+    db: AsyncSession, doctor: Doctor, record_id: UUID
+) -> MedicalRecord:
+    # doctor.hospital_id 스코프로 조회
+    # 없으면 404
+    result = await db.execute(
+        select(MedicalRecord).where(
+            MedicalRecord.id == record_id,
+            MedicalRecord.hospital_id == doctor.hospital_id,
+        )
+    )
+    medical_record = result.scalar_one_or_none()
+
+    if not medical_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="존재하지않는 의료기록입니다..",
+        )
+    return medical_record
+
+
+async def get_records_by_patient(
+    db: AsyncSession, patient_id: UUID, doctor: Doctor
+) -> list[MedicalRecord]:
+    result = await db.execute(
+        select(MedicalRecord)
+        .where(
+            MedicalRecord.patient_id == patient_id,
+            MedicalRecord.hospital_id == doctor.hospital_id,
+        )
+        .order_by(MedicalRecord.created_at.desc())
+    )
+    medical_records = result.scalars().all()
+    return medical_records
+
+
+async def update_audio_url(db, record_id: UUID, audio_file_url: str) -> MedicalRecord:
+    result = await db.execute(
+        select(MedicalRecord).where(MedicalRecord.id == record_id)
+    )
+    medical_record = result.scalar_one_or_none()
+    if not medical_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="존재하지않는 의료기록입니다..",
+        )
+    medical_record.audio_file_url = audio_file_url
+    await db.commit()
+    await db.refresh()
+    return medical_record
 
 
 async def process_chart(

@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
     JSON,
@@ -10,7 +9,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
     Date,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -27,11 +25,15 @@ class Hospital(Base):
     name = Column(String, nullable=False)
     address = Column(String)
     phone = Column(String)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     doctors = relationship("Doctor", back_populates="hospital")
+    staff_accounts = relationship("StaffAccount", back_populates="hospital")
     patients = relationship("Patient", back_populates="hospital")
     medical_records = relationship("MedicalRecord", back_populates="hospital")
+    subscription = relationship(
+        "Subscription", back_populates="hospital", uselist=False
+    )
 
 
 class Doctor(Base):
@@ -42,31 +44,48 @@ class Doctor(Base):
     name = Column(String, nullable=False)
     license_number = Column(String, unique=True, nullable=False)
     license_kind = Column(String)
-    license_verified_at = Column(DateTime)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, default="owner")
     is_approved = Column(Boolean, default=False, nullable=False)
-    approved_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    license_verified_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     hospital = relationship("Hospital", back_populates="doctors")
-    subscription = relationship("Subscription", back_populates="doctor", uselist=False)
     medical_records = relationship("MedicalRecord", back_populates="doctor")
     feedbacks = relationship("Feedback", back_populates="doctor")
+
+
+class StaffAccount(Base):
+    __tablename__ = "staff_accounts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, default="nurse")
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    hospital = relationship("Hospital", back_populates="staff_accounts")
 
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    doctor_id = Column(
-        UUID(as_uuid=True), ForeignKey("doctors.id"), unique=True, nullable=False
+    hospital_id = Column(
+        UUID(as_uuid=True), ForeignKey("hospitals.id"), unique=True, nullable=False
     )
     tier = Column(String, default="basic")
     status = Column(String, default="active")
-    started_at = Column(DateTime)
-    expired_at = Column(DateTime)
-    created_at = Column(DateTime, server_default=func.now())
+    staff_limit = Column(Integer, default=2)
+    started_at = Column(DateTime(timezone=True))
+    expired_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    doctor = relationship("Doctor", back_populates="subscription")
+    hospital = relationship("Hospital", back_populates="subscription")
 
 
 class Patient(Base):
@@ -79,7 +98,7 @@ class Patient(Base):
     gender = Column(String)
     phone = Column(String)
     memo = Column(Text)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     hospital = relationship("Hospital", back_populates="patients")
     medical_records = relationship("MedicalRecord", back_populates="patient")
@@ -96,8 +115,8 @@ class MedicalRecord(Base):
     chart_structured = Column(Text)
     audio_file_url = Column(String)
     status = Column(String, default="recording")
-    recorded_at = Column(DateTime)
-    created_at = Column(DateTime, server_default=func.now())
+    recorded_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     patient = relationship("Patient", back_populates="medical_records")
     doctor = relationship("Doctor", back_populates="medical_records")
@@ -121,7 +140,7 @@ class AIResult(Base):
     prescription_suggestion = Column(Text)
     acupuncture_suggestion = Column(Text)
     reasoning = Column(JSON)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     medical_record = relationship("MedicalRecord", back_populates="ai_result")
     feedbacks = relationship("Feedback", back_populates="ai_result")
@@ -138,7 +157,7 @@ class Feedback(Base):
     category = Column(String)
     score = Column(Integer)
     comment = Column(Text)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     ai_result = relationship("AIResult", back_populates="feedbacks")
     doctor = relationship("Doctor", back_populates="feedbacks")
@@ -155,6 +174,6 @@ class Prescription(Base):
     ingredients = Column(Text)
     dosage = Column(String)
     notes = Column(Text)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     medical_record = relationship("MedicalRecord", back_populates="prescriptions")

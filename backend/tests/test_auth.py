@@ -3,6 +3,7 @@ from app.core.config import settings
 REGISTER_DATA = {
     "name": "홍길동",
     "license_number": "12345678",
+    "password": "password1234",
     "clinic_name": "테스트의원",
 }
 
@@ -29,13 +30,13 @@ async def test_register_duplicate_license(client):
 
 
 async def test_login_not_found(client):
-    resp = await client.post("/api/auth/login", json={"license_number": "99999999"})
+    resp = await client.post("/api/auth/login", json={"license_number": "99999999", "password": "password1234"})
     assert resp.status_code == 401
 
 
 async def test_login_not_approved(client):
     await client.post("/api/auth/register", json=REGISTER_DATA)
-    resp = await client.post("/api/auth/login", json={"license_number": "12345678"})
+    resp = await client.post("/api/auth/login", json={"license_number": "12345678", "password": "password1234"})
     assert resp.status_code == 403
 
 
@@ -73,7 +74,7 @@ async def test_login_success(client):
         headers={"X-Admin-Key": settings.ADMIN_API_KEY},
     )
 
-    resp = await client.post("/api/auth/login", json={"license_number": "12345678"})
+    resp = await client.post("/api/auth/login", json={"license_number": "12345678", "password": "password1234"})
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data
