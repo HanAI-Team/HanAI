@@ -92,10 +92,11 @@ export default function HomePage() {
                 <div>
                   <div className="text-sm font-medium text-[#232323]">{patient.name}</div>
                   <div className="text-xs text-[#8A8480]">
-                    {[
-                      patient.gender === "male" ? "남" : patient.gender === "female" ? "여" : patient.gender,
-                      patient.birth_date ? patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3") : null,
-                    ].filter(Boolean).join(", ") || patient.phone || "-"}
+                    {(() => {
+                      const gender = { male: "남", female: "여", 남성: "남", 여성: "여" }[patient.gender] ?? patient.gender;
+                      const birth = patient.birth_date ? patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3") : null;
+                      return [gender, birth].filter(Boolean).join(", ") || patient.phone || "-";
+                    })()}
                   </div>
                 </div>
                 <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#B0AAA4]" />
