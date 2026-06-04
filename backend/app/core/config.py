@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     CLOVA_CLIENT_ID: Optional[str] = None
     CLOVA_CLIENT_SECRET: Optional[str] = None
+    CLOVA_SECRET_KEY: Optional[str] = None   # 추가
+    CLOVA_INVOKE_URL: Optional[str] = None   # 추가
     CODEF_CLIENT_ID: Optional[str] = None
     CODEF_CLIENT_SECRET: Optional[str] = None
     CODEF_PUBLIC_KEY: Optional[str] = None
