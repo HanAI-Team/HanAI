@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getPatients, createPatient, getPatientRecords } from '@/lib/api/patients'
+import { getPatients, createPatient, getPatientRecords, saveRecord } from '@/lib/api/patients'
 import { uploadAndAnalyze, askDiagnosis, diagnoseText } from '@/lib/api/diagnosis'
 import { Patient, DiagnosisResult } from '@/types'
 
@@ -150,6 +150,37 @@ export default function DiagnosisPage() {
       setAskHistory(prev => [...prev, { question: q, answer: '답변을 가져오지 못했습니다. 다시 시도해주세요.' }])
     } finally {
       setAskLoading(false)
+    }
+  }
+
+  const [saved, setSaved] = useState(false)
+
+  async function handleSave() {
+    if (!result || !selectedPatient) return
+    const text = `[AI 한의 진단 보조 — Zinmac]
+환자: ${selectedPatient.name} / ${new Date().toLocaleDateString('ko-KR')}
+
+▶ 사상체질
+${result.constitution}
+
+▶ 한의학적 진단
+${result.diagnosis}
+양방 대응: ${result.western_diagnosis}
+
+▶ 한약 처방
+${result.prescription}
+${result.herbs?.join(', ')}
+
+▶ 침 처방
+${result.acupuncture?.join(', ')}
+
+※ AI 참고용 / 최종 판단은 담당 한의사`
+    try {
+      await saveRecord(selectedPatient.id, text)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch {
+      alert('저장에 실패했습니다.')
     }
   }
 
@@ -426,7 +457,7 @@ ${result.acupuncture?.join(', ')}
                     ⚠️ 본 결과는 AI 참고용이며 최종 진단 및 처방은 반드시 한의사가 직접 판단해야 합니다.
                   </div>
                   <div className="flex gap-2 mt-3">
-                    <button className="flex-1 bg-[#EF6600] text-white rounded-md py-2.5 text-xs flex items-center justify-center gap-1.5 hover:opacity-90">💾 저장</button>
+                    <button onClick={handleSave} className="flex-1 bg-[#EF6600] text-white rounded-md py-2.5 text-xs flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50" disabled={saved}>{saved ? '✅ 저장됨' : '💾 저장'}</button>
                     <button className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all flex items-center justify-center">🖨 인쇄</button>
                     <button onClick={() => setActiveTab('record')} className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all flex items-center justify-center">+ 새 진료</button>
                   </div>

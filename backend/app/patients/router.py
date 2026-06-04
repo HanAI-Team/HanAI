@@ -149,6 +149,30 @@ async def update_patient(
     return patient
 
 
+@router.post("/{patient_id}/records", status_code=201)
+async def create_record(
+    patient_id: UUID,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    from datetime import datetime, timezone
+    from app.core.models import MedicalRecord
+    patient = await service.get_patient(db, doctor, patient_id)
+    record = MedicalRecord(
+        patient_id=patient.id,
+        doctor_id=doctor.id,
+        hospital_id=doctor.hospital_id,
+        chart_structured=data.get("chart_structured"),
+        status="completed",
+        recorded_at=datetime.now(timezone.utc),
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return {"id": str(record.id)}
+
+
 @router.get("/{patient_id}/records")
 async def get_patient_records(
     patient_id: UUID,
