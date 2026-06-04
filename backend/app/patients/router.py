@@ -15,6 +15,7 @@ from app.patients.schema import (
     PatientListResponse,
     PatientResponse,
     RecentRecordSummary,
+    RecordCreate,
 )
 
 router = APIRouter(tags=["patients"])
@@ -152,7 +153,7 @@ async def update_patient(
 @router.post("/{patient_id}/records", status_code=201)
 async def create_record(
     patient_id: UUID,
-    data: dict,
+    data: RecordCreate,
     db: AsyncSession = Depends(get_db),
     doctor: Doctor = Depends(get_current_doctor),
 ):
@@ -163,7 +164,7 @@ async def create_record(
         patient_id=patient.id,
         doctor_id=doctor.id,
         hospital_id=doctor.hospital_id,
-        chart_structured=data.get("chart_structured"),
+        chart_structured=data.chart_structured,
         status="completed",
         recorded_at=datetime.now(timezone.utc),
     )
