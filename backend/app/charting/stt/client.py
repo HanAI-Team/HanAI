@@ -22,7 +22,9 @@ class ClovaSpeechClient:
     def __init__(self):
         # .env에 키가 없으면 인스턴스 생성 시점에 에러 발생
         if not settings.CLOVA_CLIENT_ID or not settings.CLOVA_CLIENT_SECRET:
-            raise ValueError("CLOVA_CLIENT_ID 또는 CLOVA_CLIENT_SECRET가 .env에 없습니다")
+            raise ValueError(
+                "CLOVA_CLIENT_ID 또는 CLOVA_CLIENT_SECRET가 .env에 없습니다"
+            )
 
         self.headers = {
             "X-NCP-APIGW-API-KEY-ID": settings.CLOVA_CLIENT_ID,
@@ -88,4 +90,8 @@ class ClovaSpeechClient:
 
 # 앱 전체에서 공유하는 싱글톤 인스턴스
 # from app.charting.stt.client import clova_client
-clova_client = ClovaSpeechClient()
+clova_client = (
+    ClovaSpeechClient()
+    if (settings.CLOVA_CLIENT_ID and settings.CLOVA_CLIENT_SECRET)
+    else None
+)
