@@ -6,6 +6,8 @@ import {
   createPatient,
   getPatientRecords,
   saveRecord,
+  updatePatient,
+  deleteRecord,
 } from "@/lib/api/patients";
 import {
   uploadAndAnalyze,
@@ -35,6 +37,8 @@ import {
   ChevronDown,
   X,
   Plus,
+  Pencil,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -80,6 +84,9 @@ export default function DiagnosisPage() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showSavedModal, setShowSavedModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [editPatient, setEditPatient] = useState<Patient | null>(null);
+  const [editForm, setEditForm] = useState({ phone: "", memo: "" });
+  const [editLoading, setEditLoading] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -295,6 +302,35 @@ export default function DiagnosisPage() {
     }
   }
 
+  async function handleEditSave() {
+    if (!editPatient) return;
+    setEditLoading(true);
+    try {
+      await updatePatient(editPatient.id, editForm);
+      setPatients((prev) =>
+        prev.map((p) =>
+          p.id === editPatient.id ? { ...p, ...editForm } : p,
+        ),
+      );
+      setEditPatient(null);
+    } catch {
+      alert("수정에 실패했습니다.");
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function handleDeleteRecord(recordId: string) {
+    if (!selectedPatient) return;
+    if (!confirm("이 진료 이력을 삭제할까요?")) return;
+    try {
+      await deleteRecord(selectedPatient.id, recordId);
+      setRecords((prev) => prev.filter((r) => r.id !== recordId));
+    } catch {
+      alert("삭제에 실패했습니다.");
+    }
+  }
+
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
@@ -421,27 +457,38 @@ ${result.acupuncture?.join(", ")}
             filtered.map((patient) => (
               <div
                 key={patient.id}
-                onClick={() => {
-                  setSelectedPatient(patient);
-                  setActiveTab("record");
-                }}
-                className={`flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer transition-all border-l-[2.5px] ${
+                className={`group flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer transition-all border-l-[2.5px] ${
                   selectedPatient?.id === patient.id
                     ? "bg-[#F5F2EE] border-l-[#EF6600]"
                     : "border-l-transparent hover:bg-[#F5F2EE]"
                 }`}
+                onClick={() => {
+                  setSelectedPatient(patient);
+                  setActiveTab("record");
+                }}
               >
                 <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
                   {patient.name[0]}
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-[#232323]">
                     {patient.name}
                   </div>
                   <div className="text-xs text-[#8A8480]">
-                    {patient.gender || "-"}
+                    {patient.phone || patient.gender || "-"}
                   </div>
                 </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditPatient(patient);
+                    setEditForm({ phone: patient.phone || "", memo: patient.memo || "" });
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#D4CCC4] transition-all flex-shrink-0"
+                  title="환자 정보 수정"
+                >
+                  <Pencil className="w-3 h-3 text-[#8A8480]" />
+                </button>
               </div>
             ))
           )}
@@ -774,48 +821,80 @@ ${result.acupuncture?.join(", ")}
                     .map((r) => {
                       const sections = parseChartSections(r.chart_structured);
                       const isOpen = expandedRecord === r.id;
+                      const diagSummary = sections?.["한의학적 진단"]?.split("\n")[0]?.trim();
+                      const prescSummary = sections?.["한약 처방"]?.split("\n")[0]?.trim();
                       return (
                         <div
                           key={r.id}
                           className="bg-white border border-[#D4CCC4] rounded-lg overflow-hidden"
                         >
-                          <button
-                            onClick={() =>
-                              setExpandedRecord(isOpen ? null : r.id)
-                            }
-                            className="w-full flex items-center justify-between px-4 py-3 text-left"
-                          >
-                            <span className="text-sm font-medium text-[#232323]">
-                              {r.recorded_at
-                                ? new Date(r.recorded_at).toLocaleDateString(
-                                    "ko-KR",
-                                    {
-                                      year: "numeric",
-                                      month: "long",
-                                      day: "numeric",
-                                    },
-                                  )
-                                : "날짜 미상"}
-                            </span>
-                            {isOpen ? (
-                              <ChevronUp className="w-4 h-4 text-[#8A8480]" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-[#8A8480]" />
-                            )}
-                          </button>
+                          <div className="flex items-stretch">
+                            <button
+                              onClick={() => setExpandedRecord(isOpen ? null : r.id)}
+                              className="flex-1 flex items-start justify-between px-4 py-3 text-left gap-2"
+                            >
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                <span className="text-sm font-medium text-[#232323]">
+                                  {r.recorded_at
+                                    ? new Date(r.recorded_at).toLocaleString("ko-KR", {
+                                        year: "numeric",
+                                        month: "long",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })
+                                    : "날짜 미상"}
+                                </span>
+                                {(diagSummary || prescSummary) && (
+                                  <span className="text-xs text-[#8A8480] truncate">
+                                    {[diagSummary, prescSummary].filter(Boolean).join(" · ")}
+                                  </span>
+                                )}
+                              </div>
+                              {isOpen ? (
+                                <ChevronUp className="w-4 h-4 text-[#8A8480] flex-shrink-0 mt-0.5" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-[#8A8480] flex-shrink-0 mt-0.5" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRecord(r.id)}
+                              className="px-3 border-l border-[#D4CCC4] text-[#B0AAA4] hover:text-red-500 hover:bg-red-50 transition-colors"
+                              title="삭제"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                           {isOpen && (
                             <div className="border-t border-[#D4CCC4] p-4 flex flex-col gap-4">
                               {sections ? (
-                                historySections.map(({ key, Icon }) => (
-                                  <div key={key}>
-                                    <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1">
-                                      <Icon className="w-3.5 h-3.5" /> {key}
+                                historySections.map(({ key, Icon }) => {
+                                  const content = sections[key] || "-";
+                                  const isHerbs = key === "한약 처방";
+                                  const isAcu = key === "침 처방";
+                                  const tags =
+                                    (isHerbs || isAcu) && content !== "-"
+                                      ? content.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean)
+                                      : null;
+                                  return (
+                                    <div key={key}>
+                                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                        <Icon className="w-3.5 h-3.5" /> {key}
+                                      </div>
+                                      {tags ? (
+                                        <div className="flex flex-wrap gap-1">
+                                          {tags.map((t, i) => (
+                                            <span key={i} className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]">
+                                              {t}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="text-sm text-[#232323] whitespace-pre-wrap">{content}</div>
+                                      )}
                                     </div>
-                                    <div className="text-sm text-[#232323] whitespace-pre-wrap">
-                                      {sections[key] || "-"}
-                                    </div>
-                                  </div>
-                                ))
+                                  );
+                                })
                               ) : (
                                 <div className="text-sm text-[#232323] whitespace-pre-wrap">
                                   {r.chart_structured || "차트 내용 없음"}
@@ -1167,6 +1246,57 @@ ${result.acupuncture?.join(", ")}
               <p className="text-xs text-[#B0AAA4]">
                 문의: 관리자에게 연락하세요.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 환자 정보 수정 모달 */}
+      {editPatient && (
+        <div
+          className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
+          onClick={() => setEditPatient(null)}
+        >
+          <div
+            className="bg-white rounded-xl w-full max-w-[360px] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#D4CCC4]">
+              <div className="text-sm font-medium text-[#232323]">
+                {editPatient.name} 정보 수정
+              </div>
+              <button onClick={() => setEditPatient(null)} className="text-[#8A8480] hover:text-[#232323]">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 flex flex-col gap-3">
+              <div>
+                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">전화번호</label>
+                <input
+                  type="text"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  placeholder="010-0000-0000"
+                  className="w-full border border-[#C8BFB6] rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">메모</label>
+                <textarea
+                  value={editForm.memo}
+                  onChange={(e) => setEditForm((f) => ({ ...f, memo: e.target.value }))}
+                  placeholder="특이사항 등"
+                  rows={3}
+                  className="w-full border border-[#C8BFB6] rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600] resize-none"
+                />
+              </div>
+              <button
+                onClick={handleEditSave}
+                disabled={editLoading}
+                className="w-full bg-[#EF6600] text-white rounded-md py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-50 mt-1"
+              >
+                {editLoading ? "저장 중..." : "저장"}
+              </button>
             </div>
           </div>
         </div>
