@@ -66,7 +66,6 @@ async def approved_doctor(db, client):
         name="홍길동",
         license_number="12345678",
         password_hash="hashed_password",
-        role="owner",
         is_approved=True,
         approved_at=datetime.now(timezone.utc),
     )

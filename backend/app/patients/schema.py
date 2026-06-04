@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class PatientCreate(BaseModel):
@@ -11,6 +11,13 @@ class PatientCreate(BaseModel):
     gender: Optional[str] = None
     phone: Optional[str] = None
     memo: Optional[str] = None
+
+    @field_validator("birth_date")
+    @classmethod
+    def birth_date_must_be_past(cls, v: date) -> date:
+        if v and v >= date.today():
+            raise ValueError("생년월일은 오늘 이전이어야 합니다.")
+        return v
 
 
 class PatientUpdate(BaseModel):

@@ -1,26 +1,26 @@
-'use client'
-import { useEffect, useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 
 export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const router = useRouter();
+  const pathname = usePathname();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (!token) router.push('/login')
-  }, [])
+    const token = localStorage.getItem("token");
+    if (!token) router.push("/login");
+  }, []);
 
   const navLinks = [
-    { label: '홈', path: '/home' },
-    { label: '진료', path: '/diagnosis' },
-    { label: '설정', path: '/settings' },
-  ]
+    { label: "홈", path: "/home" },
+    { label: "진료", path: "/diagnosis" },
+    { label: "설정", path: "/settings" },
+  ];
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -28,30 +28,19 @@ export default function DashboardLayout({
       <nav className="hidden md:flex h-[52px] bg-[#232323] items-center px-6 flex-shrink-0">
         <div className="font-serif text-[19px] text-white mr-9">Zinmac</div>
         <div className="flex gap-1 flex-1">
-          {navLinks.map(link => (
+          {navLinks.map((link) => (
             <button
               key={link.path}
               onClick={() => router.push(link.path)}
               className={`px-4 py-1.5 text-xs rounded-md transition-all font-sans ${
                 pathname === link.path
-                  ? 'text-white bg-white/[0.06]'
-                  : 'text-[#585753] hover:text-white'
+                  ? "text-white bg-white/[0.06]"
+                  : "text-[#585753] hover:text-white"
               }`}
             >
               {link.label}
             </button>
           ))}
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <button
-            onClick={() => router.push('/diagnosis')}
-            className="bg-[#EF6600] text-white text-xs px-4 py-1.5 rounded-md font-medium hover:opacity-90 transition-opacity"
-          >
-            + 새 진료
-          </button>
-          <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white">
-            이
-          </div>
         </div>
       </nav>
 
@@ -77,20 +66,30 @@ export default function DashboardLayout({
       )}
 
       {/* 드로어 */}
-      <div className={`fixed top-0 bottom-0 left-0 w-[240px] bg-[#232323] z-[101] flex flex-col transition-transform duration-300 md:hidden ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div
+        className={`fixed top-0 bottom-0 left-0 w-[240px] bg-[#232323] z-[101] flex flex-col transition-transform duration-300 md:hidden ${drawerOpen ? "translate-x-0" : "-translate-x-full"}`}
+      >
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <div className="font-serif text-[18px] text-white">Zinmac</div>
-          <button onClick={() => setDrawerOpen(false)} className="text-[#585753] text-xl">✕</button>
+          <button
+            onClick={() => setDrawerOpen(false)}
+            className="text-[#585753] text-xl"
+          >
+            ✕
+          </button>
         </div>
         <div className="flex-1 py-3">
-          {navLinks.map(link => (
+          {navLinks.map((link) => (
             <button
               key={link.path}
-              onClick={() => { router.push(link.path); setDrawerOpen(false) }}
+              onClick={() => {
+                router.push(link.path);
+                setDrawerOpen(false);
+              }}
               className={`w-full px-5 py-3 text-sm text-left flex items-center gap-3 transition-all ${
                 pathname === link.path
-                  ? 'text-white bg-white/[0.06]'
-                  : 'text-[#585753] hover:text-white'
+                  ? "text-white bg-white/[0.06]"
+                  : "text-[#585753] hover:text-white"
               }`}
             >
               {link.label}
@@ -98,7 +97,9 @@ export default function DashboardLayout({
           ))}
         </div>
         <div className="px-5 py-4 border-t border-white/5 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white">이</div>
+          <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white">
+            이
+          </div>
           <div>
             <div className="text-xs font-medium text-white">이○○ 한의사</div>
             <div className="text-[10px] text-[#585753]">보령 한의원</div>
@@ -112,12 +113,12 @@ export default function DashboardLayout({
       {/* 모바일 하단 탭바 */}
       <nav className="md:hidden border-t border-[#D4CCC4] bg-white py-2 pb-3">
         <div className="flex justify-around">
-          {navLinks.map(link => (
+          {navLinks.map((link) => (
             <button
               key={link.path}
               onClick={() => router.push(link.path)}
               className={`flex flex-col items-center gap-0.5 px-4 py-1 ${
-                pathname === link.path ? 'text-[#EF6600]' : 'text-[#B0AAA4]'
+                pathname === link.path ? "text-[#EF6600]" : "text-[#B0AAA4]"
               }`}
             >
               <span className="text-[10px]">{link.label}</span>
@@ -126,5 +127,5 @@ export default function DashboardLayout({
         </div>
       </nav>
     </div>
-  )
+  );
 }
