@@ -93,9 +93,17 @@ export default function HomePage() {
                   <div className="text-sm font-medium text-[#232323]">{patient.name}</div>
                   <div className="text-xs text-[#8A8480]">
                     {(() => {
-                      const gender = { male: "남", female: "여", 남성: "남", 여성: "여" }[patient.gender] ?? patient.gender;
-                      const birth = patient.birth_date ? patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3") : null;
-                      return [gender, birth].filter(Boolean).join(", ") || patient.phone || "-";
+                      const gender = ({ male: "남", female: "여", 남성: "남", 여성: "여" } as Record<string, string>)[patient.gender] ?? patient.gender;
+                      let birthStr: string | null = null;
+                      if (patient.birth_date) {
+                        const birth = patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3");
+                        const today = new Date();
+                        const b = new Date(patient.birth_date);
+                        let a = today.getFullYear() - b.getFullYear();
+                        if (today < new Date(today.getFullYear(), b.getMonth(), b.getDate())) a--;
+                        birthStr = `${birth} (만 ${a}세)`;
+                      }
+                      return [gender, birthStr].filter(Boolean).join(", ") || patient.phone || "-";
                     })()}
                   </div>
                 </div>
