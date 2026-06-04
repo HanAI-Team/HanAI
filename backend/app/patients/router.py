@@ -1,13 +1,14 @@
 import io
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
-from app.core.models import Doctor
+from app.core.models import Doctor, MedicalRecord, Patient
 from app.patients import service
 from app.patients.schema import (
     PatientCreate,
@@ -19,6 +20,52 @@ from app.patients.schema import (
 )
 
 router = APIRouter(tags=["patients"])
+
+
+@router.get("/stats")
+async def get_stats(
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    total_patients_result = await db.execute(
+        select(func.count(Patient.id)).where(Patient.hospital_id == doctor.hospital_id)
+    )
+    total_patients = total_patients_result.scalar() or 0
+
+    today_records_result = await db.execute(
+        select(func.count(MedicalRecord.id)).where(
+            MedicalRecord.doctor_id == doctor.id,
+            MedicalRecord.recorded_at >= today_start,
+        )
+    )
+    today_records = today_records_result.scalar() or 0
+
+    recent_result = await db.execute(
+        select(MedicalRecord)
+        .where(MedicalRecord.doctor_id == doctor.id)
+        .order_by(MedicalRecord.recorded_at.desc())
+        .limit(5)
+    )
+    recent_records = recent_result.scalars().all()
+
+    recent = []
+    for rec in recent_records:
+        patient_result = await db.execute(select(Patient).where(Patient.id == rec.patient_id))
+        patient = patient_result.scalar_one_or_none()
+        if patient:
+            recent.append({
+                "patient_name": patient.name,
+                "recorded_at": rec.recorded_at,
+                "chart_structured": rec.chart_structured,
+            })
+
+    return {
+        "total_patients": total_patients,
+        "today_records": today_records,
+        "recent_records": recent,
+    }
 
 
 @router.get("/", response_model=PatientListResponse)
@@ -172,6 +219,29 @@ async def create_record(
     await db.commit()
     await db.refresh(record)
     return {"id": str(record.id)}
+
+
+@router.delete("/{patient_id}/records/{record_id}", status_code=204)
+async def delete_record(
+    patient_id: UUID,
+    record_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    from app.core.models import MedicalRecord
+    from sqlalchemy import select, delete
+    await service.get_patient(db, doctor, patient_id)
+    result = await db.execute(
+        select(MedicalRecord).where(
+            MedicalRecord.id == record_id,
+            MedicalRecord.patient_id == patient_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="진료 이력을 찾을 수 없습니다.")
+    await db.delete(record)
+    await db.commit()
 
 
 @router.get("/{patient_id}/records")
