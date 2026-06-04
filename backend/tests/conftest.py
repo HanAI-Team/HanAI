@@ -72,7 +72,7 @@ async def approved_doctor(db, client):
     db.add(doctor)
     await db.flush()
 
-    db.add(Subscription(doctor_id=doctor.id, tier="basic", status="active"))
+    db.add(Subscription(hospital_id=hospital.id, tier="basic", status="active"))
     await db.commit()
     await db.refresh(doctor)
 
