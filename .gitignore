@@ -14,4 +14,4 @@ chrome_profile/
 instance/
 .DS_Store
 Thumbs.db
-package-lock.json
+package-lock.jsonbackend/.env.example
