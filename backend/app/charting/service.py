@@ -32,7 +32,7 @@ async def create_medical_record(db, doctor, patient_id: UUID) -> MedicalRecord:
         doctor_id=doctor.id,
         hospital_id=doctor.hospital_id,
         status="recording",
-        recorded_at=datetime.now(timezone.utc),
+        recorded_at=datetime.utcnow(),
     )
     db.add(medical_record)
     await db.commit()
