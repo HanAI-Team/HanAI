@@ -27,6 +27,9 @@ async def transcribe_chunks(audio_bytes: bytes, format: str = "mp3") -> str:
     Raises:
         Exception: 오디오 로드 실패 또는 STT 오류 시
     """
+    if clova_client is None:
+        logger.warning("[Chunker] CLOVA 키 없음 — STT 스킵")
+        return ""
     # 1. 오디오 로드
     try:
         audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format=format)
