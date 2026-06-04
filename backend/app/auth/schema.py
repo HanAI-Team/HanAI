@@ -64,6 +64,14 @@ class AdminApproveResponse(BaseModel):
     approved_at: datetime
 
 
+class PendingDoctorResponse(BaseModel):
+    doctor_id: UUID
+    name: str
+    license_number: str
+    clinic_name: str
+    created_at: datetime
+
+
 # Staff 관련
 class StaffCreateRequest(BaseModel):
     name: str

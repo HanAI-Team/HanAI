@@ -38,11 +38,14 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://zinmac.ai",
+        "https://zinmac-git-main-hanaipro123-6041s-projects.vercel.app",
+        "https://zinmac.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.middleware("http")
 async def discord_error_middleware(request: Request, call_next):

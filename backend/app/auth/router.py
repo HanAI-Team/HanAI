@@ -11,6 +11,7 @@ from app.auth.schema import (
     AdminApproveResponse,
     ChangePasswordRequest,
     LoginRequest,
+    PendingDoctorResponse,
     RegisterRequest,
     RegisterResponse,
     TokenResponse,
@@ -136,6 +137,16 @@ async def change_password(
     doctor.password_hash = service.pwd_context.hash(data.new_password)
     await db.commit()
     return {"message": "비밀번호가 변경되었습니다."}
+
+
+@router.get("/admin/pending", response_model=list[PendingDoctorResponse])
+async def admin_pending_doctors(
+    db: AsyncSession = Depends(get_db),
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+):
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="유효하지 않은 관리자 키입니다.")
+    return await service.get_pending_doctors(db)
 
 
 @router.post("/admin/approve/{doctor_id}", response_model=AdminApproveResponse)

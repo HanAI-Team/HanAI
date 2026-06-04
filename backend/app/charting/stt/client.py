@@ -20,9 +20,6 @@ class ClovaSpeechClient:
     """
 
     def __init__(self):
-        if not settings.CLOVA_SECRET_KEY or not settings.CLOVA_INVOKE_URL:
-            raise ValueError("CLOVA_SECRET_KEY 또는 CLOVA_INVOKE_URL이 .env에 없습니다")
-
         self.secret_key = settings.CLOVA_SECRET_KEY
         self.invoke_url = settings.CLOVA_INVOKE_URL
 
@@ -82,6 +79,9 @@ class ClovaSpeechClient:
         Returns:
             "[A] 텍스트\n[B] 텍스트" 형태의 화자 분리된 전체 텍스트
         """
+        if not self.secret_key or not self.invoke_url:
+            raise ValueError("CLOVA_SECRET_KEY 또는 CLOVA_INVOKE_URL이 .env에 없습니다")
+
         if not audio_bytes:
             logger.warning("[STT] 빈 오디오 데이터 수신")
             return ""
