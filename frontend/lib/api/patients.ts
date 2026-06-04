@@ -57,6 +57,24 @@ export async function importPatientsFromCsv(file: File) {
   return res.json() as Promise<{ inserted: number; skipped: number }>
 }
 
+export async function updatePatient(id: string, data: { phone?: string; memo?: string }) {
+  const res = await fetch(`${BASE_URL}/api/patients/${id}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('환자 정보 수정 실패')
+  return res.json()
+}
+
+export async function deleteRecord(patientId: string, recordId: string) {
+  const res = await fetch(`${BASE_URL}/api/patients/${patientId}/records/${recordId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  })
+  if (!res.ok) throw new Error('진료 이력 삭제 실패')
+}
+
 export async function createPatient(data: {
   name: string
   birth_date?: string

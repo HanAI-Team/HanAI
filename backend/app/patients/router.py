@@ -174,6 +174,29 @@ async def create_record(
     return {"id": str(record.id)}
 
 
+@router.delete("/{patient_id}/records/{record_id}", status_code=204)
+async def delete_record(
+    patient_id: UUID,
+    record_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    from app.core.models import MedicalRecord
+    from sqlalchemy import select, delete
+    await service.get_patient(db, doctor, patient_id)
+    result = await db.execute(
+        select(MedicalRecord).where(
+            MedicalRecord.id == record_id,
+            MedicalRecord.patient_id == patient_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="진료 이력을 찾을 수 없습니다.")
+    await db.delete(record)
+    await db.commit()
+
+
 @router.get("/{patient_id}/records")
 async def get_patient_records(
     patient_id: UUID,

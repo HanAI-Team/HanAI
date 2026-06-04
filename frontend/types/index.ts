@@ -4,6 +4,7 @@ export interface Patient {
   age: number
   gender: string
   phone?: string
+  memo?: string
   created_at: string
 }
 
