@@ -774,6 +774,12 @@ ${result.acupuncture?.join(", ")}
                     .map((r) => {
                       const sections = parseChartSections(r.chart_structured);
                       const isOpen = expandedRecord === r.id;
+                      const diagSummary = sections?.["한의학적 진단"]
+                        ?.split("\n")[0]
+                        ?.trim();
+                      const prescSummary = sections?.["한약 처방"]
+                        ?.split("\n")[0]
+                        ?.trim();
                       return (
                         <div
                           key={r.id}
@@ -783,39 +789,75 @@ ${result.acupuncture?.join(", ")}
                             onClick={() =>
                               setExpandedRecord(isOpen ? null : r.id)
                             }
-                            className="w-full flex items-center justify-between px-4 py-3 text-left"
+                            className="w-full flex items-start justify-between px-4 py-3 text-left gap-2"
                           >
-                            <span className="text-sm font-medium text-[#232323]">
-                              {r.recorded_at
-                                ? new Date(r.recorded_at).toLocaleDateString(
-                                    "ko-KR",
-                                    {
-                                      year: "numeric",
-                                      month: "long",
-                                      day: "numeric",
-                                    },
-                                  )
-                                : "날짜 미상"}
-                            </span>
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                              <span className="text-sm font-medium text-[#232323]">
+                                {r.recorded_at
+                                  ? new Date(r.recorded_at).toLocaleString(
+                                      "ko-KR",
+                                      {
+                                        year: "numeric",
+                                        month: "long",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      },
+                                    )
+                                  : "날짜 미상"}
+                              </span>
+                              {(diagSummary || prescSummary) && (
+                                <span className="text-xs text-[#8A8480] truncate">
+                                  {[diagSummary, prescSummary]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </span>
+                              )}
+                            </div>
                             {isOpen ? (
-                              <ChevronUp className="w-4 h-4 text-[#8A8480]" />
+                              <ChevronUp className="w-4 h-4 text-[#8A8480] flex-shrink-0 mt-0.5" />
                             ) : (
-                              <ChevronDown className="w-4 h-4 text-[#8A8480]" />
+                              <ChevronDown className="w-4 h-4 text-[#8A8480] flex-shrink-0 mt-0.5" />
                             )}
                           </button>
                           {isOpen && (
                             <div className="border-t border-[#D4CCC4] p-4 flex flex-col gap-4">
                               {sections ? (
-                                historySections.map(({ key, Icon }) => (
-                                  <div key={key}>
-                                    <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1">
-                                      <Icon className="w-3.5 h-3.5" /> {key}
+                                historySections.map(({ key, Icon }) => {
+                                  const content = sections[key] || "-";
+                                  const isHerbs = key === "한약 처방";
+                                  const isAcu = key === "침 처방";
+                                  const tags =
+                                    (isHerbs || isAcu) && content !== "-"
+                                      ? content
+                                          .split(/[,，\n]/)
+                                          .map((s) => s.trim())
+                                          .filter(Boolean)
+                                      : null;
+                                  return (
+                                    <div key={key}>
+                                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                        <Icon className="w-3.5 h-3.5" /> {key}
+                                      </div>
+                                      {tags ? (
+                                        <div className="flex flex-wrap gap-1">
+                                          {tags.map((t, i) => (
+                                            <span
+                                              key={i}
+                                              className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
+                                            >
+                                              {t}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                                          {content}
+                                        </div>
+                                      )}
                                     </div>
-                                    <div className="text-sm text-[#232323] whitespace-pre-wrap">
-                                      {sections[key] || "-"}
-                                    </div>
-                                  </div>
-                                ))
+                                  );
+                                })
                               ) : (
                                 <div className="text-sm text-[#232323] whitespace-pre-wrap">
                                   {r.chart_structured || "차트 내용 없음"}

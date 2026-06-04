@@ -5,62 +5,68 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+# 마스킹하면 안 되는 직업/호칭 목록
+SAFE_TITLES = frozenset([
+    "교수님", "원장님", "의사님", "한의사님", "간호사님",
+    "박사님", "실장님", "선생님", "원장", "교수"
+])
+
 
 @dataclass
 class DeidentifyResult:
-    original: str                          # 원본 텍스트 (DB 암호화 저장용)
-    cleaned: str                           # 비식별화된 텍스트 (Claude 전송용)
-    removed_items: list = field(default_factory=list)  # 제거된 항목 로그
+    original: str
+    cleaned: str
+    removed_items: list = field(default_factory=list)
 
 
 class Deidentifier:
     """
     STT 변환 결과 텍스트 비식별화 레이어
     - Claude 호출 전 개인정보 마스킹 처리
-    - 승희 diagnosis/anonymize.py 와 별개로 STT 파이프라인 전용
     """
 
     def __init__(self):
         self.patterns = [
-            # 주민등록번호 (901231-1234567)
             (re.compile(r"\d{6}-[1-4]\d{6}"), "[주민번호]"),
-
-            # 휴대폰 번호 (010-1234-5678)
             (re.compile(r"01[0-9]-?\d{3,4}-?\d{4}"), "[연락처]"),
-
-            # 일반 전화번호 (02-1234-5678)
             (re.compile(r"0\d{1,2}-?\d{3,4}-?\d{4}"), "[연락처]"),
-
-            # 이메일
             (re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"), "[이메일]"),
-
-            # 이름 + 호칭 (홍길동씨, 김철수님, 이영희환자)
             (re.compile(r"[가-힣]{2,4}\s?(?:님|씨|환자|선생님?)"), "[환자]"),
-
-            # 환자 뒤 이름 (환자 홍길동)
             (re.compile(r"(?<=환자\s)[가-힣]{2,4}"), "[이름]"),
-
-            # 생년월일 (1990년 12월 31일생)
             (re.compile(r"\d{4}년\s?\d{1,2}월\s?\d{1,2}일생?"), "[생년월일]"),
-
-            # 주소 (서울시 강남구)
-            (re.compile(r"[가-힣]+[시도]\s[가-힣]+[시군구]"), "[주소]"),
-
-            # 차트번호
+            # 주소 패턴 — 실제 지역명만 매칭하도록 수정
+            (re.compile(
+                r"(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)"
+                r"[특별광역자치]*[시도]\s[가-힣]{2,6}[시군구]"
+            ), "[주소]"),
             (re.compile(r"차트\s?번호\s?\d+"), "[차트번호]"),
         ]
 
+    def _protect_safe_titles(self, text: str) -> tuple[str, dict]:
+        """직업 호칭을 임시 플레이스홀더로 교체"""
+        protected = text
+        placeholders = {}
+        for i, title in enumerate(SAFE_TITLES):
+            if title in protected:
+                placeholder = f"__SAFE_{i}__"
+                placeholders[placeholder] = title
+                protected = protected.replace(title, placeholder)
+        return protected, placeholders
+
+    def _restore_safe_titles(self, text: str, placeholders: dict) -> str:
+        """플레이스홀더를 원래 호칭으로 복원"""
+        restored = text
+        for placeholder, title in placeholders.items():
+            restored = restored.replace(placeholder, title)
+        return restored
+
     def process(self, text: str) -> DeidentifyResult:
-        """
-        텍스트에서 개인정보 마스킹 처리
+        """텍스트에서 개인정보 마스킹 처리"""
+        # 1. 직업 호칭 임시 보호
+        protected, placeholders = self._protect_safe_titles(text)
 
-        Args:
-            text: STT 변환 결과 원본 텍스트
-
-        Returns:
-            DeidentifyResult (original, cleaned, removed_items)
-        """
-        cleaned = text
+        # 2. 비식별화 처리
+        cleaned = protected
         removed_items = []
 
         for pattern, replacement in self.patterns:
@@ -68,6 +74,9 @@ class Deidentifier:
             if matches:
                 removed_items.extend(matches)
                 cleaned = pattern.sub(replacement, cleaned)
+
+        # 3. 직업 호칭 복원
+        cleaned = self._restore_safe_titles(cleaned, placeholders)
 
         if removed_items:
             logger.info(f"[Deidentifier] {len(removed_items)}개 항목 마스킹 처리")
@@ -79,6 +88,4 @@ class Deidentifier:
         )
 
 
-# 싱글톤 인스턴스
-# from app.pipeline.deidentifier import deidentifier
 deidentifier = Deidentifier()
