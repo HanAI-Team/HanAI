@@ -395,9 +395,19 @@ ${result.acupuncture?.join(", ")}
   const filtered = patients.filter((p) => p.name.includes(search));
 
   function patientSubtext(patient: Patient) {
-    const gender = { male: "남", female: "여", 남성: "남", 여성: "여" }[patient.gender] ?? patient.gender;
-    const birth = patient.birth_date ? patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3") : null;
-    return [gender, birth].filter(Boolean).join(", ") || patient.phone || "-";
+    const gender = ({ male: "남", female: "여", 남성: "남", 여성: "여" } as Record<string, string>)[patient.gender] ?? patient.gender;
+    let birth: string | null = null;
+    let age: string | null = null;
+    if (patient.birth_date) {
+      birth = patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3");
+      const today = new Date();
+      const b = new Date(patient.birth_date);
+      let a = today.getFullYear() - b.getFullYear();
+      if (today < new Date(today.getFullYear(), b.getMonth(), b.getDate())) a--;
+      age = `만 ${a}세`;
+    }
+    const parts = [gender, birth && age ? `${birth} (${age})` : birth].filter(Boolean);
+    return parts.join(", ") || patient.phone || "-";
   }
 
   const resultCards: {
