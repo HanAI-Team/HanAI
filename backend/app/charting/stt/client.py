@@ -1,97 +1,117 @@
 # app/charting/stt/client.py
+import json
 import logging
 
 import httpx
 
 from app.core.config import settings
+from app.pipeline.postprocessor import postprocessor
 
 logger = logging.getLogger(__name__)
 
 
 class ClovaSpeechClient:
     """
-    Clova Speech Recognition (CSR) REST API 클라이언트
-    - 방식: REST API 파일 업로드 (청크 방식)
-    - 제한: 최대 60초 / 청크
-    - 지원 포맷: wav, mp3, flac
-    - 사용처: chunker.py에서 청크별로 호출 후 텍스트 합치기
+    CLOVA Speech 장문인식 REST API 클라이언트
+    - 긴 음성 파일 전체를 한 번에 처리 (청크 분할 불필요)
+    - 화자 분리 지원
+    - 노이즈 필터링 지원
+    - 한의학 용어 키워드 부스팅 지원
     """
 
-    API_URL = "https://naveropenapi.apigw.ntruss.com/recog/v1/stt"
-
     def __init__(self):
-        # .env에 키가 없으면 인스턴스 생성 시점에 에러 발생
-        if not settings.CLOVA_CLIENT_ID or not settings.CLOVA_CLIENT_SECRET:
-            raise ValueError(
-                "CLOVA_CLIENT_ID 또는 CLOVA_CLIENT_SECRET가 .env에 없습니다"
-            )
+        if not settings.CLOVA_SECRET_KEY or not settings.CLOVA_INVOKE_URL:
+            raise ValueError("CLOVA_SECRET_KEY 또는 CLOVA_INVOKE_URL이 .env에 없습니다")
 
-        self.headers = {
-            "X-NCP-APIGW-API-KEY-ID": settings.CLOVA_CLIENT_ID,
-            "X-NCP-APIGW-API-KEY": settings.CLOVA_CLIENT_SECRET,
-            "Content-Type": "application/octet-stream",
+        self.secret_key = settings.CLOVA_SECRET_KEY
+        self.invoke_url = settings.CLOVA_INVOKE_URL
+
+    def _build_params(self) -> str:
+        """API 요청 파라미터 생성"""
+        boosting_words = ",".join(postprocessor.glossary) if postprocessor.glossary else ""
+
+        params = {
+            "language": "ko-KR",
+            "completion": "sync",
+            "noiseFiltering": True,
+            "diarization": {
+                "enable": True
+            },
         }
 
-    async def transcribe(
-        self,
-        audio_bytes: bytes,
-        language: str = "Kor",
-    ) -> str:
+        if boosting_words:
+            params["boostings"] = [{"words": boosting_words}]
+
+        return json.dumps(params)
+
+    def _parse_segments(self, result: dict) -> str:
         """
-        음성 청크 바이트 -> 텍스트 변환
+        segments 기반 화자 분리 텍스트 생성
 
         Args:
-            audio_bytes : wav/mp3 형식의 음성 데이터 (최대 60초)
-            language    : 언어 코드 (기본값: Kor)
+            result: CLOVA Speech API 응답 JSON
 
         Returns:
-            변환된 텍스트 문자열
+            "[A] 텍스트\n[B] 텍스트" 형태의 화자 분리 텍스트
+            segments 없을 경우 전체 텍스트 반환
+        """
+        segments = result.get("segments", [])
 
-        Raises:
-            httpx.HTTPStatusError  : API 호출 실패 (4xx, 5xx)
-            httpx.TimeoutException : 30초 이내 응답 없음
+        if not segments:
+            logger.warning("[STT] segments 없음 — 전체 텍스트로 대체")
+            return result.get("text", "")
+
+        lines = []
+        for seg in segments:
+            speaker = seg.get("speaker", {}).get("name", "화자")
+            text = seg.get("text", "").strip()
+            if text:
+                lines.append(f"[{speaker}] {text}")
+
+        full_text = "\n".join(lines)
+        logger.info(f"[STT] 화자 분리 완료 — {len(segments)}개 세그먼트")
+        return full_text
+
+    async def transcribe(self, audio_bytes: bytes) -> str:
+        """
+        음성 파일 전체 → 화자 분리 텍스트 변환
+
+        Args:
+            audio_bytes: 음성 파일 바이트 (mp3, wav, m4a 등)
+
+        Returns:
+            "[A] 텍스트\n[B] 텍스트" 형태의 화자 분리된 전체 텍스트
         """
         if not audio_bytes:
-            logger.warning("[STT] 빈 오디오 데이터 수신 — 변환 건너뜀")
+            logger.warning("[STT] 빈 오디오 데이터 수신")
             return ""
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
-                    self.API_URL,
-                    params={"lang": language},
-                    headers=self.headers,
-                    content=audio_bytes,
-                    timeout=30.0,
+                    f"{self.invoke_url}/recognizer/upload",
+                    headers={"X-CLOVASPEECH-API-KEY": self.secret_key},
+                    files={
+                        "media": ("audio.mp3", audio_bytes, "audio/mpeg"),
+                        "params": (None, self._build_params(), "application/json"),
+                    }
                 )
                 response.raise_for_status()
                 result = response.json()
 
-            text = result.get("text", "")
+            text = self._parse_segments(result)
             logger.info(f"[STT] 변환 완료 — {len(text)}자")
             return text
 
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"[STT] API 오류 "
-                f"status={e.response.status_code} "
-                f"body={e.response.text}"
-            )
+            logger.error(f"[STT] API 오류 status={e.response.status_code} body={e.response.text}")
             raise
-
         except httpx.TimeoutException:
-            logger.error("[STT] API 타임아웃 (30초 초과)")
+            logger.error("[STT] API 타임아웃 (300초 초과)")
             raise
-
         except Exception as e:
-            logger.error(f"[STT] 예상치 못한 오류: {e}")
+            logger.error(f"[STT] 오류: {e}")
             raise
 
 
-# 앱 전체에서 공유하는 싱글톤 인스턴스
-# from app.charting.stt.client import clova_client
-clova_client = (
-    ClovaSpeechClient()
-    if (settings.CLOVA_CLIENT_ID and settings.CLOVA_CLIENT_SECRET)
-    else None
-)
+clova_client = ClovaSpeechClient()
