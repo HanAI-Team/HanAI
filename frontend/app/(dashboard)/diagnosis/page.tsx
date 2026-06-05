@@ -189,6 +189,11 @@ export default function DiagnosisPage() {
     }
   }
 
+  function clean(v: unknown): string {
+    const s = String(v ?? "").trim();
+    return s === "null" || s === "undefined" || s === "" ? "-" : s;
+  }
+
   function mapDiagnosisResult(raw: Record<string, unknown>): DiagnosisResult {
     const r = raw as Record<string, Record<string, unknown>>;
     const herb = (r.herbal_prescription as Record<string, unknown>) ?? {};
@@ -198,19 +203,23 @@ export default function DiagnosisPage() {
       id: "",
       patient_id: selectedPatient?.id ?? "",
       created_at: new Date().toISOString(),
-      constitution: String(r.sasang_constitution?.type ?? "-"),
-      diagnosis: String(r.tkm_diagnosis?.diagnosis_name ?? "-"),
-      western_diagnosis: String(
-        (r.western_diagnosis as Record<string, unknown>)?.name ?? "-",
+      constitution: clean(r.sasang_constitution?.type),
+      diagnosis: clean(r.tkm_diagnosis?.diagnosis_name),
+      western_diagnosis: clean(
+        (r.western_diagnosis as Record<string, unknown>)?.name,
       ),
-      prescription: String(herb.name_kr ?? "-"),
-      herbs: composition.map((c) => `${c.herb} ${c.dosage}`),
+      prescription: clean(herb.name_kr),
+      herbs: composition
+        .map((c) => `${c.herb} ${c.dosage}`)
+        .filter((s) => !s.includes("null") && s.trim() !== ""),
       acupuncture: (
         (r.acupuncture_prescription as unknown as {
           point_kr: string;
           point_code: string;
         }[]) ?? []
-      ).map((p) => `${p.point_kr}(${p.point_code})`),
+      )
+        .filter((p) => p.point_kr && String(p.point_kr) !== "null")
+        .map((p) => `${p.point_kr}(${p.point_code})`),
     };
   }
 
