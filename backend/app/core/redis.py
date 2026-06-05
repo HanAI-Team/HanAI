@@ -47,21 +47,16 @@ async def check_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
 async def add_session(
     hospital_id: str, token: str, tier: str, expire_seconds: int
 ) -> bool:
-    """
-    세션 추가. 초과 시 False 반환 (로그인 차단)
-    """
     if _redis is None:
         return True
-
     limit = TIER_SESSION_LIMITS.get(tier, 1)
     session_key = f"sessions:{hospital_id}"
 
-    # 현재 활성 세션 수 확인
     current = _redis.llen(session_key)
     if current >= limit:
-        return False  # 세션 초과 → 로그인 차단
+        # 차단 대신 가장 오래된 세션 제거
+        _redis.lpop(session_key)
 
-    # 세션 추가
     _redis.rpush(session_key, token)
     _redis.expire(session_key, expire_seconds)
     return True
