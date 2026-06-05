@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 load_dotenv(override=True)
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "../../../data"))
+_default_data_dir = os.path.join(os.path.dirname(__file__), "../../../data")
+DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
 
 
 def _load_jsonl(path: str) -> list[dict]:

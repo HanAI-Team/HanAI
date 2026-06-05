@@ -257,11 +257,12 @@ def run_search_crawler(keyword="혈위", end_page=38, output="cafe_acupuncture_d
 
 if __name__ == "__main__":
     import sys
+    DATA_DIR = os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv) > 1 and sys.argv[1] == "search":
         keyword = sys.argv[2] if len(sys.argv) > 2 else "혈위"
         end_page = int(sys.argv[3]) if len(sys.argv) > 3 else 38
         safe_name = keyword.replace(" ", "_")
-        output = f"data/cafe_{safe_name}_data.csv"
+        output = os.path.join(DATA_DIR, f"cafe_{safe_name}_data.csv")
         run_search_crawler(keyword=keyword, end_page=end_page, output=output)
     else:
         run_crawler()
