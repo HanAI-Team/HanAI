@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   getPatients,
@@ -42,9 +42,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+const PAGE_SIZE = 20;
+
 export default function DiagnosisPage() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientsLoading, setPatientsLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [activeTab, setActiveTab] = useState<
     "record" | "result" | "history" | "ask"
@@ -78,7 +82,7 @@ export default function DiagnosisPage() {
       chart_structured: string | null;
     }[]
   >([]);
-  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<string | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -90,36 +94,60 @@ export default function DiagnosisPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const filtered = patients.filter((p) => p.name.includes(search));
+  const displayedPatients = filtered.slice(0, page * PAGE_SIZE);
+  const hasMore = filtered.length > page * PAGE_SIZE;
+  const recordsLoading = activeTab === "history" && !!selectedPatient && recordsLastFetchedFor !== selectedPatient.id;
 
   useEffect(() => {
-    getPatients().then(setPatients).catch(console.error);
+    getPatients()
+      .then(setPatients)
+      .catch(console.error)
+      .finally(() => setPatientsLoading(false));
   }, []);
 
+
   useEffect(() => {
-    if (!selectedPatient) { setResult(null); return }
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !patientsLoading) {
+        setPage((prev) => prev + 1);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, patientsLoading]);
+
+  useEffect(() => {
+    if (!selectedPatient) return;
     getPatientRecords(selectedPatient.id)
-      .then(data => {
+      .then((data) => {
         const sorted = [...data.records].sort((a, b) => {
-          const da = a.recorded_at ? new Date(a.recorded_at).getTime() : 0
-          const db = b.recorded_at ? new Date(b.recorded_at).getTime() : 0
-          return db - da
-        })
-        const latest = sorted[0]
-        if (!latest?.chart_structured) return
-        const sections = parseChartSections(latest.chart_structured)
-        if (!sections) return
-        setResult(mapSectionsToResult(sections, selectedPatient.id))
+          const da = a.recorded_at ? new Date(a.recorded_at).getTime() : 0;
+          const db = b.recorded_at ? new Date(b.recorded_at).getTime() : 0;
+          return db - da;
+        });
+        const latest = sorted[0];
+        if (!latest?.chart_structured) return;
+        const sections = parseChartSections(latest.chart_structured);
+        if (!sections) return;
+        setResult(mapSectionsToResult(sections, selectedPatient.id));
       })
-      .catch(console.error)
-  }, [selectedPatient])
+      .catch(console.error);
+  }, [selectedPatient]);
 
   useEffect(() => {
     if (activeTab !== "history" || !selectedPatient) return;
-    setRecordsLoading(true);
-    getPatientRecords(selectedPatient.id)
-      .then((data) => setRecords(data.records))
-      .catch(console.error)
-      .finally(() => setRecordsLoading(false));
+    const id = selectedPatient.id;
+    getPatientRecords(id)
+      .then((data) => {
+        setRecords(data.records);
+        setRecordsLastFetchedFor(id);
+      })
+      .catch(console.error);
   }, [activeTab, selectedPatient]);
 
   async function toggleRecording() {
@@ -164,29 +192,46 @@ export default function DiagnosisPage() {
     return Object.keys(sections).length > 0 ? sections : null;
   }
 
-  function mapSectionsToResult(sections: Record<string, string>, patientId: string): DiagnosisResult {
-    const diagLines = (sections['한의학적 진단'] ?? '').split('\n').map(l => l.trim()).filter(Boolean)
-    const diagnosis = diagLines.find(l => !l.startsWith('양방')) ?? '-'
-    const westernLine = diagLines.find(l => l.startsWith('양방'))
-    const western_diagnosis = westernLine ? westernLine.replace(/^양방[^:]*:\s*/, '') : '-'
+  function mapSectionsToResult(
+    sections: Record<string, string>,
+    patientId: string,
+  ): DiagnosisResult {
+    const diagLines = (sections["한의학적 진단"] ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const diagnosis = diagLines.find((l) => !l.startsWith("양방")) ?? "-";
+    const westernLine = diagLines.find((l) => l.startsWith("양방"));
+    const western_diagnosis = westernLine
+      ? westernLine.replace(/^양방[^:]*:\s*/, "")
+      : "-";
 
-    const herbLines = (sections['한약 처방'] ?? '').split('\n').map(l => l.trim()).filter(Boolean)
-    const prescription = herbLines[0] ?? '-'
-    const herbs = herbLines.slice(1).flatMap(l => l.split(',').map(h => h.trim())).filter(Boolean)
+    const herbLines = (sections["한약 처방"] ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const prescription = herbLines[0] ?? "-";
+    const herbs = herbLines
+      .slice(1)
+      .flatMap((l) => l.split(",").map((h) => h.trim()))
+      .filter(Boolean);
 
-    const acupuncture = (sections['침 처방'] ?? '').split(',').map(a => a.trim()).filter(Boolean)
+    const acupuncture = (sections["침 처방"] ?? "")
+      .split(",")
+      .map((a) => a.trim())
+      .filter(Boolean);
 
     return {
-      id: '',
+      id: "",
       patient_id: patientId,
       created_at: new Date().toISOString(),
-      constitution: sections['사상체질']?.trim() || '-',
+      constitution: sections["사상체질"]?.trim() || "-",
       diagnosis,
       western_diagnosis,
       prescription,
       herbs,
       acupuncture,
-    }
+    };
   }
 
   function clean(v: unknown): string {
@@ -253,6 +298,7 @@ export default function DiagnosisPage() {
     setAddLoading(true);
     try {
       await createPatient(newPatient);
+      setPatientsLoading(true);
       const updated = await getPatients();
       setPatients(updated);
       setShowAddModal(false);
@@ -263,6 +309,7 @@ export default function DiagnosisPage() {
       );
     } finally {
       setAddLoading(false);
+      setPatientsLoading(false);
     }
   }
 
@@ -275,7 +322,9 @@ export default function DiagnosisPage() {
     setAskHistory((prev) => [...prev, { question: q, answer: "" }]);
     const updateLast = (answer: string) =>
       setAskHistory((prev) =>
-        prev.map((item, i) => (i === prev.length - 1 ? { ...item, answer } : item)),
+        prev.map((item, i) =>
+          i === prev.length - 1 ? { ...item, answer } : item,
+        ),
       );
     try {
       if (askMode === "diagnose") {
@@ -317,9 +366,7 @@ export default function DiagnosisPage() {
     try {
       await updatePatient(editPatient.id, editForm);
       setPatients((prev) =>
-        prev.map((p) =>
-          p.id === editPatient.id ? { ...p, ...editForm } : p,
-        ),
+        prev.map((p) => (p.id === editPatient.id ? { ...p, ...editForm } : p)),
       );
       setEditPatient(null);
     } catch {
@@ -401,21 +448,31 @@ ${result.acupuncture?.join(", ")}
   }
 
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  const filtered = patients.filter((p) => p.name.includes(search));
 
   function patientSubtext(patient: Patient) {
-    const gender = ({ male: "남", female: "여", 남성: "남", 여성: "여" } as Record<string, string>)[patient.gender] ?? patient.gender;
+    const gender =
+      (
+        { male: "남", female: "여", 남성: "남", 여성: "여" } as Record<
+          string,
+          string
+        >
+      )[patient.gender] ?? patient.gender;
     let birth: string | null = null;
     let age: string | null = null;
     if (patient.birth_date) {
-      birth = patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3");
+      birth = patient.birth_date.replace(
+        /^\d{2}(\d{2})-(\d{2})-(\d{2})$/,
+        "$1$2$3",
+      );
       const today = new Date();
       const b = new Date(patient.birth_date);
       let a = today.getFullYear() - b.getFullYear();
       if (today < new Date(today.getFullYear(), b.getMonth(), b.getDate())) a--;
       age = `만 ${a}세`;
     }
-    const parts = [gender, birth && age ? `${birth} (${age})` : birth].filter(Boolean);
+    const parts = [gender, birth && age ? `${birth} (${age})` : birth].filter(
+      Boolean,
+    );
     return parts.join(", ") || patient.phone || "-";
   }
 
@@ -467,14 +524,16 @@ ${result.acupuncture?.join(", ")}
             <Search className="w-3.5 h-3.5 text-[#B0AAA4] flex-shrink-0" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="이름 검색..."
               className="flex-1 bg-transparent text-xs text-[#232323] outline-none"
             />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto py-1">
-          {filtered.length === 0 ? (
+          {patientsLoading ? (
+            <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto mt-8" />
+          ) : displayedPatients.length === 0 ? (
             <div className="text-xs text-[#B0AAA4] text-center py-8">
               등록된 환자가 없습니다
             </div>
@@ -489,6 +548,8 @@ ${result.acupuncture?.join(", ")}
                 }`}
                 onClick={() => {
                   setSelectedPatient(patient);
+                  setResult(null);
+                  setRecordsLastFetchedFor(null);
                   setActiveTab("record");
                 }}
               >
@@ -507,7 +568,10 @@ ${result.acupuncture?.join(", ")}
                   onClick={(e) => {
                     e.stopPropagation();
                     setEditPatient(patient);
-                    setEditForm({ phone: patient.phone || "", memo: patient.memo || "" });
+                    setEditForm({
+                      phone: patient.phone || "",
+                      memo: patient.memo || "",
+                    });
                   }}
                   className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#D4CCC4] transition-all flex-shrink-0"
                   title="환자 정보 수정"
@@ -687,7 +751,7 @@ ${result.acupuncture?.join(", ")}
           )}
 
           {/* 진단 결과 탭 */}
-          {activeTab === "result" && (
+          {activeTab === "result" && selectedPatient && (
             <div>
               {!result ? (
                 <div className="text-sm text-[#B0AAA4] text-center py-12">
@@ -816,13 +880,9 @@ ${result.acupuncture?.join(", ")}
           )}
 
           {/* 진료 이력 탭 */}
-          {activeTab === "history" && (
+          {activeTab === "history" && selectedPatient && (
             <div className="overflow-y-auto">
-              {!selectedPatient ? (
-                <div className="text-sm text-[#B0AAA4] text-center py-12">
-                  환자를 선택해주세요
-                </div>
-              ) : recordsLoading ? (
+              {recordsLoading ? (
                 <div className="text-sm text-[#B0AAA4] text-center py-12">
                   불러오는 중...
                 </div>
@@ -1031,7 +1091,9 @@ ${result.acupuncture?.join(", ")}
                   />
                   <button
                     type="submit"
-                    disabled={askHistory.at(-1)?.answer === "" || !askQuestion.trim()}
+                    disabled={
+                      askHistory.at(-1)?.answer === "" || !askQuestion.trim()
+                    }
                     className="bg-[#EF6600] text-white px-4 py-2.5 rounded-lg text-sm disabled:opacity-40 hover:opacity-90 transition-opacity"
                   >
                     전송
@@ -1309,26 +1371,37 @@ ${result.acupuncture?.join(", ")}
               <div className="text-sm font-medium text-[#232323]">
                 {editPatient.name} 정보 수정
               </div>
-              <button onClick={() => setEditPatient(null)} className="text-[#8A8480] hover:text-[#232323]">
+              <button
+                onClick={() => setEditPatient(null)}
+                className="text-[#8A8480] hover:text-[#232323]"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="p-5 flex flex-col gap-3">
               <div>
-                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">전화번호</label>
+                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                  전화번호
+                </label>
                 <input
                   type="text"
                   value={editForm.phone}
-                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, phone: e.target.value }))
+                  }
                   placeholder="010-0000-0000"
                   className="w-full border border-[#C8BFB6] rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
                 />
               </div>
               <div>
-                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">메모</label>
+                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                  메모
+                </label>
                 <textarea
                   value={editForm.memo}
-                  onChange={(e) => setEditForm((f) => ({ ...f, memo: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, memo: e.target.value }))
+                  }
                   placeholder="특이사항 등"
                   rows={3}
                   className="w-full border border-[#C8BFB6] rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600] resize-none"
