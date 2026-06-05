@@ -65,15 +65,24 @@ async def discord_error_middleware(request: Request, call_next):
         )
 
 
+RATE_LIMIT_PATHS = {
+    "/api/auth/login": {"limit": 5, "window_seconds": 60},
+    "/api/diagnosis/ask": {"limit": 3, "window_seconds": 30},
+    "/api/diagnosis/analyze": {"limit": 3, "window_seconds": 30},
+}
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    if request.url.path == "/api/auth/login":
+    path = request.url.path
+    if path in RATE_LIMIT_PATHS:
         ip = request.client.host if request.client else "unknown"
-
+        config = RATE_LIMIT_PATHS[path]
         allowed = await check_rate_limit(
-            key=f"{ip}:{request.url.path}", limit=5, window_seconds=60
+            key=f"{ip}:{path}",
+            limit=config["limit"],
+            window_seconds=config["window_seconds"],
         )
-
         if not allowed:
             return JSONResponse(
                 status_code=429,

@@ -10,7 +10,7 @@ from app.core.models import Doctor
 
 async def get_subscription(db: AsyncSession, doctor: Doctor):
     result = await db.execute(
-        select(Subscription).where(Subscription.doctor_id == Doctor.id)
+        select(Subscription).where(Subscription.hospital_id == doctor.hospital_id)
     )
     return result.scalar_one_or_none()
 
