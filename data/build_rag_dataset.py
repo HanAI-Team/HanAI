@@ -98,17 +98,32 @@ CLINICAL_FILES = {
     "cafe_diagnosis_data.csv":   "진단",
     "cafe_침처방_data.csv":      "침처방",
     "cafe_주소증_data.csv":      "주소증",
+    "cafe_구안와사_data.csv":    "구안와사",
+    "cafe_안면마비_data.csv":    "안면마비",
+    "cafe_람세이헌트_data.csv":  "람세이헌트",
 }
 
 BOILERPLATE = re.compile(
+    r"%양의사[^\n]*|"
+    r"%성분명처방[^\n]*|"
+    r"<link\s[^>]*>|<script[^>]*>.*?</script>|<style[^>]*>.*?</style>|<[^>]+>|"
+    r"\[보안코디[^\]]*\][^\n]*\n?|"
+    r"\[원글자에게 저작권이[^\]]*\][^\n]*\n?|"
+    r"복사금지 스크랩금지[^\n]*\n?|"
+    r"이 글을 보[기려].*?로그인[^\n]*\n?|"
+    r"보안필드에 적[^\n]*\n?|"
     r"게시글 본문내용|이 게시글은 클린봇에|신고 사유|첨부파일|\.pdf[\d\.KB]+",
-    re.IGNORECASE
+    re.IGNORECASE | re.DOTALL
 )
 
 def clean_text(text: str) -> str:
     if not isinstance(text, str):
         return ""
+    text = text.replace("\xa0", " ")
     text = BOILERPLATE.sub("", text)
+    # daum cafe URL 축약 (너무 길면 노이즈)
+    text = re.sub(r"https?://cafe\.daum\.net/\S{40,}", "[링크]", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 

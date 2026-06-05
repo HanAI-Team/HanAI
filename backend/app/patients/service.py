@@ -8,7 +8,9 @@ from app.core.models import Doctor, MedicalRecord, Patient
 from app.patients.schema import PatientCreate, PatientUpdate
 
 
-async def create_patient(db: AsyncSession, doctor: Doctor, data: PatientCreate) -> Patient:
+async def create_patient(
+    db: AsyncSession, doctor: Doctor, data: PatientCreate
+) -> Patient:
     patient = Patient(
         hospital_id=doctor.hospital_id,
         name=data.name,
@@ -35,13 +37,17 @@ async def get_patients(
     if search:
         base_query = base_query.where(Patient.name.ilike(f"%{search}%"))
 
-    count_result = await db.execute(select(func.count()).select_from(base_query.subquery()))
+    count_result = await db.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
     total = count_result.scalar_one()
 
-    result = await db.execute(base_query.offset((page - 1) * size).limit(size))
-    patients = list(result.scalars().all())
+    patients_result = await db.execute(
+        base_query.order_by(Patient.name.asc()).offset((page - 1) * size).limit(size)
+    )
+    patients = patients_result.scalars().all()
 
-    return patients, total
+    return list(patients), total
 
 
 async def get_patient(db: AsyncSession, doctor: Doctor, patient_id: UUID) -> Patient:
@@ -53,7 +59,9 @@ async def get_patient(db: AsyncSession, doctor: Doctor, patient_id: UUID) -> Pat
     )
     patient = result.scalar_one_or_none()
     if patient is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="환자를 찾을 수 없습니다.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="환자를 찾을 수 없습니다."
+        )
     return patient
 
 
