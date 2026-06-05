@@ -447,6 +447,13 @@ ${result.acupuncture?.join(", ")}
     setTimeout(() => setCopied(false), 2500);
   }
 
+  function formatPhone(value: string): string {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   function patientSubtext(patient: Patient) {
@@ -1249,7 +1256,7 @@ ${result.acupuncture?.join(", ")}
                     onChange={(e) =>
                       setNewPatient({
                         ...newPatient,
-                        [field.key]: e.target.value,
+                        [field.key]: field.key === "phone" ? formatPhone(e.target.value) : e.target.value,
                       })
                     }
                     className="w-full bg-[#F5F2EE] border border-[#D4CCC4] rounded-md px-4 py-2.5 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
