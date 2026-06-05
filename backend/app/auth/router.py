@@ -21,6 +21,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, _401
 from app.core.models import Doctor
+from app.subscription.service import get_subscription
+from app.core.redis import add_session, remove_session
 
 router = APIRouter(tags=["auth"])
 bearer_scheme = HTTPBearer()
@@ -105,10 +107,23 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="승인 대기 중입니다.",
         )
+
+    subscription = await get_subscription(db, doctor)
+    tier = subscription.tier if subscription else "basic"
+
+    token = service.create_access_token(
+        UUID(str(doctor.id)), UUID(str(doctor.hospital_id)), str(doctor.role)
+    )
+    allowed = await add_session(
+        str(doctor.hospital_id), token, str(tier), settings.JWT_EXPIRE_MINUTES * 60
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=429, detail="이미 다른 기기에서 로그인 중입니다."
+        )
+
     return TokenResponse(
-        access_token=service.create_access_token(
-            UUID(str(doctor.id)), UUID(str(doctor.hospital_id)), str(doctor.role)
-        ),
+        access_token=token,
         expires_in=settings.JWT_EXPIRE_MINUTES * 60,
     )
 
@@ -117,9 +132,19 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 async def logout(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ):
-    await add_token_blacklist(
-        credentials.credentials, expire_seconds=settings.JWT_EXPIRE_MINUTES * 60
+    token = credentials.credentials
+    # JWT에서 hospital_id 꺼내기
+    from jose import jwt as jose_jwt
+
+    payload = jose_jwt.decode(
+        token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
     )
+    hospital_id = payload.get("hospital_id")
+
+    await add_token_blacklist(token, expire_seconds=settings.JWT_EXPIRE_MINUTES * 60)
+    if hospital_id:
+        await remove_session(hospital_id, token)
+
     return {"message": "로그아웃되었습니다."}
 
 
@@ -134,7 +159,7 @@ async def change_password(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="현재 비밀번호가 일치하지 않습니다.",
         )
-    doctor.password_hash = service.pwd_context.hash(data.new_password)
+    doctor.password_hash = service.pwd_context.hash(data.new_password)  # type: ignore
     await db.commit()
     return {"message": "비밀번호가 변경되었습니다."}
 
@@ -145,7 +170,10 @@ async def admin_pending_doctors(
     x_admin_key: str = Header(..., alias="X-Admin-Key"),
 ):
     if x_admin_key != settings.ADMIN_API_KEY:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="유효하지 않은 관리자 키입니다.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="유효하지 않은 관리자 키입니다.",
+        )
     return await service.get_pending_doctors(db)
 
 

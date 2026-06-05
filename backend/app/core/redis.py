@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from app.core.config import settings
 
+TIER_SESSION_LIMITS = {
+    "basic": 1,
+    "standard": 3,
+    "premium": 5,
+}
+
 
 def get_redis():
     if not settings.UPSTASH_REDIS_URL or not settings.UPSTASH_REDIS_TOKEN:
@@ -36,3 +42,36 @@ async def check_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
     if count == 1:
         _redis.expire(full_key, window_seconds)
     return count <= limit
+
+
+async def add_session(
+    hospital_id: str, token: str, tier: str, expire_seconds: int
+) -> bool:
+    """
+    세션 추가. 초과 시 False 반환 (로그인 차단)
+    """
+    if _redis is None:
+        return True
+
+    limit = TIER_SESSION_LIMITS.get(tier, 1)
+    session_key = f"sessions:{hospital_id}"
+
+    # 현재 활성 세션 수 확인
+    current = _redis.llen(session_key)
+    if current >= limit:
+        return False  # 세션 초과 → 로그인 차단
+
+    # 세션 추가
+    _redis.rpush(session_key, token)
+    _redis.expire(session_key, expire_seconds)
+    return True
+
+
+async def remove_session(hospital_id: str, token: str) -> None:
+    """
+    로그아웃 시 세션 제거
+    """
+    if _redis is None:
+        return
+    session_key = f"sessions:{hospital_id}"
+    _redis.lrem(session_key, 0, token)
