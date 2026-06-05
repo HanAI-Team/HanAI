@@ -82,7 +82,9 @@ export default function DiagnosisPage() {
       chart_structured: string | null;
     }[]
   >([]);
-  const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<string | null>(null);
+  const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<
+    string | null
+  >(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -99,7 +101,10 @@ export default function DiagnosisPage() {
   const filtered = patients.filter((p) => p.name.includes(search));
   const displayedPatients = filtered.slice(0, page * PAGE_SIZE);
   const hasMore = filtered.length > page * PAGE_SIZE;
-  const recordsLoading = activeTab === "history" && !!selectedPatient && recordsLastFetchedFor !== selectedPatient.id;
+  const recordsLoading =
+    activeTab === "history" &&
+    !!selectedPatient &&
+    recordsLastFetchedFor !== selectedPatient.id;
 
   useEffect(() => {
     getPatients()
@@ -107,7 +112,6 @@ export default function DiagnosisPage() {
       .catch(console.error)
       .finally(() => setPatientsLoading(false));
   }, []);
-
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -531,7 +535,10 @@ ${result.acupuncture?.join(", ")}
             <Search className="w-3.5 h-3.5 text-[#B0AAA4] flex-shrink-0" />
             <input
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               placeholder="이름 검색..."
               className="flex-1 bg-transparent text-xs text-[#232323] outline-none"
             />
@@ -1256,7 +1263,10 @@ ${result.acupuncture?.join(", ")}
                     onChange={(e) =>
                       setNewPatient({
                         ...newPatient,
-                        [field.key]: field.key === "phone" ? formatPhone(e.target.value) : e.target.value,
+                        [field.key]:
+                          field.key === "phone"
+                            ? formatPhone(e.target.value)
+                            : e.target.value,
                       })
                     }
                     className="w-full bg-[#F5F2EE] border border-[#D4CCC4] rounded-md px-4 py-2.5 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
@@ -1394,7 +1404,10 @@ ${result.acupuncture?.join(", ")}
                   type="text"
                   value={editForm.phone}
                   onChange={(e) =>
-                    setEditForm((f) => ({ ...f, phone: e.target.value }))
+                    setEditForm((f) => ({
+                      ...f,
+                      phone: formatPhone(e.target.value),
+                    }))
                   }
                   placeholder="010-0000-0000"
                   className="w-full border border-[#C8BFB6] rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
