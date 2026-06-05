@@ -82,7 +82,7 @@ export default function DiagnosisPage() {
       chart_structured: string | null;
     }[]
   >([]);
-  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<string | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -99,18 +99,15 @@ export default function DiagnosisPage() {
   const filtered = patients.filter((p) => p.name.includes(search));
   const displayedPatients = filtered.slice(0, page * PAGE_SIZE);
   const hasMore = filtered.length > page * PAGE_SIZE;
+  const recordsLoading = activeTab === "history" && !!selectedPatient && recordsLastFetchedFor !== selectedPatient.id;
 
   useEffect(() => {
-    setPatientsLoading(true);
     getPatients()
       .then(setPatients)
       .catch(console.error)
       .finally(() => setPatientsLoading(false));
   }, []);
 
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -125,10 +122,7 @@ export default function DiagnosisPage() {
   }, [hasMore, patientsLoading]);
 
   useEffect(() => {
-    if (!selectedPatient) {
-      setResult(null);
-      return;
-    }
+    if (!selectedPatient) return;
     getPatientRecords(selectedPatient.id)
       .then((data) => {
         const sorted = [...data.records].sort((a, b) => {
@@ -147,11 +141,13 @@ export default function DiagnosisPage() {
 
   useEffect(() => {
     if (activeTab !== "history" || !selectedPatient) return;
-    setRecordsLoading(true);
-    getPatientRecords(selectedPatient.id)
-      .then((data) => setRecords(data.records))
-      .catch(console.error)
-      .finally(() => setRecordsLoading(false));
+    const id = selectedPatient.id;
+    getPatientRecords(id)
+      .then((data) => {
+        setRecords(data.records);
+        setRecordsLastFetchedFor(id);
+      })
+      .catch(console.error);
   }, [activeTab, selectedPatient]);
 
   async function toggleRecording() {
@@ -452,7 +448,6 @@ ${result.acupuncture?.join(", ")}
   }
 
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  const filtered = patients.filter((p) => p.name.includes(search));
 
   function patientSubtext(patient: Patient) {
     const gender =
@@ -529,7 +524,7 @@ ${result.acupuncture?.join(", ")}
             <Search className="w-3.5 h-3.5 text-[#B0AAA4] flex-shrink-0" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="이름 검색..."
               className="flex-1 bg-transparent text-xs text-[#232323] outline-none"
             />
@@ -553,6 +548,8 @@ ${result.acupuncture?.join(", ")}
                 }`}
                 onClick={() => {
                   setSelectedPatient(patient);
+                  setResult(null);
+                  setRecordsLastFetchedFor(null);
                   setActiveTab("record");
                 }}
               >
