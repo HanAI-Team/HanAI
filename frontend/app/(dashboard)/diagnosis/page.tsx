@@ -89,6 +89,7 @@ export default function DiagnosisPage() {
   >(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
+  const [expandedCC, setExpandedCC] = useState<Set<string>>(new Set());
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showSavedModal, setShowSavedModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -981,12 +982,22 @@ ${result.acupuncture?.join(", ")}
                             <div className="border-t border-[#D4CCC4] p-4 flex flex-col gap-4">
                               {r.raw_transcription && (
                                 <div>
-                                  <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                  <button
+                                    onClick={() => setExpandedCC(prev => {
+                                      const next = new Set(prev);
+                                      next.has(r.id) ? next.delete(r.id) : next.add(r.id);
+                                      return next;
+                                    })}
+                                    className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5 w-full text-left"
+                                  >
                                     <FileText className="w-3.5 h-3.5" /> 주소증
-                                  </div>
-                                  <div className="text-sm text-[#232323] whitespace-pre-wrap bg-[#F5F2EE] rounded p-2">
-                                    {r.raw_transcription}
-                                  </div>
+                                    {expandedCC.has(r.id) ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                                  </button>
+                                  {expandedCC.has(r.id) && (
+                                    <div className="text-sm text-[#232323] whitespace-pre-wrap bg-[#F5F2EE] rounded p-2">
+                                      {r.raw_transcription}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                               {sections ? (
