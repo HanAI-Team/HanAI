@@ -39,6 +39,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -80,6 +81,7 @@ export default function DiagnosisPage() {
       id: string;
       recorded_at: string | null;
       chart_structured: string | null;
+      raw_transcription: string | null;
     }[]
   >([]);
   const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<
@@ -977,6 +979,16 @@ ${result.acupuncture?.join(", ")}
                           </div>
                           {isOpen && (
                             <div className="border-t border-[#D4CCC4] p-4 flex flex-col gap-4">
+                              {r.raw_transcription && (
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                    <FileText className="w-3.5 h-3.5" /> 주소증
+                                  </div>
+                                  <div className="text-sm text-[#232323] whitespace-pre-wrap bg-[#F5F2EE] rounded p-2">
+                                    {r.raw_transcription}
+                                  </div>
+                                </div>
+                              )}
                               {sections ? (
                                 historySections.map(({ key, Icon }) => {
                                   const content = sections[key] || "-";

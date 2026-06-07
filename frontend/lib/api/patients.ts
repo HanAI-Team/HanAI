@@ -40,7 +40,7 @@ export async function getPatientRecords(patientId: string) {
   if (!res.ok) throw new Error('진료 이력 조회 실패')
   return res.json() as Promise<{
     patient: any
-    records: { id: string; recorded_at: string | null; chart_structured: string | null }[]
+    records: { id: string; recorded_at: string | null; chart_structured: string | null; raw_transcription: string | null }[]
   }>
 }
 
