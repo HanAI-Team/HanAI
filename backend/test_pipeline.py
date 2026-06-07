@@ -78,10 +78,38 @@ async def test_file(audio_path: Path):
         print("⚠️  glossary 용어가 결과에 없음 — 오인식 가능성 확인 필요")
 
     print("=" * 60)
+    return corrected
+
+
+async def test_diagnose(corrected: str):
+    from app.diagnosis.claude_client import diagnose
+    print("\n📌 STEP 4. Claude 진단 (이름 마스킹 포함)")
+    print("-" * 40)
+    print("⏳ Claude API 호출 중...")
+    try:
+        result = diagnose(corrected)
+        constitution = (result.get("sasang_constitution") or {}).get("type", "-")
+        tkm = (result.get("tkm_diagnosis") or {}).get("diagnosis_name", "-")
+        herb = (result.get("herbal_prescription") or {})
+        herb_name = herb.get("name_kr", "-")
+        acu = result.get("acupuncture_prescription") or []
+        acu_str = ", ".join(p.get("point_kr", "") for p in acu if p.get("point_kr"))
+        print(f"사상체질: {constitution}")
+        print(f"진단명:   {tkm}")
+        print(f"처방명:   {herb_name}")
+        print(f"침 처방:  {acu_str or '-'}")
+        alert = result.get("emergency_alert") or {}
+        if alert.get("is_emergency"):
+            print(f"🚨 응급: {alert.get('reason')}")
+    except Exception as e:
+        print(f"❌ Claude 오류: {e}")
+    print("=" * 60)
 
 
 async def main():
-    target = sys.argv[1] if len(sys.argv) > 1 else None
+    run_diagnose = "--diagnose" in sys.argv or "-d" in sys.argv
+    args = [a for a in sys.argv[1:] if a not in ("--diagnose", "-d")]
+    target = args[0] if args else None
     files = get_audio_files(target)
 
     if target:
@@ -90,10 +118,14 @@ async def main():
         print(f"🎙️  총 {len(files)}개 파일 테스트 시작")
 
     for f in files:
-        await test_file(f)
+        corrected = await test_file(f)
+        if run_diagnose and corrected:
+            await test_diagnose(corrected)
 
     print("\n✅ 테스트 완료")
     print("💡 오인식된 단어는 data/medical_terms/corrections.json에 추가하세요")
+    if not run_diagnose:
+        print("💡 Claude 진단까지 테스트하려면 --diagnose 플래그를 추가하세요")
 
 
 if __name__ == "__main__":
