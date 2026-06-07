@@ -797,7 +797,7 @@ ${result.acupuncture?.join(", ")}
                         <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
                           <Icon className="w-3.5 h-3.5" /> {label}
                         </div>
-                        <div className="text-sm font-medium text-[#232323]">
+                        <div className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}>
                           {value}
                         </div>
                         {sub && (
@@ -1009,12 +1009,35 @@ ${result.acupuncture?.join(", ")}
                                   const content = sections[key] || "-";
                                   const isHerbs = key === "한약 처방";
                                   const isAcu = key === "침 처방";
+
+                                  if (isHerbs && content !== "-") {
+                                    const lines = content.split("\n").map((s) => s.trim()).filter(Boolean);
+                                    const prescName = lines[0];
+                                    const ingredients = lines.slice(1)
+                                      .flatMap((l) => l.split(/[,，]/).map((s) => s.trim()))
+                                      .filter(Boolean);
+                                    return (
+                                      <div key={key}>
+                                        <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                          <Icon className="w-3.5 h-3.5" /> {key}
+                                        </div>
+                                        <div className="text-sm font-semibold text-[#EF6600] mb-1.5">{prescName}</div>
+                                        {ingredients.length > 0 && (
+                                          <div className="flex flex-wrap gap-1">
+                                            {ingredients.map((t, i) => (
+                                              <span key={i} className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]">
+                                                {t}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+
                                   const tags =
-                                    (isHerbs || isAcu) && content !== "-"
-                                      ? content
-                                          .split(/[,，\n]/)
-                                          .map((s) => s.trim())
-                                          .filter(Boolean)
+                                    isAcu && content !== "-"
+                                      ? content.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean)
                                       : null;
                                   return (
                                     <div key={key}>
