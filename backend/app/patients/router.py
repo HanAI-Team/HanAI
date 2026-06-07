@@ -212,6 +212,7 @@ async def create_record(
         doctor_id=doctor.id,
         hospital_id=doctor.hospital_id,
         chart_structured=data.chart_structured,
+        raw_transcription=data.raw_transcription,
         status="completed",
         recorded_at=datetime.now(timezone.utc),
     )
