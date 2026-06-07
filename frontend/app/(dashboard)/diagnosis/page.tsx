@@ -76,6 +76,7 @@ export default function DiagnosisPage() {
   >([]);
   const [askMode, setAskMode] = useState<"ask" | "diagnose">("ask");
   const [symptomText, setSymptomText] = useState("");
+  const [savedSymptomText, setSavedSymptomText] = useState<string | undefined>(undefined);
   const [records, setRecords] = useState<
     {
       id: string;
@@ -287,7 +288,8 @@ export default function DiagnosisPage() {
         const data = await uploadAndAnalyze(selectedPatient.id, audioFile);
         setResult(data);
       } else {
-        const { result: raw } = await diagnoseText(symptomText.trim(), selectedPatient.id);
+        const { result: raw } = await diagnoseText(symptomText.trim());
+        setSavedSymptomText(symptomText.trim());
         setResult(mapDiagnosisResult(raw));
       }
       setActiveTab("result");
@@ -417,7 +419,8 @@ ${result.acupuncture?.join(", ")}
 
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
     try {
-      await saveRecord(selectedPatient.id, text);
+      await saveRecord(selectedPatient.id, text, savedSymptomText);
+      setSavedSymptomText(undefined);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       setShowSavedModal(true);
@@ -567,6 +570,7 @@ ${result.acupuncture?.join(", ")}
                   setSelectedPatient(patient);
                   setResult(null);
                   setRecordsLastFetchedFor(null);
+                  setSavedSymptomText(undefined);
                   setActiveTab("record");
                 }}
               >
