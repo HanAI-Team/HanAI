@@ -19,6 +19,32 @@ def run_diagnosis(transcription: str) -> dict:
     return diagnose(transcription)
 
 
+def _format_chart_structured(diagnosis: dict) -> str:
+    constitution = (diagnosis.get("sasang_constitution") or {}).get("type", "-")
+    tkm = (diagnosis.get("tkm_diagnosis") or {}).get("diagnosis_name", "-")
+    western_name = (diagnosis.get("western_diagnosis") or {}).get("name", "-")
+    herb = diagnosis.get("herbal_prescription") or {}
+    herb_name = herb.get("name_kr", "-")
+    composition = herb.get("composition") or []
+    herb_str = ", ".join(
+        f"{c.get('herb', '')} {c.get('dosage', '')}".strip()
+        for c in composition
+        if c.get("herb")
+    )
+    acu_list = diagnosis.get("acupuncture_prescription") or []
+    acu_str = ", ".join(
+        f"{p.get('point_kr', '')}({p.get('point_code', '')})"
+        for p in acu_list
+        if p.get("point_kr")
+    )
+    return (
+        f"▶ 사상체질\n{constitution}\n\n"
+        f"▶ 한의학적 진단\n{tkm}\n양방 대응: {western_name}\n\n"
+        f"▶ 한약 처방\n{herb_name}\n{herb_str}\n\n"
+        f"▶ 침 처방\n{acu_str}"
+    )
+
+
 async def save_text_diagnosis(
     db: AsyncSession,
     doctor,
@@ -31,7 +57,7 @@ async def save_text_diagnosis(
         doctor_id=doctor.id,
         hospital_id=doctor.hospital_id,
         raw_transcription=transcription,
-        chart_structured=transcription,
+        chart_structured=_format_chart_structured(diagnosis),
         status="completed",
         recorded_at=datetime.utcnow(),
     )
