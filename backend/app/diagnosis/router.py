@@ -16,11 +16,14 @@ router = APIRouter(tags=["diagnosis"])
 async def diagnose_text(
     data: DiagnosisRequest,
     current_doctor=Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
 ):
     allowed = await check_rate_limit(f"diagnosis:{current_doctor.id}", limit=3, window_seconds=60)
     if not allowed:
         raise HTTPException(status_code=429, detail="요청이 너무 많습니다. 1분 후 다시 시도해주세요.")
     result = service.run_diagnosis(data.transcription)
+    if data.patient_id:
+        await service.save_text_diagnosis(db, current_doctor, data.patient_id, data.transcription, result)
     return DiagnosisResponse(result=result)
 
 
