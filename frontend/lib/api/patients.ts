@@ -25,11 +25,11 @@ export async function getPatient(id: string) {
   return res.json()
 }
 
-export async function saveRecord(patientId: string, chartStructured: string) {
+export async function saveRecord(patientId: string, chartStructured: string, rawTranscription?: string) {
   const res = await fetch(`${BASE_URL}/api/patients/${patientId}/records`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify({ chart_structured: chartStructured }),
+    body: JSON.stringify({ chart_structured: chartStructured, raw_transcription: rawTranscription }),
   })
   if (!res.ok) throw new Error('저장 실패')
   return res.json()
