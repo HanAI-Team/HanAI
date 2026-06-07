@@ -121,8 +121,8 @@ class MedicalRecord(Base):
     patient = relationship("Patient", back_populates="medical_records")
     doctor = relationship("Doctor", back_populates="medical_records")
     hospital = relationship("Hospital", back_populates="medical_records")
-    ai_result = relationship("AIResult", back_populates="medical_record", uselist=False)
-    prescriptions = relationship("Prescription", back_populates="medical_record")
+    ai_result = relationship("AIResult", back_populates="medical_record", uselist=False, cascade="all, delete-orphan")
+    prescriptions = relationship("Prescription", back_populates="medical_record", cascade="all, delete-orphan")
 
 
 class AIResult(Base):
