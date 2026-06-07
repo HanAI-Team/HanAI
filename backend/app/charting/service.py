@@ -8,6 +8,7 @@ from app.charting.stt.chunker import transcribe_chunks
 from app.diagnosis.claude_client import diagnose
 from app.core.models import AIResult, MedicalRecord
 from app.pipeline.deidentifier import deidentifier
+from app.pipeline.postprocessor import postprocessor
 from uuid import UUID
 from datetime import datetime, timezone
 from sqlalchemy import select

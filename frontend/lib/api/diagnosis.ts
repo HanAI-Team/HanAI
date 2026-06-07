@@ -34,9 +34,9 @@ export async function askDiagnosis(question: string): Promise<{ answer: string }
   })
 }
 
-export async function diagnoseText(transcription: string): Promise<{ result: Record<string, unknown> }> {
+export async function diagnoseText(transcription: string, patientId?: string): Promise<{ result: Record<string, unknown> }> {
   return apiCall('/api/diagnosis/', {
     method: 'POST',
-    body: JSON.stringify({ transcription }),
+    body: JSON.stringify({ transcription, patient_id: patientId }),
   })
 }
