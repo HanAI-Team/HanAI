@@ -284,7 +284,7 @@ export default function DiagnosisPage() {
         const data = await uploadAndAnalyze(selectedPatient.id, audioFile);
         setResult(data);
       } else {
-        const { result: raw } = await diagnoseText(symptomText.trim());
+        const { result: raw } = await diagnoseText(symptomText.trim(), selectedPatient.id);
         setResult(mapDiagnosisResult(raw));
       }
       setActiveTab("result");

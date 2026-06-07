@@ -1,10 +1,12 @@
 from uuid import UUID
+from typing import Optional
 
 from pydantic import BaseModel
 
 
 class DiagnosisRequest(BaseModel):
     transcription: str
+    patient_id: Optional[UUID] = None
 
 
 class DiagnosisResponse(BaseModel):

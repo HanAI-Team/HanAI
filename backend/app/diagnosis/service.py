@@ -1,5 +1,7 @@
 import json
 import uuid as uuid_mod
+from datetime import datetime
+from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -15,6 +17,31 @@ def run_ask(question: str) -> str:
 
 def run_diagnosis(transcription: str) -> dict:
     return diagnose(transcription)
+
+
+async def save_text_diagnosis(
+    db: AsyncSession,
+    doctor,
+    patient_id: UUID,
+    transcription: str,
+    diagnosis: dict,
+) -> None:
+    record = MedicalRecord(
+        patient_id=patient_id,
+        doctor_id=doctor.id,
+        hospital_id=doctor.hospital_id,
+        raw_transcription=transcription,
+        chart_structured=transcription,
+        status="completed",
+        recorded_at=datetime.utcnow(),
+    )
+    db.add(record)
+    await db.flush()
+    db.add(AIResult(
+        medical_record_id=record.id,
+        diagnosis_suggestion=json.dumps(diagnosis, ensure_ascii=False),
+    ))
+    await db.commit()
 
 
 async def run_diagnosis_for_record(record_id: uuid_mod.UUID, db: AsyncSession) -> dict:
