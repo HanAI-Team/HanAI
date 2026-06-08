@@ -40,6 +40,8 @@ import {
   Pencil,
   Trash2,
   FileText,
+  ThumbsUp,
+  ThumbsDown,
   type LucideIcon,
 } from "lucide-react";
 
@@ -112,6 +114,11 @@ export default function DiagnosisPage() {
   const [editPatient, setEditPatient] = useState<Patient | null>(null);
   const [editForm, setEditForm] = useState({ phone: "", memo: "" });
   const [editLoading, setEditLoading] = useState(false);
+  const [feedbackAvailable, setFeedbackAvailable] = useState(false);
+  const [feedbackHelpful, setFeedbackHelpful] = useState<boolean | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackRecordId, setFeedbackRecordId] = useState<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -340,6 +347,7 @@ export default function DiagnosisPage() {
         setSavedSymptomText(symptomText.trim());
         setResult(mapDiagnosisResult(raw));
       }
+      setFeedbackAvailable(true);
       setActiveTab("result");
     } catch (e: any) {
       setErrorMessage(
@@ -534,8 +542,16 @@ ${historyLine}
 
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
     try {
-      await saveRecord(selectedPatient.id, text, savedSymptomText);
+      const response = await saveRecord(
+        selectedPatient.id,
+        text,
+        savedSymptomText,
+      );
       setSavedSymptomText(undefined);
+      setFeedbackRecordId(response?.id ?? null);
+      setFeedbackHelpful(null);
+      setFeedbackComment("");
+      setFeedbackSubmitted(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       setShowSavedModal(true);
@@ -544,6 +560,31 @@ ${historyLine}
       setErrorMessage(
         e.response?.data?.detail || e.message || "저장에 실패했습니다.",
       );
+    }
+  }
+
+  async function handleFeedback() {
+    if (!feedbackRecordId || feedbackHelpful === null) return;
+    try {
+      const BASE_URL =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${BASE_URL}/api/feedback/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          medical_record_id: feedbackRecordId,
+          is_helpful: feedbackHelpful,
+          comment: feedbackComment,
+        }),
+      });
+      if (!res.ok) throw new Error("피드백 제출 실패");
+      setFeedbackSubmitted(true);
+    } catch {
+      setErrorMessage("피드백 제출에 실패했습니다.");
     }
   }
 
@@ -1145,12 +1186,76 @@ ${result.acupuncture?.join(", ")}
                       <Printer className="w-3.5 h-3.5" /> 인쇄
                     </button>
                     <button
-                      onClick={() => setActiveTab("record")}
+                      onClick={() => {
+                        setActiveTab("record");
+                        setFeedbackAvailable(false);
+                        setFeedbackHelpful(null);
+                        setFeedbackComment("");
+                        setFeedbackSubmitted(false);
+                        setFeedbackRecordId(null);
+                      }}
                       className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all flex items-center justify-center gap-1.5"
                     >
                       <Plus className="w-3.5 h-3.5" /> 새 진료
                     </button>
                   </div>
+                  {feedbackRecordId && (
+                    <div className="mt-3 bg-white border border-[#D4CCC4] rounded-lg p-4">
+                      {feedbackSubmitted ? (
+                        <div className="flex items-center justify-center gap-2 py-1 text-sm text-[#8A8480]">
+                          <CircleCheck className="w-4 h-4 text-[#EF6600]" />
+                          피드백 감사합니다
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-xs text-[#8A8480] mb-3 text-center">
+                            이 진단이 도움이 됐나요?
+                          </div>
+                          <div className="flex gap-2 justify-center mb-3">
+                            <button
+                              onClick={() => setFeedbackHelpful(true)}
+                              className={`flex items-center gap-1.5 px-4 py-2 rounded-md border text-xs transition-all ${
+                                feedbackHelpful === true
+                                  ? "bg-[#EF6600] text-white border-[#EF6600]"
+                                  : "border-[#D4CCC4] text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600]"
+                              }`}
+                            >
+                              <ThumbsUp className="w-3.5 h-3.5" /> 도움됨
+                            </button>
+                            <button
+                              onClick={() => setFeedbackHelpful(false)}
+                              className={`flex items-center gap-1.5 px-4 py-2 rounded-md border text-xs transition-all ${
+                                feedbackHelpful === false
+                                  ? "bg-[#232323] text-white border-[#232323]"
+                                  : "border-[#D4CCC4] text-[#8A8480] hover:border-[#232323] hover:text-[#232323]"
+                              }`}
+                            >
+                              <ThumbsDown className="w-3.5 h-3.5" /> 도움 안 됨
+                            </button>
+                          </div>
+                          {feedbackHelpful !== null && (
+                            <>
+                              <textarea
+                                value={feedbackComment}
+                                onChange={(e) =>
+                                  setFeedbackComment(e.target.value)
+                                }
+                                placeholder="추가 의견이 있으시면 입력해주세요 (선택)"
+                                rows={2}
+                                className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none mb-2 transition-colors"
+                              />
+                              <button
+                                onClick={handleFeedback}
+                                className="w-full bg-[#EF6600] text-white rounded-md py-2 text-xs hover:opacity-90 transition-opacity"
+                              >
+                                피드백 제출
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>
