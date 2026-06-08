@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import Doctor, MedicalRecord, Patient
 from app.patients import service
+from app.core.models import AIResult
 from app.patients.schema import (
     PatientCreate,
     PatientUpdate,
@@ -27,7 +28,9 @@ async def get_stats(
     db: AsyncSession = Depends(get_db),
     doctor: Doctor = Depends(get_current_doctor),
 ):
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
 
     total_patients_result = await db.execute(
         select(func.count(Patient.id)).where(Patient.hospital_id == doctor.hospital_id)
@@ -52,14 +55,18 @@ async def get_stats(
 
     recent = []
     for rec in recent_records:
-        patient_result = await db.execute(select(Patient).where(Patient.id == rec.patient_id))
+        patient_result = await db.execute(
+            select(Patient).where(Patient.id == rec.patient_id)
+        )
         patient = patient_result.scalar_one_or_none()
         if patient:
-            recent.append({
-                "patient_name": patient.name,
-                "recorded_at": rec.recorded_at,
-                "chart_structured": rec.chart_structured,
-            })
+            recent.append(
+                {
+                    "patient_name": patient.name,
+                    "recorded_at": rec.recorded_at,
+                    "chart_structured": rec.chart_structured,
+                }
+            )
 
     return {
         "total_patients": total_patients,
@@ -139,17 +146,23 @@ async def import_csv(
         if not name:
             skipped += 1
             continue
-        birth_date = _parse_yyyymmdd(row.get("cm_Birth")) or _birth_from_lifeno(row.get("cm_LifeNo"))
+        birth_date = _parse_yyyymmdd(row.get("cm_Birth")) or _birth_from_lifeno(
+            row.get("cm_LifeNo")
+        )
         gender = _normalize_gender(row.get("cm_Sex"))
         phone = str(row.get("cm_HP") or row.get("cm_Tel") or "").strip() or None
 
         try:
-            await service.create_patient(db, doctor, PatientCreate(
-                name=name,
-                birth_date=birth_date,
-                gender=gender,
-                phone=phone,
-            ))
+            await service.create_patient(
+                db,
+                doctor,
+                PatientCreate(
+                    name=name,
+                    birth_date=birth_date,
+                    gender=gender,
+                    phone=phone,
+                ),
+            )
             inserted += 1
         except Exception:
             skipped += 1
@@ -206,6 +219,7 @@ async def create_record(
 ):
     from datetime import datetime, timezone
     from app.core.models import MedicalRecord
+
     patient = await service.get_patient(db, doctor, patient_id)
     record = MedicalRecord(
         patient_id=patient.id,
@@ -217,6 +231,16 @@ async def create_record(
         recorded_at=datetime.now(timezone.utc),
     )
     db.add(record)
+    await db.flush()
+
+    if data.chart_structured:
+
+        ai_result = AIResult(
+            medical_record_id=record.id,
+            diagnosis_suggestion=data.chart_structured,
+        )
+        db.add(ai_result)
+
     await db.commit()
     await db.refresh(record)
     return {"id": str(record.id)}
@@ -231,6 +255,7 @@ async def delete_record(
 ):
     from app.core.models import MedicalRecord
     from sqlalchemy import select, delete
+
     await service.get_patient(db, doctor, patient_id)
     result = await db.execute(
         select(MedicalRecord).where(
@@ -240,7 +265,10 @@ async def delete_record(
     )
     record = result.scalar_one_or_none()
     if not record:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="진료 이력을 찾을 수 없습니다.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="진료 이력을 찾을 수 없습니다.",
+        )
     await db.delete(record)
     await db.commit()
 
