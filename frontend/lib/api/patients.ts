@@ -56,6 +56,7 @@ export async function getPatientRecords(patientId: string) {
       recorded_at: string | null;
       chart_structured: string | null;
       raw_transcription: string | null;
+      medical_history: string | null;
     }[];
   }>;
 }
