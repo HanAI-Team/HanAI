@@ -96,6 +96,10 @@ export default function DiagnosisPage() {
   >(null);
   const [memoEditing, setMemoEditing] = useState(false);
   const [memoDraft, setMemoDraft] = useState("");
+  const [recordMedicalHistory, setRecordMedicalHistory] = useState<{
+    hasHistory: boolean;
+    text: string;
+  }>({ hasHistory: false, text: "" });
   const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<
     string | null
   >(null);
@@ -306,12 +310,33 @@ export default function DiagnosisPage() {
         "녹음, 파일 업로드 또는 증상 입력 중 하나가 필요합니다",
       );
     setLoading(true);
+    const medicalHistory = recordMedicalHistory.hasHistory
+      ? recordMedicalHistory.text || null
+      : null;
+    if (memo.trim()) {
+      updatePatient(selectedPatient.id, { memo: memo.trim() })
+        .then(() => {
+          const updated = { ...selectedPatient, memo: memo.trim() };
+          setPatients((prev) =>
+            prev.map((p) => (p.id === selectedPatient.id ? updated : p)),
+          );
+          setSelectedPatient(updated);
+        })
+        .catch(() => {});
+    }
     try {
       if (audioFile) {
-        const data = await uploadAndAnalyze(selectedPatient.id, audioFile);
+        const data = await uploadAndAnalyze(
+          selectedPatient.id,
+          audioFile,
+          medicalHistory,
+        );
         setResult(data);
       } else {
-        const { result: raw } = await diagnoseText(symptomText.trim());
+        const { result: raw } = await diagnoseText(
+          symptomText.trim(),
+          medicalHistory,
+        );
         setSavedSymptomText(symptomText.trim());
         setResult(mapDiagnosisResult(raw));
       }
@@ -443,6 +468,13 @@ export default function DiagnosisPage() {
       setRecords((prev) =>
         prev.map((r) => (r.id === recordId ? { ...r, medical_history } : r)),
       );
+      setMedicalHistories((prev) => ({
+        ...prev,
+        [recordId]: {
+          hasHistory: !!medical_history,
+          text: medical_history || "",
+        },
+      }));
       setShowSavedModal(true);
       setTimeout(() => setShowSavedModal(false), 2000);
     } catch {
@@ -461,6 +493,7 @@ export default function DiagnosisPage() {
         prev.map((p) => (p.id === selectedPatient.id ? updated : p)),
       );
       setSelectedPatient(updated);
+      setMemo(memoDraft);
       setMemoEditing(false);
     } catch {
       setErrorMessage("메모 저장에 실패했습니다.");
@@ -471,6 +504,11 @@ export default function DiagnosisPage() {
 
   async function handleSave() {
     if (!result || !selectedPatient) return;
+    const memoLine = memo.trim() || "-";
+    const historyLine =
+      recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
+        ? recordMedicalHistory.text.trim()
+        : "없음";
     const text = `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
 
@@ -487,6 +525,12 @@ ${result.herbs?.join(", ")}
 
 ▶ 침 처방
 ${result.acupuncture?.join(", ")}
+
+▶ 메모
+${memoLine}
+
+▶ 병력
+${historyLine}
 
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
     try {
@@ -505,6 +549,11 @@ ${result.acupuncture?.join(", ")}
 
   function copyAll() {
     if (!result || !selectedPatient) return;
+    const memoLine = memo.trim() || "-";
+    const historyLine =
+      recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
+        ? recordMedicalHistory.text.trim()
+        : "없음";
     const text = `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
 
@@ -521,6 +570,12 @@ ${result.herbs?.join(", ")}
 
 ▶ 침 처방
 ${result.acupuncture?.join(", ")}
+
+▶ 메모
+${memoLine}
+
+▶ 병력
+${historyLine}
 
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
     navigator.clipboard.writeText(text);
@@ -598,12 +653,14 @@ ${result.acupuncture?.join(", ")}
     { key: "한의학적 진단", Icon: Stethoscope },
     { key: "한약 처방", Icon: Leaf },
     { key: "침 처방", Icon: MapPin },
+    { key: "메모", Icon: FileText },
+    { key: "병력", Icon: Clipboard },
   ];
 
   return (
     <div className="flex h-[calc(100vh-52px)] overflow-hidden">
       {/* 왼쪽 환자 패널 */}
-      <div className="hidden md:flex w-[260px] flex-shrink-0 bg-white border-r border-[#D4CCC4] flex-col">
+      <div className="hidden sm:flex w-[260px] flex-shrink-0 bg-white border-r border-[#D4CCC4] flex-col">
         <div className="p-3 border-b border-[#D4CCC4]">
           <div className="text-xs font-medium text-[#232323] uppercase tracking-wide mb-2">
             환자 목록
@@ -644,6 +701,8 @@ ${result.acupuncture?.join(", ")}
                   setSavedSymptomText(undefined);
                   setActiveTab("record");
                   setMemoEditing(false);
+                  setMemo(patient.memo || "");
+                  setRecordMedicalHistory({ hasHistory: false, text: "" });
                 }}
               >
                 <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
@@ -779,7 +838,7 @@ ${result.acupuncture?.join(", ")}
 
           {/* 진료 녹음 탭 */}
           {activeTab === "record" && selectedPatient && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
                 <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
                   음성 녹음
@@ -861,8 +920,53 @@ ${result.acupuncture?.join(", ")}
                     className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none min-h-[80px] transition-colors"
                   />
                 </div>
+                <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
+                  <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
+                    병력
+                  </div>
+                  <div className="flex gap-4 mb-2">
+                    {["없음", "있음"].map((opt) => (
+                      <label
+                        key={opt}
+                        className="flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <input
+                          type="radio"
+                          name="record-medical-history"
+                          checked={
+                            opt === "있음"
+                              ? recordMedicalHistory.hasHistory
+                              : !recordMedicalHistory.hasHistory
+                          }
+                          onChange={() =>
+                            setRecordMedicalHistory((prev) => ({
+                              ...prev,
+                              hasHistory: opt === "있음",
+                            }))
+                          }
+                          className="accent-[#EF6600]"
+                        />
+                        <span className="text-xs text-[#232323]">{opt}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {recordMedicalHistory.hasHistory && (
+                    <textarea
+                      value={recordMedicalHistory.text}
+                      onChange={(e) =>
+                        setRecordMedicalHistory((prev) => ({
+                          ...prev,
+                          text: e.target.value,
+                        }))
+                      }
+                      placeholder="병력을 입력하세요"
+                      rows={3}
+                      className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none transition-colors"
+                    />
+                  )}
+                </div>
               </div>
-              <div className="md:col-span-2">
+              <div className="sm:col-span-2">
                 <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
                   <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
                     증상 직접 입력{" "}
@@ -884,7 +988,7 @@ ${result.acupuncture?.join(", ")}
                   )}
                 </div>
               </div>
-              <div className="md:col-span-2">
+              <div className="sm:col-span-2">
                 <button
                   onClick={startAnalysis}
                   disabled={loading || (!audioFile && !symptomText.trim())}
@@ -911,7 +1015,7 @@ ${result.acupuncture?.join(", ")}
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {resultCards.map(({ label, Icon, value, sub, tags }, i) => (
                       <div
                         key={i}
@@ -952,6 +1056,25 @@ ${result.acupuncture?.join(", ")}
                         )}
                       </div>
                     ))}
+                    <div className="bg-white border border-[#D4CCC4] rounded-lg p-4">
+                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                        <FileText className="w-3.5 h-3.5" /> 메모
+                      </div>
+                      <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                        {memo.trim() || selectedPatient?.memo || "-"}
+                      </div>
+                    </div>
+                    <div className="bg-white border border-[#D4CCC4] rounded-lg p-4">
+                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                        <Clipboard className="w-3.5 h-3.5" /> 병력
+                      </div>
+                      <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                        {recordMedicalHistory.hasHistory &&
+                        recordMedicalHistory.text.trim()
+                          ? recordMedicalHistory.text.trim()
+                          : "없음"}
+                      </div>
+                    </div>
                   </div>
                   <div className="bg-[#232323] rounded-lg p-5 mt-4 relative">
                     <div className="flex items-center gap-1.5 text-xs text-[#A09892] uppercase tracking-wide mb-3">
@@ -1223,72 +1346,6 @@ ${result.acupuncture?.join(", ")}
                                   {r.chart_structured || "차트 내용 없음"}
                                 </div>
                               )}
-                              <div className="border-t border-[#D4CCC4] pt-4">
-                                <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
-                                  <Clipboard className="w-3.5 h-3.5" /> 병력
-                                </div>
-                                <div className="flex gap-4 mb-2">
-                                  {["없음", "있음"].map((opt) => {
-                                    const current = medicalHistories[r.id];
-                                    const isChecked =
-                                      opt === "있음"
-                                        ? (current?.hasHistory ?? false)
-                                        : !(current?.hasHistory ?? false);
-                                    return (
-                                      <label
-                                        key={opt}
-                                        className="flex items-center gap-1.5 cursor-pointer"
-                                      >
-                                        <input
-                                          type="radio"
-                                          name={`mh-${r.id}`}
-                                          checked={isChecked}
-                                          onChange={() =>
-                                            setMedicalHistories((prev) => ({
-                                              ...prev,
-                                              [r.id]: {
-                                                hasHistory: opt === "있음",
-                                                text: prev[r.id]?.text || "",
-                                              },
-                                            }))
-                                          }
-                                          className="accent-[#EF6600]"
-                                        />
-                                        <span className="text-xs text-[#232323]">
-                                          {opt}
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                                {medicalHistories[r.id]?.hasHistory && (
-                                  <textarea
-                                    value={medicalHistories[r.id]?.text || ""}
-                                    onChange={(e) =>
-                                      setMedicalHistories((prev) => ({
-                                        ...prev,
-                                        [r.id]: {
-                                          ...prev[r.id],
-                                          text: e.target.value,
-                                        },
-                                      }))
-                                    }
-                                    placeholder="병력을 입력하세요"
-                                    rows={2}
-                                    className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none mb-2 transition-colors"
-                                  />
-                                )}
-                                <button
-                                  onClick={() => handleSaveMedicalHistory(r.id)}
-                                  disabled={savingMedicalHistory === r.id}
-                                  className="text-xs bg-[#EF6600] text-white px-3 py-1.5 rounded-md hover:opacity-90 disabled:opacity-50 flex items-center gap-1 transition-opacity"
-                                >
-                                  <Save className="w-3 h-3" />
-                                  {savingMedicalHistory === r.id
-                                    ? "저장 중..."
-                                    : "병력 저장"}
-                                </button>
-                              </div>
                             </div>
                           )}
                         </div>
@@ -1299,7 +1356,6 @@ ${result.acupuncture?.join(", ")}
             </div>
           )}
 
-          {/* 한의학 검색 탭 */}
           {activeTab === "ask" && (
             <div className="flex flex-col flex-1 min-h-0 gap-4">
               <div className="flex-1 flex flex-col gap-3 overflow-y-auto min-h-0">
