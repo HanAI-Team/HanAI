@@ -11,6 +11,10 @@ class ChartingResponse(BaseModel):
     diagnosis: dict
 
 
+class UpdateMedicalHistoryRequest(BaseModel):
+    medical_history: Optional[str] = None
+
+
 class MedicalRecordResponse(BaseModel):
     id: UUID
     patient_id: UUID

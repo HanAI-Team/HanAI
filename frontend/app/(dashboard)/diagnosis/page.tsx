@@ -76,15 +76,26 @@ export default function DiagnosisPage() {
   >([]);
   const [askMode, setAskMode] = useState<"ask" | "diagnose">("ask");
   const [symptomText, setSymptomText] = useState("");
-  const [savedSymptomText, setSavedSymptomText] = useState<string | undefined>(undefined);
+  const [savedSymptomText, setSavedSymptomText] = useState<string | undefined>(
+    undefined,
+  );
   const [records, setRecords] = useState<
     {
       id: string;
       recorded_at: string | null;
       chart_structured: string | null;
       raw_transcription: string | null;
+      medical_history: string | null;
     }[]
   >([]);
+  const [medicalHistories, setMedicalHistories] = useState<
+    Record<string, { hasHistory: boolean; text: string }>
+  >({});
+  const [savingMedicalHistory, setSavingMedicalHistory] = useState<
+    string | null
+  >(null);
+  const [memoEditing, setMemoEditing] = useState(false);
+  const [memoDraft, setMemoDraft] = useState("");
   const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<
     string | null
   >(null);
@@ -154,6 +165,18 @@ export default function DiagnosisPage() {
       .then((data) => {
         setRecords(data.records);
         setRecordsLastFetchedFor(id);
+        setMedicalHistories((prev) => {
+          const next = { ...prev };
+          for (const r of data.records) {
+            if (!(r.id in next)) {
+              next[r.id] = {
+                hasHistory: !!r.medical_history,
+                text: r.medical_history || "",
+              };
+            }
+          }
+          return next;
+        });
       })
       .catch(console.error);
   }, [activeTab, selectedPatient]);
@@ -396,6 +419,54 @@ export default function DiagnosisPage() {
     }
   }
 
+  async function handleSaveMedicalHistory(recordId: string) {
+    const draft = medicalHistories[recordId];
+    if (!draft) return;
+    const medical_history = draft.hasHistory ? draft.text || null : null;
+    setSavingMedicalHistory(recordId);
+    try {
+      const BASE_URL =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `${BASE_URL}/api/charting/${recordId}/medical-history`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ medical_history }),
+        },
+      );
+      if (!res.ok) throw new Error("병력 저장 실패");
+      setRecords((prev) =>
+        prev.map((r) => (r.id === recordId ? { ...r, medical_history } : r)),
+      );
+      setShowSavedModal(true);
+      setTimeout(() => setShowSavedModal(false), 2000);
+    } catch {
+      setErrorMessage("병력 저장에 실패했습니다.");
+    } finally {
+      setSavingMedicalHistory(null);
+    }
+  }
+
+  async function handleSaveMemo() {
+    if (!selectedPatient) return;
+    try {
+      await updatePatient(selectedPatient.id, { memo: memoDraft });
+      const updated = { ...selectedPatient, memo: memoDraft };
+      setPatients((prev) =>
+        prev.map((p) => (p.id === selectedPatient.id ? updated : p)),
+      );
+      setSelectedPatient(updated);
+      setMemoEditing(false);
+    } catch {
+      setErrorMessage("메모 저장에 실패했습니다.");
+    }
+  }
+
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
@@ -572,6 +643,7 @@ ${result.acupuncture?.join(", ")}
                   setRecordsLastFetchedFor(null);
                   setSavedSymptomText(undefined);
                   setActiveTab("record");
+                  setMemoEditing(false);
                 }}
               >
                 <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
@@ -603,6 +675,65 @@ ${result.acupuncture?.join(", ")}
             ))
           )}
         </div>
+        {selectedPatient && (
+          <div className="border-t border-[#D4CCC4] p-3 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-[#8A8480] uppercase tracking-wide">
+                메모
+              </div>
+              {!memoEditing && (
+                <button
+                  onClick={() => {
+                    setMemoEditing(true);
+                    setMemoDraft(selectedPatient.memo || "");
+                  }}
+                  className="p-1 rounded hover:bg-[#D4CCC4] transition-all"
+                >
+                  <Pencil className="w-3 h-3 text-[#8A8480]" />
+                </button>
+              )}
+            </div>
+            {memoEditing ? (
+              <>
+                <textarea
+                  value={memoDraft}
+                  onChange={(e) => setMemoDraft(e.target.value)}
+                  autoFocus
+                  rows={3}
+                  className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1.5 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none transition-colors"
+                />
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={handleSaveMemo}
+                    className="flex-1 bg-[#EF6600] text-white rounded-md py-1.5 text-xs hover:opacity-90 transition-opacity"
+                  >
+                    저장
+                  </button>
+                  <button
+                    onClick={() => setMemoEditing(false)}
+                    className="flex-1 border border-[#C8BFB6] rounded-md py-1.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all"
+                  >
+                    취소
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div
+                onClick={() => {
+                  setMemoEditing(true);
+                  setMemoDraft(selectedPatient.memo || "");
+                }}
+                className="text-xs text-[#232323] cursor-pointer hover:bg-[#EDE8E2] rounded-md px-2 py-1.5 min-h-[28px] whitespace-pre-wrap transition-colors"
+              >
+                {selectedPatient.memo ? (
+                  selectedPatient.memo
+                ) : (
+                  <span className="text-[#B0AAA4]">클릭하여 메모 입력...</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div className="p-3 border-t border-[#D4CCC4] flex flex-col gap-2">
           <button
             onClick={() => setShowSyncModal(true)}
@@ -797,7 +928,9 @@ ${result.acupuncture?.join(", ")}
                         <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
                           <Icon className="w-3.5 h-3.5" /> {label}
                         </div>
-                        <div className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}>
+                        <div
+                          className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}
+                        >
                           {value}
                         </div>
                         {sub && (
@@ -987,15 +1120,23 @@ ${result.acupuncture?.join(", ")}
                               {r.raw_transcription && (
                                 <div>
                                   <button
-                                    onClick={() => setExpandedCC(prev => {
-                                      const next = new Set(prev);
-                                      next.has(r.id) ? next.delete(r.id) : next.add(r.id);
-                                      return next;
-                                    })}
+                                    onClick={() =>
+                                      setExpandedCC((prev) => {
+                                        const next = new Set(prev);
+                                        next.has(r.id)
+                                          ? next.delete(r.id)
+                                          : next.add(r.id);
+                                        return next;
+                                      })
+                                    }
                                     className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5 w-full text-left"
                                   >
                                     <FileText className="w-3.5 h-3.5" /> 주소증
-                                    {expandedCC.has(r.id) ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                                    {expandedCC.has(r.id) ? (
+                                      <ChevronUp className="w-3 h-3 ml-auto" />
+                                    ) : (
+                                      <ChevronDown className="w-3 h-3 ml-auto" />
+                                    )}
                                   </button>
                                   {expandedCC.has(r.id) && (
                                     <div className="text-sm text-[#232323] whitespace-pre-wrap bg-[#F5F2EE] rounded p-2">
@@ -1011,21 +1152,32 @@ ${result.acupuncture?.join(", ")}
                                   const isAcu = key === "침 처방";
 
                                   if (isHerbs && content !== "-") {
-                                    const lines = content.split("\n").map((s) => s.trim()).filter(Boolean);
+                                    const lines = content
+                                      .split("\n")
+                                      .map((s) => s.trim())
+                                      .filter(Boolean);
                                     const prescName = lines[0];
-                                    const ingredients = lines.slice(1)
-                                      .flatMap((l) => l.split(/[,，]/).map((s) => s.trim()))
+                                    const ingredients = lines
+                                      .slice(1)
+                                      .flatMap((l) =>
+                                        l.split(/[,，]/).map((s) => s.trim()),
+                                      )
                                       .filter(Boolean);
                                     return (
                                       <div key={key}>
                                         <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
                                           <Icon className="w-3.5 h-3.5" /> {key}
                                         </div>
-                                        <div className="text-sm font-semibold text-[#EF6600] mb-1.5">{prescName}</div>
+                                        <div className="text-sm font-semibold text-[#EF6600] mb-1.5">
+                                          {prescName}
+                                        </div>
                                         {ingredients.length > 0 && (
                                           <div className="flex flex-wrap gap-1">
                                             {ingredients.map((t, i) => (
-                                              <span key={i} className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]">
+                                              <span
+                                                key={i}
+                                                className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
+                                              >
                                                 {t}
                                               </span>
                                             ))}
@@ -1037,7 +1189,10 @@ ${result.acupuncture?.join(", ")}
 
                                   const tags =
                                     isAcu && content !== "-"
-                                      ? content.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean)
+                                      ? content
+                                          .split(/[,，\n]/)
+                                          .map((s) => s.trim())
+                                          .filter(Boolean)
                                       : null;
                                   return (
                                     <div key={key}>
@@ -1068,6 +1223,72 @@ ${result.acupuncture?.join(", ")}
                                   {r.chart_structured || "차트 내용 없음"}
                                 </div>
                               )}
+                              <div className="border-t border-[#D4CCC4] pt-4">
+                                <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                                  <Clipboard className="w-3.5 h-3.5" /> 병력
+                                </div>
+                                <div className="flex gap-4 mb-2">
+                                  {["없음", "있음"].map((opt) => {
+                                    const current = medicalHistories[r.id];
+                                    const isChecked =
+                                      opt === "있음"
+                                        ? (current?.hasHistory ?? false)
+                                        : !(current?.hasHistory ?? false);
+                                    return (
+                                      <label
+                                        key={opt}
+                                        className="flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <input
+                                          type="radio"
+                                          name={`mh-${r.id}`}
+                                          checked={isChecked}
+                                          onChange={() =>
+                                            setMedicalHistories((prev) => ({
+                                              ...prev,
+                                              [r.id]: {
+                                                hasHistory: opt === "있음",
+                                                text: prev[r.id]?.text || "",
+                                              },
+                                            }))
+                                          }
+                                          className="accent-[#EF6600]"
+                                        />
+                                        <span className="text-xs text-[#232323]">
+                                          {opt}
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                {medicalHistories[r.id]?.hasHistory && (
+                                  <textarea
+                                    value={medicalHistories[r.id]?.text || ""}
+                                    onChange={(e) =>
+                                      setMedicalHistories((prev) => ({
+                                        ...prev,
+                                        [r.id]: {
+                                          ...prev[r.id],
+                                          text: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="병력을 입력하세요"
+                                    rows={2}
+                                    className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none mb-2 transition-colors"
+                                  />
+                                )}
+                                <button
+                                  onClick={() => handleSaveMedicalHistory(r.id)}
+                                  disabled={savingMedicalHistory === r.id}
+                                  className="text-xs bg-[#EF6600] text-white px-3 py-1.5 rounded-md hover:opacity-90 disabled:opacity-50 flex items-center gap-1 transition-opacity"
+                                >
+                                  <Save className="w-3 h-3" />
+                                  {savingMedicalHistory === r.id
+                                    ? "저장 중..."
+                                    : "병력 저장"}
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
