@@ -25,7 +25,7 @@ export default function DashboardLayout({
   return (
     <div className="flex flex-col min-h-screen">
       {/* PC 네비바 */}
-      <nav className="hidden md:flex h-[52px] bg-[#232323] items-center px-6 flex-shrink-0">
+      <nav className="hidden sm:flex h-[52px] bg-[#232323] items-center px-6 flex-shrink-0">
         <div className="font-serif text-[19px] text-white mr-9">Zinmac</div>
         <div className="flex gap-1 flex-1">
           {navLinks.map((link) => (
@@ -45,7 +45,7 @@ export default function DashboardLayout({
       </nav>
 
       {/* 모바일 헤더 */}
-      <div className="md:hidden flex h-[50px] bg-[#232323] items-center px-4 justify-between flex-shrink-0">
+      <div className="sm:hidden flex h-[50px] bg-[#232323] items-center px-4 justify-between flex-shrink-0">
         <div className="font-serif text-[19px] text-white">Zinmac</div>
         <button
           onClick={() => setDrawerOpen(true)}
@@ -60,14 +60,14 @@ export default function DashboardLayout({
       {/* 드로어 오버레이 */}
       {drawerOpen && (
         <div
-          className="fixed inset-0 bg-[#232323]/50 z-[100] md:hidden"
+          className="fixed inset-0 bg-[#232323]/50 z-[100] sm:hidden"
           onClick={() => setDrawerOpen(false)}
         />
       )}
 
       {/* 드로어 */}
       <div
-        className={`fixed top-0 bottom-0 left-0 w-[240px] bg-[#232323] z-[101] flex flex-col transition-transform duration-300 md:hidden ${drawerOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed top-0 bottom-0 left-0 w-[240px] bg-[#232323] z-[101] flex flex-col transition-transform duration-300 sm:hidden ${drawerOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <div className="font-serif text-[18px] text-white">Zinmac</div>
@@ -111,7 +111,7 @@ export default function DashboardLayout({
       <main className="flex-1">{children}</main>
 
       {/* 모바일 하단 탭바 */}
-      <nav className="md:hidden border-t border-[#D4CCC4] bg-white py-2 pb-3">
+      <nav className="sm:hidden border-t border-[#D4CCC4] bg-white py-2 pb-3">
         <div className="flex justify-around">
           {navLinks.map((link) => (
             <button
