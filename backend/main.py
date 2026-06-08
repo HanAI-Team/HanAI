@@ -6,10 +6,14 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from app.core.redis import check_rate_limit
+
 from app.auth.router import router as auth_router
 from app.diagnosis.router import router as diagnosis_router
+from app.feedback.router import router as feedback_router
+
 from app.core.config import settings
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.discord import notify_discord
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -23,12 +27,11 @@ from app.charting.router import router as charting_router
 from app.patients.router import router as patients_router
 from app.subscription.router import router as subscription_router
 
-
-async def notify_discord(message: str):
-    if not settings.DISCORD_WEBHOOK_URL:
-        return
-    async with httpx.AsyncClient() as client:
-        await client.post(settings.DISCORD_WEBHOOK_URL, json={"content": message})
+# async def notify_discord(message: str):
+#     if not settings.DISCORD_WEBHOOK_URL:
+#         return
+#     async with httpx.AsyncClient() as client:
+#         await client.post(settings.DISCORD_WEBHOOK_URL, json={"content": message})
 
 
 app = FastAPI(title="HanAI API")
@@ -99,6 +102,7 @@ app.include_router(patients_router, prefix="/api/patients", tags=["patients"])
 app.include_router(
     subscription_router, prefix="/api/subscription", tags=["subscription"]
 )
+app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
 
 
 @app.get("/health")

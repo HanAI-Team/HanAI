@@ -9,6 +9,7 @@ from app.charting.schema import (
     MedicalRecordResponse,
     UpdateAudioUrlRequest,
     UpdateStatusRequest,
+    UpdateMedicalHistoryRequest,
 )
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
@@ -70,3 +71,13 @@ async def update_audio(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.update_audio_url(db, record_id, data.audio_file_url)
+
+
+@router.patch("/{record_id}/medical-history", response_model=MedicalRecordResponse)
+async def update_medical_history(
+    record_id: uuid.UUID,
+    data: UpdateMedicalHistoryRequest,
+    current_doctor: Doctor = Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.update_medical_history(db, record_id, data.medical_history)

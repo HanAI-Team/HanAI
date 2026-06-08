@@ -53,7 +53,7 @@ async def update_record_status(db, record_id: UUID, new_status: str) -> MedicalR
         )
     medical_record.status = new_status
     await db.commit()
-    await db.refresh()
+    await db.refresh(medical_record)
     return medical_record
 
 
@@ -90,7 +90,7 @@ async def get_records_by_patient(
         .order_by(MedicalRecord.created_at.desc())
     )
     medical_records = result.scalars().all()
-    return medical_records
+    return list(medical_records)
 
 
 async def update_audio_url(db, record_id: UUID, audio_file_url: str) -> MedicalRecord:
@@ -105,7 +105,7 @@ async def update_audio_url(db, record_id: UUID, audio_file_url: str) -> MedicalR
         )
     medical_record.audio_file_url = audio_file_url
     await db.commit()
-    await db.refresh()
+    await db.refresh(medical_record)
     return medical_record
 
 
@@ -124,8 +124,9 @@ async def process_chart(
     # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
     deid = deidentifier.process(raw_text)
 
-    # 3. 한의학 용어 후처리 ← 추가
-    corrected_text = postprocessor.correct(deid.cleaned)
+    # 3. 한의학 용어 후처리 ← 추가 에러때문에 임시로 일단
+    # corrected_text = postprocessor.correct(deid.cleaned)
+    corrected_text = deid.cleaned
 
     # 4. AI 진단
     diagnosis = diagnose(corrected_text)
@@ -155,3 +156,18 @@ async def process_chart(
         "transcription": corrected_text,
         "diagnosis": diagnosis,
     }
+
+
+async def update_medical_history(
+    db: AsyncSession, record_id: UUID, medical_history: str | None
+) -> MedicalRecord:
+    result = await db.execute(
+        select(MedicalRecord).where(MedicalRecord.id == record_id)
+    )
+    medical_record = result.scalar_one_or_none()
+    if not medical_record:
+        raise HTTPException(status_code=404, detail="진료 기록을 찾을 수 없습니다.")
+    medical_record.medical_history = medical_history  # type: ignore
+    await db.commit()
+    await db.refresh(medical_record)
+    return medical_record

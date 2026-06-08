@@ -117,12 +117,20 @@ class MedicalRecord(Base):
     status = Column(String, default="recording")
     recorded_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    medical_history = Column(Text, nullable=True)
 
     patient = relationship("Patient", back_populates="medical_records")
     doctor = relationship("Doctor", back_populates="medical_records")
     hospital = relationship("Hospital", back_populates="medical_records")
-    ai_result = relationship("AIResult", back_populates="medical_record", uselist=False, cascade="all, delete-orphan")
-    prescriptions = relationship("Prescription", back_populates="medical_record", cascade="all, delete-orphan")
+    ai_result = relationship(
+        "AIResult",
+        back_populates="medical_record",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    prescriptions = relationship(
+        "Prescription", back_populates="medical_record", cascade="all, delete-orphan"
+    )
 
 
 class AIResult(Base):
@@ -159,7 +167,11 @@ class Feedback(Base):
     comment = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    ai_result = relationship("AIResult", back_populates="feedbacks")
+    ai_result = relationship(
+        "AIResult",
+        back_populates="feedbacks",
+        uselist=False,
+    )
     doctor = relationship("Doctor", back_populates="feedbacks")
 
 
