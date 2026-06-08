@@ -57,7 +57,6 @@ async def get_record(
 async def update_status(
     record_id: uuid.UUID,
     data: UpdateStatusRequest,
-    current_doctor: Doctor = Depends(get_current_doctor),
     db: AsyncSession = Depends(get_db),
 ):
     return await service.update_record_status(db, record_id, data.status)
@@ -77,7 +76,6 @@ async def update_audio(
 async def update_medical_history(
     record_id: uuid.UUID,
     data: UpdateMedicalHistoryRequest,
-    current_doctor: Doctor = Depends(get_current_doctor),
     db: AsyncSession = Depends(get_db),
 ):
     return await service.update_medical_history(db, record_id, data.medical_history)

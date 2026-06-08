@@ -119,10 +119,18 @@ export default function DiagnosisPage() {
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [feedbackRecordId, setFeedbackRecordId] = useState<string | null>(null);
+  const [memoSectionOpen, setMemoSectionOpen] = useState(false);
+  const [resultMemoOpen, setResultMemoOpen] = useState(false);
+  const [recordMemoOpen, setRecordMemoOpen] = useState(false);
+  const [recordHistoryOpen, setRecordHistoryOpen] = useState(false);
+  const [historyMemoOpenIds, setHistoryMemoOpenIds] = useState<Set<string>>(
+    new Set(),
+  );
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const urlPatientIdRef = useRef<string | null>(null);
 
   const filtered = patients.filter((p) => p.name.includes(search));
   const displayedPatients = filtered.slice(0, page * PAGE_SIZE);
@@ -131,6 +139,13 @@ export default function DiagnosisPage() {
     activeTab === "history" &&
     !!selectedPatient &&
     recordsLastFetchedFor !== selectedPatient.id;
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      urlPatientIdRef.current = params.get("patientId");
+    }
+  }, []);
 
   useEffect(() => {
     getPatients()
@@ -150,6 +165,16 @@ export default function DiagnosisPage() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [hasMore, patientsLoading]);
+
+  useEffect(() => {
+    if (!urlPatientIdRef.current || patients.length === 0) return;
+    const found = patients.find((p) => p.id === urlPatientIdRef.current);
+    if (found) {
+      setSelectedPatient(found);
+      setMemo(found.memo || "");
+      urlPatientIdRef.current = null;
+    }
+  }, [patients]);
 
   useEffect(() => {
     if (!selectedPatient) return;
@@ -348,6 +373,7 @@ export default function DiagnosisPage() {
         setResult(mapDiagnosisResult(raw));
       }
       setFeedbackAvailable(true);
+      setResultMemoOpen(false);
       setActiveTab("result");
     } catch (e: any) {
       setErrorMessage(
@@ -694,6 +720,9 @@ ${historyLine}
     { key: "한의학적 진단", Icon: Stethoscope },
     { key: "한약 처방", Icon: Leaf },
     { key: "침 처방", Icon: MapPin },
+  ];
+
+  const historyMemoSections: { key: string; Icon: LucideIcon }[] = [
     { key: "메모", Icon: FileText },
     { key: "병력", Icon: Clipboard },
   ];
@@ -742,6 +771,7 @@ ${historyLine}
                   setSavedSymptomText(undefined);
                   setActiveTab("record");
                   setMemoEditing(false);
+                  setMemoSectionOpen(false);
                   setMemo(patient.memo || "");
                   setRecordMedicalHistory({ hasHistory: false, text: "" });
                 }}
@@ -776,59 +806,77 @@ ${historyLine}
           )}
         </div>
         {selectedPatient && (
-          <div className="border-t border-[#D4CCC4] p-3 flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-[#8A8480] uppercase tracking-wide">
+          <div className="border-t border-[#D4CCC4]">
+            <button
+              onClick={() => {
+                if (!memoEditing) setMemoSectionOpen((p) => !p);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 text-left"
+            >
+              <span className="text-xs text-[#8A8480] uppercase tracking-wide">
                 메모
-              </div>
-              {!memoEditing && (
-                <button
-                  onClick={() => {
-                    setMemoEditing(true);
-                    setMemoDraft(selectedPatient.memo || "");
-                  }}
-                  className="p-1 rounded hover:bg-[#D4CCC4] transition-all"
-                >
-                  <Pencil className="w-3 h-3 text-[#8A8480]" />
-                </button>
+              </span>
+              {memoSectionOpen ? (
+                <ChevronUp className="w-3 h-3 text-[#B0AAA4]" />
+              ) : (
+                <ChevronDown className="w-3 h-3 text-[#B0AAA4]" />
               )}
-            </div>
-            {memoEditing ? (
-              <>
-                <textarea
-                  value={memoDraft}
-                  onChange={(e) => setMemoDraft(e.target.value)}
-                  autoFocus
-                  rows={3}
-                  className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1.5 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none transition-colors"
-                />
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={handleSaveMemo}
-                    className="flex-1 bg-[#EF6600] text-white rounded-md py-1.5 text-xs hover:opacity-90 transition-opacity"
-                  >
-                    저장
-                  </button>
-                  <button
-                    onClick={() => setMemoEditing(false)}
-                    className="flex-1 border border-[#C8BFB6] rounded-md py-1.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all"
-                  >
-                    취소
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div
-                onClick={() => {
-                  setMemoEditing(true);
-                  setMemoDraft(selectedPatient.memo || "");
-                }}
-                className="text-xs text-[#232323] cursor-pointer hover:bg-[#EDE8E2] rounded-md px-2 py-1.5 min-h-[28px] whitespace-pre-wrap transition-colors"
-              >
-                {selectedPatient.memo ? (
-                  selectedPatient.memo
+            </button>
+            {memoSectionOpen && (
+              <div className="px-3 pb-3 flex flex-col gap-1.5">
+                {!memoEditing && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => {
+                        setMemoEditing(true);
+                        setMemoDraft(selectedPatient.memo || "");
+                      }}
+                      className="p-1 rounded hover:bg-[#D4CCC4] transition-all"
+                    >
+                      <Pencil className="w-3 h-3 text-[#8A8480]" />
+                    </button>
+                  </div>
+                )}
+                {memoEditing ? (
+                  <>
+                    <textarea
+                      value={memoDraft}
+                      onChange={(e) => setMemoDraft(e.target.value)}
+                      autoFocus
+                      rows={3}
+                      className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1.5 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none transition-colors"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={handleSaveMemo}
+                        className="flex-1 bg-[#EF6600] text-white rounded-md py-1.5 text-xs hover:opacity-90 transition-opacity"
+                      >
+                        저장
+                      </button>
+                      <button
+                        onClick={() => setMemoEditing(false)}
+                        className="flex-1 border border-[#C8BFB6] rounded-md py-1.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </>
                 ) : (
-                  <span className="text-[#B0AAA4]">클릭하여 메모 입력...</span>
+                  <div
+                    onClick={() => {
+                      setMemoEditing(true);
+                      setMemoDraft(selectedPatient.memo || "");
+                    }}
+                    className="text-xs text-[#232323] cursor-pointer hover:bg-[#EDE8E2] rounded-md px-2 py-1.5 min-h-[28px] whitespace-pre-wrap transition-colors"
+                  >
+                    {selectedPatient.memo ? (
+                      selectedPatient.memo
+                    ) : (
+                      <span className="text-[#B0AAA4]">
+                        클릭하여 메모 입력...
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -852,6 +900,34 @@ ${historyLine}
 
       {/* 오른쪽 메인 */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 모바일 환자 정보 바 */}
+        <div className="sm:hidden bg-white border-b border-[#D4CCC4] flex items-center justify-between px-4 py-2 flex-shrink-0">
+          {selectedPatient ? (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white">
+                  {selectedPatient.name[0]}
+                </div>
+                <span className="text-sm font-medium text-[#232323]">
+                  {selectedPatient.name}
+                </span>
+              </div>
+              <button
+                onClick={() => router.push("/patients")}
+                className="text-xs text-[#8A8480] border border-[#D4CCC4] rounded-md px-3 py-1 hover:border-[#EF6600] hover:text-[#EF6600] transition-all"
+              >
+                변경
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => router.push("/patients")}
+              className="text-sm text-[#EF6600] font-medium"
+            >
+              환자를 선택하세요 →
+            </button>
+          )}
+        </div>
         <div className="flex border-b border-[#D4CCC4] bg-white flex-shrink-0">
           {(["record", "result", "history", "ask"] as const).map((tab, i) => (
             <button
@@ -863,7 +939,7 @@ ${historyLine}
                   : "text-[#8A8480] border-transparent hover:text-[#232323]"
               }`}
             >
-              {["진료 녹음", "진단 결과", "진료 이력", "한의학 검색"][i]}
+              {["진료 기록", "진단 결과", "진료 이력", "한의학 검색"][i]}
             </button>
           ))}
         </div>
@@ -950,60 +1026,90 @@ ${historyLine}
                     />
                   </label>
                 </div>
-                <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
-                  <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
-                    추가 메모
-                  </div>
-                  <textarea
-                    value={memo}
-                    onChange={(e) => setMemo(e.target.value)}
-                    placeholder="주요 증상, 특이사항...&#10;예) 소화불량 3개월, 스트레스"
-                    className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none min-h-[80px] transition-colors"
-                  />
+                <div className="bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setRecordMemoOpen((p) => !p)}
+                    className="w-full flex items-center justify-between px-5 py-3 text-left"
+                  >
+                    <span className="text-xs text-[#8A8480] uppercase tracking-wide">
+                      추가 메모
+                    </span>
+                    {recordMemoOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                    )}
+                  </button>
+                  {recordMemoOpen && (
+                    <div className="px-5 pb-5 border-t border-[#D4CCC4] pt-3">
+                      <textarea
+                        value={memo}
+                        onChange={(e) => setMemo(e.target.value)}
+                        placeholder="주요 증상, 특이사항...&#10;예) 소화불량 3개월, 스트레스"
+                        className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none min-h-[80px] transition-colors"
+                      />
+                    </div>
+                  )}
                 </div>
-                <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
-                  <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
-                    병력
-                  </div>
-                  <div className="flex gap-4 mb-2">
-                    {["없음", "있음"].map((opt) => (
-                      <label
-                        key={opt}
-                        className="flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <input
-                          type="radio"
-                          name="record-medical-history"
-                          checked={
-                            opt === "있음"
-                              ? recordMedicalHistory.hasHistory
-                              : !recordMedicalHistory.hasHistory
-                          }
-                          onChange={() =>
+                <div className="bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setRecordHistoryOpen((p) => !p)}
+                    className="w-full flex items-center justify-between px-5 py-3 text-left"
+                  >
+                    <span className="text-xs text-[#8A8480] uppercase tracking-wide">
+                      병력
+                    </span>
+                    {recordHistoryOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                    )}
+                  </button>
+                  {recordHistoryOpen && (
+                    <div className="px-5 pb-5 border-t border-[#D4CCC4] pt-3">
+                      <div className="flex gap-4 mb-2">
+                        {["없음", "있음"].map((opt) => (
+                          <label
+                            key={opt}
+                            className="flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <input
+                              type="radio"
+                              name="record-medical-history"
+                              checked={
+                                opt === "있음"
+                                  ? recordMedicalHistory.hasHistory
+                                  : !recordMedicalHistory.hasHistory
+                              }
+                              onChange={() =>
+                                setRecordMedicalHistory((prev) => ({
+                                  ...prev,
+                                  hasHistory: opt === "있음",
+                                }))
+                              }
+                              className="accent-[#EF6600]"
+                            />
+                            <span className="text-xs text-[#232323]">
+                              {opt}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      {recordMedicalHistory.hasHistory && (
+                        <textarea
+                          value={recordMedicalHistory.text}
+                          onChange={(e) =>
                             setRecordMedicalHistory((prev) => ({
                               ...prev,
-                              hasHistory: opt === "있음",
+                              text: e.target.value,
                             }))
                           }
-                          className="accent-[#EF6600]"
+                          placeholder="병력을 입력하세요"
+                          rows={3}
+                          className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none transition-colors"
                         />
-                        <span className="text-xs text-[#232323]">{opt}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {recordMedicalHistory.hasHistory && (
-                    <textarea
-                      value={recordMedicalHistory.text}
-                      onChange={(e) =>
-                        setRecordMedicalHistory((prev) => ({
-                          ...prev,
-                          text: e.target.value,
-                        }))
-                      }
-                      placeholder="병력을 입력하세요"
-                      rows={3}
-                      className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none transition-colors"
-                    />
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1097,25 +1203,44 @@ ${historyLine}
                         )}
                       </div>
                     ))}
-                    <div className="bg-white border border-[#D4CCC4] rounded-lg p-4">
-                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
-                        <FileText className="w-3.5 h-3.5" /> 메모
+                  </div>
+                  <div className="mt-3 bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => setResultMemoOpen((p) => !p)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide">
+                        <FileText className="w-3.5 h-3.5" /> 메모 · 병력
                       </div>
-                      <div className="text-sm text-[#232323] whitespace-pre-wrap">
-                        {memo.trim() || selectedPatient?.memo || "-"}
+                      {resultMemoOpen ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                      )}
+                    </button>
+                    {resultMemoOpen && (
+                      <div className="border-t border-[#D4CCC4] p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                            <FileText className="w-3.5 h-3.5" /> 메모
+                          </div>
+                          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                            {memo.trim() || selectedPatient?.memo || "-"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                            <Clipboard className="w-3.5 h-3.5" /> 병력
+                          </div>
+                          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                            {recordMedicalHistory.hasHistory &&
+                            recordMedicalHistory.text.trim()
+                              ? recordMedicalHistory.text.trim()
+                              : "없음"}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="bg-white border border-[#D4CCC4] rounded-lg p-4">
-                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
-                        <Clipboard className="w-3.5 h-3.5" /> 병력
-                      </div>
-                      <div className="text-sm text-[#232323] whitespace-pre-wrap">
-                        {recordMedicalHistory.hasHistory &&
-                        recordMedicalHistory.text.trim()
-                          ? recordMedicalHistory.text.trim()
-                          : "없음"}
-                      </div>
-                    </div>
+                    )}
                   </div>
                   <div className="bg-[#232323] rounded-lg p-5 mt-4 relative">
                     <div className="flex items-center gap-1.5 text-xs text-[#A09892] uppercase tracking-wide mb-3">
@@ -1193,6 +1318,7 @@ ${result.acupuncture?.join(", ")}
                         setFeedbackComment("");
                         setFeedbackSubmitted(false);
                         setFeedbackRecordId(null);
+                        setResultMemoOpen(false);
                       }}
                       className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all flex items-center justify-center gap-1.5"
                     >
@@ -1449,6 +1575,60 @@ ${result.acupuncture?.join(", ")}
                               ) : (
                                 <div className="text-sm text-[#232323] whitespace-pre-wrap">
                                   {r.chart_structured || "차트 내용 없음"}
+                                </div>
+                              )}
+                              {(sections?.["메모"] ||
+                                sections?.["병력"] ||
+                                r.medical_history) && (
+                                <div>
+                                  <button
+                                    onClick={() =>
+                                      setHistoryMemoOpenIds((prev) => {
+                                        const next = new Set(prev);
+                                        next.has(r.id)
+                                          ? next.delete(r.id)
+                                          : next.add(r.id);
+                                        return next;
+                                      })
+                                    }
+                                    className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide w-full text-left"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" /> 메모 ·
+                                    병력
+                                    {historyMemoOpenIds.has(r.id) ? (
+                                      <ChevronUp className="w-3 h-3 ml-auto" />
+                                    ) : (
+                                      <ChevronDown className="w-3 h-3 ml-auto" />
+                                    )}
+                                  </button>
+                                  {historyMemoOpenIds.has(r.id) && (
+                                    <div className="flex flex-col gap-3 mt-2">
+                                      {sections?.["메모"] && (
+                                        <div>
+                                          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                            <FileText className="w-3.5 h-3.5" />{" "}
+                                            메모
+                                          </div>
+                                          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                                            {sections["메모"]}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {(sections?.["병력"] ||
+                                        r.medical_history) && (
+                                        <div>
+                                          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                            <Clipboard className="w-3.5 h-3.5" />{" "}
+                                            병력
+                                          </div>
+                                          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                                            {sections?.["병력"] ||
+                                              r.medical_history}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
