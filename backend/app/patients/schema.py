@@ -50,6 +50,7 @@ class RecentRecordSummary(BaseModel):
     id: UUID
     recorded_at: Optional[datetime] = None
     chart_structured: Optional[str] = None
+    medical_history: Optional[str] = None
     raw_transcription: Optional[str] = None
 
 
