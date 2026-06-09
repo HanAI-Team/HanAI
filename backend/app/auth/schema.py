@@ -38,6 +38,10 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class ResetPasswordResponse(BaseModel):
+    temp_password: str
+
+
 class LoginRequest(BaseModel):
     license_number: str
     password: str
