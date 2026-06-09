@@ -19,6 +19,7 @@ export interface DiagnosisResult {
   herbs: string[]             // 약재
   acupuncture: string[]       // 침 처방
   created_at: string
+  claudeBased?: DiagnosisResult  // 클로드 AI 기반 (일반 지식) 결과
 }
 
 export interface Doctor {
