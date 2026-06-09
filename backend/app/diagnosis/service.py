@@ -19,7 +19,7 @@ def run_diagnosis(transcription: str) -> dict:
     return diagnose(transcription)
 
 
-def _format_chart_structured(diagnosis: dict) -> str:
+def _format_diagnosis_block(diagnosis: dict, label: str) -> str:
     constitution = (diagnosis.get("sasang_constitution") or {}).get("type", "-")
     tkm = (diagnosis.get("tkm_diagnosis") or {}).get("diagnosis_name", "-")
     western_name = (diagnosis.get("western_diagnosis") or {}).get("name", "-")
@@ -38,11 +38,18 @@ def _format_chart_structured(diagnosis: dict) -> str:
         if p.get("point_kr")
     )
     return (
+        f"■ {label}\n"
         f"▶ 사상체질\n{constitution}\n\n"
         f"▶ 한의학적 진단\n{tkm}\n양방 대응: {western_name}\n\n"
         f"▶ 한약 처방\n{herb_name}\n{herb_str}\n\n"
         f"▶ 침 처방\n{acu_str}"
     )
+
+
+def _format_chart_structured(diagnosis: dict) -> str:
+    dataset_part = _format_diagnosis_block(diagnosis.get("dataset_based") or {}, "결과 1")
+    claude_part = _format_diagnosis_block(diagnosis.get("claude_based") or {}, "결과 2")
+    return f"{dataset_part}\n\n{claude_part}"
 
 
 async def save_text_diagnosis(
@@ -82,6 +89,7 @@ async def run_diagnosis_for_record(record_id: uuid_mod.UUID, db: AsyncSession) -
 
     diagnosis = diagnose(record.chart_structured)
     print(diagnosis)
+    primary = diagnosis.get("dataset_based") or {}
     existing = await db.execute(
         select(AIResult).where(AIResult.medical_record_id == record_id)
     )
@@ -89,32 +97,32 @@ async def run_diagnosis_for_record(record_id: uuid_mod.UUID, db: AsyncSession) -
 
     if ai_result:
         ai_result.diagnosis_suggestion = json.dumps(
-            diagnosis.get("tkm_diagnosis"), ensure_ascii=False
+            primary.get("tkm_diagnosis"), ensure_ascii=False
         )
         ai_result.constitution_result = json.dumps(
-            diagnosis.get("sasang_constitution"), ensure_ascii=False
+            primary.get("sasang_constitution"), ensure_ascii=False
         )
         ai_result.prescription_suggestion = json.dumps(
-            diagnosis.get("herbal_prescription"), ensure_ascii=False
+            primary.get("herbal_prescription"), ensure_ascii=False
         )
         ai_result.acupuncture_suggestion = json.dumps(
-            diagnosis.get("acupuncture_prescription"), ensure_ascii=False
+            primary.get("acupuncture_prescription"), ensure_ascii=False
         )
         ai_result.reasoning = diagnosis
     else:
         ai_result = AIResult(
             medical_record_id=record_id,
             diagnosis_suggestion=json.dumps(
-                diagnosis.get("tkm_diagnosis"), ensure_ascii=False
+                primary.get("tkm_diagnosis"), ensure_ascii=False
             ),
             constitution_result=json.dumps(
-                diagnosis.get("sasang_constitution"), ensure_ascii=False
+                primary.get("sasang_constitution"), ensure_ascii=False
             ),
             prescription_suggestion=json.dumps(
-                diagnosis.get("herbal_prescription"), ensure_ascii=False
+                primary.get("herbal_prescription"), ensure_ascii=False
             ),
             acupuncture_suggestion=json.dumps(
-                diagnosis.get("acupuncture_prescription"), ensure_ascii=False
+                primary.get("acupuncture_prescription"), ensure_ascii=False
             ),
             reasoning=diagnosis,
         )

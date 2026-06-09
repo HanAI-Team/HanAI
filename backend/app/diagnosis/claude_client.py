@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import anthropic
 from dotenv import load_dotenv
@@ -8,7 +9,7 @@ from fastapi import HTTPException
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from app.diagnosis.prompt import PROMPT_TEMPLATE, QA_PROMPT_TEMPLATE
+from app.diagnosis.prompt import PROMPT_TEMPLATE, PROMPT_TEMPLATE_GENERAL, QA_PROMPT_TEMPLATE
 from app.diagnosis.anonymize import anonymize
 
 logger = logging.getLogger(__name__)
@@ -78,17 +79,7 @@ def _call_claude(prompt: str) -> str:
     return text.strip()
 
 
-def diagnose(transcription: str) -> dict:
-    anon = anonymize(transcription)
-    public_data = find_relevant_prescriptions(anon, n=5)
-    cafe_data = find_relevant_cases(anon, n=3)
-
-    prompt = PROMPT_TEMPLATE.format(
-        transcription=anon,
-        public_data=public_data or "DB 데이터 없음",
-        cafe_data=cafe_data or "임상 사례 없음",
-    )
-
+def _diagnose_from_prompt(prompt: str) -> dict:
     for attempt in range(2):
         raw = _call_claude(prompt)
         try:
@@ -97,6 +88,27 @@ def diagnose(transcription: str) -> dict:
             logger.warning(f"[diagnosis] JSON 파싱 실패 (시도 {attempt + 1}/2): {raw[:200]}")
 
     raise HTTPException(status_code=502, detail="AI 진단 결과를 파싱할 수 없습니다. 잠시 후 다시 시도해주세요.")
+
+
+def diagnose(transcription: str) -> dict:
+    anon = anonymize(transcription)
+    public_data = find_relevant_prescriptions(anon, n=5)
+    cafe_data = find_relevant_cases(anon, n=3)
+
+    dataset_prompt = PROMPT_TEMPLATE.format(
+        transcription=anon,
+        public_data=public_data or "DB 데이터 없음",
+        cafe_data=cafe_data or "임상 사례 없음",
+    )
+    general_prompt = PROMPT_TEMPLATE_GENERAL.format(transcription=anon)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        dataset_future = executor.submit(_diagnose_from_prompt, dataset_prompt)
+        general_future = executor.submit(_diagnose_from_prompt, general_prompt)
+        return {
+            "dataset_based": dataset_future.result(),
+            "claude_based": general_future.result(),
+        }
 
 
 def ask(question: str) -> str:

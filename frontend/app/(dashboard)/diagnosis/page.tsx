@@ -192,7 +192,7 @@ export default function DiagnosisPage() {
         setResult(mapSectionsToResult(sections, selectedPatient.id));
       })
       .catch(console.error);
-  }, [selectedPatient]);
+  }, [selectedPatient?.id]);
 
   useEffect(() => {
     if (activeTab !== "history" || !selectedPatient) return;
@@ -306,7 +306,7 @@ export default function DiagnosisPage() {
     return s === "null" || s === "undefined" || s === "" ? "-" : s;
   }
 
-  function mapDiagnosisResult(raw: Record<string, unknown>): DiagnosisResult {
+  function mapSingleDiagnosis(raw: Record<string, unknown>): DiagnosisResult {
     const r = raw as Record<string, Record<string, unknown>>;
     const herb = (r.herbal_prescription as Record<string, unknown>) ?? {};
     const composition =
@@ -333,6 +333,33 @@ export default function DiagnosisPage() {
         .filter((p) => p.point_kr && String(p.point_kr) !== "null")
         .map((p) => `${p.point_kr}(${p.point_code})`),
     };
+  }
+
+  function formatResultBlock(r: DiagnosisResult, label: string): string {
+    return `■ ${label}
+▶ 사상체질
+${r.constitution}
+
+▶ 한의학적 진단
+${r.diagnosis}
+양방 대응: ${r.western_diagnosis}
+
+▶ 한약 처방
+${r.prescription}
+${r.herbs?.join(", ")}
+
+▶ 침 처방
+${r.acupuncture?.join(", ")}`;
+  }
+
+  function mapDiagnosisResult(raw: Record<string, unknown>): DiagnosisResult {
+    const datasetBased = mapSingleDiagnosis(
+      (raw.dataset_based as Record<string, unknown>) ?? {},
+    );
+    const claudeBased = mapSingleDiagnosis(
+      (raw.claude_based as Record<string, unknown>) ?? {},
+    );
+    return { ...datasetBased, claudeBased };
   }
 
   async function startAnalysis() {
@@ -420,27 +447,35 @@ export default function DiagnosisPage() {
     try {
       if (askMode === "diagnose") {
         const { result } = await diagnoseText(q);
-        const r = result as Record<string, Record<string, unknown>>;
-        const constitution = r.sasang_constitution?.type ?? "-";
-        const diagnosis = r.tkm_diagnosis?.diagnosis_name ?? "-";
-        const western = (r.western_diagnosis?.name ?? "-") as string;
-        const herb = r.herbal_prescription as Record<string, unknown>;
-        const herbName = herb?.name_kr ?? "-";
-        const composition = (
-          (herb?.composition as { herb: string; dosage: string }[]) ?? []
-        )
-          .map((c) => `${c.herb} ${c.dosage}`)
-          .join(", ");
-        const acu = (
-          (r.acupuncture_prescription as unknown as {
-            point_kr: string;
-            point_code: string;
-          }[]) ?? []
-        )
-          .map((p) => `${p.point_kr}(${p.point_code})`)
-          .join(", ");
+        const raw = result as Record<string, Record<string, unknown>>;
+
+        const formatOne = (r: Record<string, unknown>) => {
+          const rr = r as Record<string, Record<string, unknown>>;
+          const constitution = rr.sasang_constitution?.type ?? "-";
+          const diagnosis = rr.tkm_diagnosis?.diagnosis_name ?? "-";
+          const western = (rr.western_diagnosis?.name ?? "-") as string;
+          const herb = rr.herbal_prescription as Record<string, unknown>;
+          const herbName = herb?.name_kr ?? "-";
+          const composition = (
+            (herb?.composition as { herb: string; dosage: string }[]) ?? []
+          )
+            .map((c) => `${c.herb} ${c.dosage}`)
+            .join(", ");
+          const acu = (
+            (rr.acupuncture_prescription as unknown as {
+              point_kr: string;
+              point_code: string;
+            }[]) ?? []
+          )
+            .map((p) => `${p.point_kr}(${p.point_code})`)
+            .join(", ");
+          return `▶ 사상체질: ${constitution}\n▶ 한의학 진단: ${diagnosis}\n▶ 양방 진단: ${western}\n▶ 한약 처방: ${herbName}\n  ${composition}\n▶ 침 처방: ${acu}`;
+        };
+
+        const datasetText = formatOne(raw.dataset_based ?? {});
+        const claudeText = formatOne(raw.claude_based ?? {});
         updateLast(
-          `▶ 사상체질: ${constitution}\n▶ 한의학 진단: ${diagnosis}\n▶ 양방 진단: ${western}\n▶ 한약 처방: ${herbName}\n  ${composition}\n▶ 침 처방: ${acu}`,
+          `[결과 1]\n${datasetText}\n\n[결과 2]\n${claudeText}`,
         );
       } else {
         const res = await askDiagnosis(q);
@@ -543,22 +578,13 @@ export default function DiagnosisPage() {
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
         ? recordMedicalHistory.text.trim()
         : "없음";
+    const resultBlock = result.claudeBased
+      ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
+      : formatResultBlock(result, "진단 결과");
     const text = `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
 
-▶ 사상체질
-${result.constitution}
-
-▶ 한의학적 진단
-${result.diagnosis}
-양방 대응: ${result.western_diagnosis}
-
-▶ 한약 처방
-${result.prescription}
-${result.herbs?.join(", ")}
-
-▶ 침 처방
-${result.acupuncture?.join(", ")}
+${resultBlock}
 
 ▶ 메모
 ${memoLine}
@@ -621,22 +647,13 @@ ${historyLine}
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
         ? recordMedicalHistory.text.trim()
         : "없음";
+    const resultBlock = result.claudeBased
+      ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
+      : formatResultBlock(result, "진단 결과");
     const text = `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
 
-▶ 사상체질
-${result.constitution}
-
-▶ 한의학적 진단
-${result.diagnosis}
-양방 대응: ${result.western_diagnosis}
-
-▶ 한약 처방
-${result.prescription}
-${result.herbs?.join(", ")}
-
-▶ 침 처방
-${result.acupuncture?.join(", ")}
+${resultBlock}
 
 ▶ 메모
 ${memoLine}
@@ -686,34 +703,38 @@ ${historyLine}
     return parts.join(", ") || patient.phone || "-";
   }
 
-  const resultCards: {
+  function buildResultCards(r: DiagnosisResult | undefined | null): {
     label: string;
     Icon: LucideIcon;
     value: string | undefined;
     sub?: string;
     tags?: string[];
-  }[] = result
-    ? [
-        { label: "사상체질", Icon: User, value: result.constitution },
-        {
-          label: "한의학적 진단",
-          Icon: Stethoscope,
-          value: result.diagnosis,
-          sub: `양방: ${result.western_diagnosis}`,
-        },
-        {
-          label: "한약 처방",
-          Icon: Leaf,
-          value: result.prescription,
-          tags: result.herbs,
-        },
-        {
-          label: "침 처방",
-          Icon: MapPin,
-          value: result.acupuncture?.join(" · "),
-        },
-      ]
-    : [];
+  }[] {
+    if (!r) return [];
+    return [
+      { label: "사상체질", Icon: User, value: r.constitution },
+      {
+        label: "한의학적 진단",
+        Icon: Stethoscope,
+        value: r.diagnosis,
+        sub: `양방: ${r.western_diagnosis}`,
+      },
+      {
+        label: "한약 처방",
+        Icon: Leaf,
+        value: r.prescription,
+        tags: r.herbs,
+      },
+      {
+        label: "침 처방",
+        Icon: MapPin,
+        value: r.acupuncture?.join(" · "),
+      },
+    ];
+  }
+
+  const resultCards = buildResultCards(result);
+  const claudeResultCards = buildResultCards(result?.claudeBased);
 
   const historySections: { key: string; Icon: LucideIcon }[] = [
     { key: "사상체질", Icon: User },
@@ -1162,6 +1183,11 @@ ${historyLine}
                 </div>
               ) : (
                 <>
+                  {claudeResultCards.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                      <FolderOpen className="w-3.5 h-3.5" /> 결과 1
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {resultCards.map(({ label, Icon, value, sub, tags }, i) => (
                       <div
@@ -1204,6 +1230,59 @@ ${historyLine}
                       </div>
                     ))}
                   </div>
+                  {claudeResultCards.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2 mt-4">
+                        <Sparkles className="w-3.5 h-3.5" /> 결과 2
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {claudeResultCards.map(
+                          ({ label, Icon, value, sub, tags }, i) => (
+                            <div
+                              key={i}
+                              className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative"
+                            >
+                              <button
+                                onClick={() =>
+                                  navigator.clipboard.writeText(
+                                    `${label}: ${value}`,
+                                  )
+                                }
+                                className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
+                              >
+                                <Clipboard className="w-3 h-3" /> 복사
+                              </button>
+                              <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                                <Icon className="w-3.5 h-3.5" /> {label}
+                              </div>
+                              <div
+                                className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}
+                              >
+                                {value}
+                              </div>
+                              {sub && (
+                                <div className="text-xs text-[#8A8480] mt-1">
+                                  {sub}
+                                </div>
+                              )}
+                              {tags && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {tags.map((t, i) => (
+                                    <span
+                                      key={i}
+                                      className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
+                                    >
+                                      {t}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    </>
+                  )}
                   <div className="mt-3 bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
                     <button
                       onClick={() => setResultMemoOpen((p) => !p)}
@@ -1269,19 +1348,11 @@ ${historyLine}
                       {`[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient?.name} / ${new Date().toLocaleDateString("ko-KR")}
 
-▶ 사상체질
-${result.constitution}
-
-▶ 한의학적 진단
-${result.diagnosis}
-양방: ${result.western_diagnosis}
-
-▶ 한약 처방
-${result.prescription}
-${result.herbs?.join(", ")}
-
-▶ 침 처방
-${result.acupuncture?.join(", ")}
+${
+  result.claudeBased
+    ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
+    : formatResultBlock(result, "진단 결과")
+}
 
 ※ AI 참고용 / 최종 판단은 담당 한의사`}
                     </pre>
