@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.redis import add_token_blacklist
 from app.auth.datahub import verify_medical_license
@@ -16,6 +17,7 @@ from app.auth.schema import (
     RegisterResponse,
     TokenResponse,
     RegisterVerifyRequest,
+    ResetPasswordResponse,
 )
 from app.core.config import settings
 from app.core.database import get_db
@@ -26,6 +28,31 @@ from app.core.redis import add_session, remove_session
 
 router = APIRouter(tags=["auth"])
 bearer_scheme = HTTPBearer()
+
+
+import secrets
+
+
+@router.post("/admin/reset-password/{doctor_id}", response_model=ResetPasswordResponse)
+async def reset_password(
+    doctor_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+):
+
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="유효하지 않은 관리자 키입니다.")
+
+    result = await db.execute(select(Doctor).where(Doctor.id == doctor_id))
+
+    doctor = result.scalar_one_or_none()
+    if doctor is None:
+        raise HTTPException(status_code=404, detail="의사를 찾을 수 없습니다.")
+    temp_password = secrets.token_urlsafe(8)
+    doctor.password_hash = service.pwd_context.hash(temp_password)  # type: ignore
+    await db.commit()
+
+    return {"temp_password": temp_password}
 
 
 @router.post(
