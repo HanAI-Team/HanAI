@@ -22,6 +22,12 @@ export default function DashboardLayout({
     { label: "설정", path: "/settings" },
   ];
 
+  const mobileNavLinks = [
+    { label: "홈", path: "/home" },
+    { label: "진료", path: "/patients" },
+    { label: "설정", path: "/settings" },
+  ];
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* PC 네비바 */}
@@ -113,17 +119,22 @@ export default function DashboardLayout({
       {/* 모바일 하단 탭바 */}
       <nav className="sm:hidden border-t border-[#D4CCC4] bg-white py-2 pb-3">
         <div className="flex justify-around">
-          {navLinks.map((link) => (
-            <button
-              key={link.path}
-              onClick={() => router.push(link.path)}
-              className={`flex flex-col items-center gap-0.5 px-4 py-1 ${
-                pathname === link.path ? "text-[#EF6600]" : "text-[#B0AAA4]"
-              }`}
-            >
-              <span className="text-[10px]">{link.label}</span>
-            </button>
-          ))}
+          {mobileNavLinks.map((link) => {
+            const isActive =
+              pathname === link.path ||
+              (link.path === "/patients" && pathname === "/diagnosis");
+            return (
+              <button
+                key={link.path}
+                onClick={() => router.push(link.path)}
+                className={`flex flex-col items-center gap-0.5 px-4 py-1 ${
+                  isActive ? "text-[#EF6600]" : "text-[#B0AAA4]"
+                }`}
+              >
+                <span className="text-[10px]">{link.label}</span>
+              </button>
+            );
+          })}
         </div>
       </nav>
     </div>
