@@ -13,10 +13,11 @@ async def transcribe_chunks(audio_bytes: bytes, format: str = "mp3") -> str:
 
     Args:
         audio_bytes : 전체 음성 파일 바이트
-        format      : 오디오 포맷 (사용하지 않음, 호환성 유지용)
+        format      : 오디오 포맷 (mp3, m4a, wav 등)
 
     Returns:
         전체 변환 텍스트
     """
-    logger.info(f"[Chunker] 음성 파일 수신 — {len(audio_bytes) / 1024:.1f}KB")
-    return await clova_client.transcribe(audio_bytes)
+    filename = f"audio.{format}"
+    logger.info(f"[Chunker] 음성 파일 수신 — {len(audio_bytes) / 1024:.1f}KB, format={format}")
+    return await clova_client.transcribe(audio_bytes, filename=filename)
