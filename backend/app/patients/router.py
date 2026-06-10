@@ -7,8 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from app.core.database import get_db
-from app.core.deps import get_current_doctor
-from app.core.models import Doctor, MedicalRecord, Patient
+from app.core.deps import get_current_doctor, get_current_user
+from app.core.models import Doctor, MedicalRecord, Patient, StaffAccount
 from app.patients import service
 from app.core.models import AIResult
 from app.patients.schema import (
@@ -78,7 +78,7 @@ async def get_stats(
 @router.get("/", response_model=PatientListResponse)
 async def get_patients(
     db: AsyncSession = Depends(get_db),
-    doctor: Doctor = Depends(get_current_doctor),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
     page: int = 1,
     size: int = 20,
     search: str | None = None,
@@ -174,7 +174,7 @@ async def import_csv(
 async def get_patient(
     patient_id: UUID,
     db: AsyncSession = Depends(get_db),
-    doctor: Doctor = Depends(get_current_doctor),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
 ):
     patient = await service.get_patient(db, doctor, patient_id)
 
@@ -277,7 +277,7 @@ async def delete_record(
 async def get_patient_records(
     patient_id: UUID,
     db: AsyncSession = Depends(get_db),
-    doctor: Doctor = Depends(get_current_doctor),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
 ):
     patient, records = await service.get_patient_with_records(db, doctor, patient_id)
     if not patient:

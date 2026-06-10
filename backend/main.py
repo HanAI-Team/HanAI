@@ -10,6 +10,7 @@ from app.core.redis import check_rate_limit
 from app.auth.router import router as auth_router
 from app.diagnosis.router import router as diagnosis_router
 from app.feedback.router import router as feedback_router
+from app.staff.router import router as staff_router
 
 from app.core.config import settings
 from fastapi.middleware.cors import CORSMiddleware
@@ -103,6 +104,7 @@ app.include_router(
     subscription_router, prefix="/api/subscription", tags=["subscription"]
 )
 app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
+app.include_router(staff_router, prefix="/api/staff", tags=["staff"])
 
 
 @app.get("/health")

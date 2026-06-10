@@ -85,6 +85,7 @@ async def get_doctor_by_license(db: AsyncSession, license_number: str) -> Doctor
 async def get_pending_doctors(db: AsyncSession) -> list:
     from app.core.models import Hospital
     from sqlalchemy import join
+
     result = await db.execute(
         select(Doctor, Hospital.name.label("clinic_name"))
         .join(Hospital, Doctor.hospital_id == Hospital.id)
@@ -125,3 +126,10 @@ async def approve_doctor(db: AsyncSession, doctor_id: UUID) -> dict:
         UUID(str(doctor.id)), UUID(str(doctor.hospital_id)), str(doctor.role)
     )
     return {"doctor": doctor, "access_token": access_token}
+
+
+async def get_staff_by_email(db: AsyncSession, email: str):
+    from app.core.models import StaffAccount
+
+    result = await db.execute(select(StaffAccount).where(StaffAccount.email == email))
+    return result.scalar_one_or_none()
