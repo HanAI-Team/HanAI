@@ -7,6 +7,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.redis import add_token_blacklist
 from app.auth.datahub import verify_medical_license
 
+
+from app.core.deps import get_current_user
+from app.core.models import Doctor, StaffAccount
+from typing import Union
+
+
 from app.auth import service
 from app.auth.schema import (
     AdminApproveResponse,
@@ -228,15 +234,39 @@ async def admin_approve(
     )
 
 
+# @router.get("/me")
+# async def get_me(doctor: Doctor = Depends(get_current_doctor)):
+#     return {
+#         "id": doctor.id,
+#         "name": doctor.name,
+#         "license_number": doctor.license_number,
+#         "role": doctor.role,
+#         "hospital_id": doctor.hospital_id,
+#     }
 @router.get("/me")
-async def get_me(doctor: Doctor = Depends(get_current_doctor)):
-    return {
-        "id": doctor.id,
-        "name": doctor.name,
-        "license_number": doctor.license_number,
-        "role": doctor.role,
-        "hospital_id": doctor.hospital_id,
-    }
+async def get_me(
+    user: Union[Doctor, StaffAccount] = Depends(get_current_user),
+):
+    if isinstance(user, Doctor):
+        return {
+            "id": user.id,
+            "name": user.name,
+            "license_number": user.license_number,
+            "role": user.role,
+            "hospital_id": user.hospital_id,
+        }
+    else:
+        return {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "hospital_id": user.hospital_id,
+        }
+
+    # JWT role로 Doctor/Staff 구분
+    # Doctor면 doctor 정보 반환
+    # Staff면 staff 정보 반환
 
 
 @router.post("/staff/login", response_model=TokenResponse)
