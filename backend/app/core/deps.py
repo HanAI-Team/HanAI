@@ -4,7 +4,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Union
 
+from app.core.models import Doctor, StaffAccount, Subscription
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.models import Doctor, Subscription
@@ -79,3 +81,43 @@ async def require_premium(
             detail="Premium 구독이 필요합니다.",
         )
     return current_doctor
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Union[Doctor, StaffAccount]:
+    if credentials is None:
+        raise _401
+    is_blacklist = await is_token_blacklisted(credentials.credentials)
+    if is_blacklist:
+        raise _401
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        user_id: str | None = payload.get("sub")
+        role: str | None = payload.get("role")
+        if user_id is None:
+            raise _401
+        user_uuid = UUID(user_id)
+    except (JWTError, ValueError):
+        raise _401
+
+    # role로 Doctor/Staff 구분
+    if role in ("owner", "associate"):
+        result = await db.execute(select(Doctor).where(Doctor.id == user_uuid))
+        user = result.scalar_one_or_none()
+    else:
+        result = await db.execute(
+            select(StaffAccount).where(StaffAccount.id == user_uuid)
+        )
+        user = result.scalar_one_or_none()
+        if user and not bool(user.is_active):
+            raise _401
+
+    if user is None:
+        raise _401
+    return user

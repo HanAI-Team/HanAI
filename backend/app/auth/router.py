@@ -18,6 +18,7 @@ from app.auth.schema import (
     TokenResponse,
     RegisterVerifyRequest,
     ResetPasswordResponse,
+    StaffLoginRequest,
 )
 from app.core.config import settings
 from app.core.database import get_db
@@ -224,4 +225,52 @@ async def admin_approve(
         name=str(doctor.name),
         access_token=result["access_token"],
         approved_at=doctor.approved_at,
+    )
+
+
+@router.get("/me")
+async def get_me(doctor: Doctor = Depends(get_current_doctor)):
+    return {
+        "id": doctor.id,
+        "name": doctor.name,
+        "license_number": doctor.license_number,
+        "role": doctor.role,
+        "hospital_id": doctor.hospital_id,
+    }
+
+
+@router.post("/staff/login", response_model=TokenResponse)
+async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db)):
+    staff = await service.get_staff_by_email(db, data.email)
+    if staff is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="등록되지 않은 이메일입니다.",
+        )
+    is_verified = service.pwd_context.verify(data.password, str(staff.password_hash))
+    if not is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="비밀번호가 일치하지 않습니다.",
+        )
+    if not bool(staff.is_active):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="비활성화된 계정입니다.",
+        )
+    token = service.create_access_token(
+        UUID(str(staff.id)),
+        UUID(str(staff.hospital_id)),
+        str(staff.role),
+    )
+    allowed = await add_session(
+        str(staff.hospital_id), token, "basic", settings.JWT_EXPIRE_MINUTES * 60
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=429, detail="이미 다른 기기에서 로그인 중입니다."
+        )
+    return TokenResponse(
+        access_token=token,
+        expires_in=settings.JWT_EXPIRE_MINUTES * 60,
     )
