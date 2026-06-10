@@ -1,10 +1,16 @@
 import { apiCall } from './client'
 
+export interface ChartingResponse {
+  record_id: string
+  transcription: string
+  diagnosis: Record<string, unknown>
+}
+
 export async function uploadAndAnalyze(
   patientId: string,
   audioFile: File,
   medical_history?: string | null,
-) {
+): Promise<ChartingResponse> {
   const token = localStorage.getItem('token')
   const formData = new FormData()
   formData.append('patient_id', patientId)

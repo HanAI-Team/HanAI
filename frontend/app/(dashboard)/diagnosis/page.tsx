@@ -390,7 +390,7 @@ ${r.acupuncture?.join(", ")}`;
           audioFile,
           medicalHistory,
         );
-        setResult(data);
+        setResult(mapDiagnosisResult(data.diagnosis));
       } else {
         const { result: raw } = await diagnoseText(
           symptomText.trim(),
