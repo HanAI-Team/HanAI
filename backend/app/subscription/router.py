@@ -14,8 +14,4 @@ async def get_subscription(
     db: AsyncSession = Depends(get_db), doctor: Doctor = Depends(get_current_doctor)
 ):
     subscription = await service.get_subscription_or_404(db, doctor)
-    is_active = service.check_subscription_active(subscription)
-    if is_active:
-        result = SubscriptionResponse.model_validate(subscription)
-        result.is_active = is_active
-        return result
+    return SubscriptionResponse.model_validate(subscription)

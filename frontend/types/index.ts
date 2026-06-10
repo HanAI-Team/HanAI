@@ -22,6 +22,14 @@ export interface DiagnosisResult {
   claudeBased?: DiagnosisResult  // 클로드 AI 기반 (일반 지식) 결과
 }
 
+export interface Staff {
+  id: string
+  name: string
+  email: string
+  role: string
+  is_active: boolean
+}
+
 export interface Doctor {
   id: string
   name: string

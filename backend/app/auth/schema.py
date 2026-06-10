@@ -4,13 +4,11 @@ from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, field_validator
-from pydantic import BaseModel, EmailStr, field_validator
 
 
 class RegisterVerifyRequest(BaseModel):
     name: str
     license_number: str
-    password: str
     password: str
     jumin: str
     phone: str
@@ -24,7 +22,6 @@ class RegisterVerifyRequest(BaseModel):
 class RegisterRequest(BaseModel):
     name: str
     license_number: str
-    password: str
     password: str
     clinic_name: str
     clinic_address: Optional[str] = None
@@ -44,7 +41,6 @@ class ResetPasswordResponse(BaseModel):
 
 class LoginRequest(BaseModel):
     license_number: str
-    password: str
     password: str
 
 
