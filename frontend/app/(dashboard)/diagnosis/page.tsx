@@ -1183,106 +1183,133 @@ ${historyLine}
                 </div>
               ) : (
                 <>
-                  {claudeResultCards.length > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
-                      <FolderOpen className="w-3.5 h-3.5" /> 결과 1
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {resultCards.map(({ label, Icon, value, sub, tags }, i) => (
-                      <div
-                        key={i}
-                        className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative"
-                      >
-                        <button
-                          onClick={() =>
-                            navigator.clipboard.writeText(`${label}: ${value}`)
-                          }
-                          className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
-                        >
-                          <Clipboard className="w-3 h-3" /> 복사
-                        </button>
-                        <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
-                          <Icon className="w-3.5 h-3.5" /> {label}
-                        </div>
-                        <div
-                          className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}
-                        >
-                          {value}
-                        </div>
-                        {sub && (
-                          <div className="text-xs text-[#8A8480] mt-1">
-                            {sub}
-                          </div>
-                        )}
-                        {tags && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {tags.map((t, i) => (
-                              <span
-                                key={i}
-                                className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
-                              >
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {claudeResultCards.length > 0 && (
-                    <>
-                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2 mt-4">
-                        <Sparkles className="w-3.5 h-3.5" /> 결과 2
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {claudeResultCards.map(
-                          ({ label, Icon, value, sub, tags }, i) => (
-                            <div
-                              key={i}
-                              className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative"
-                            >
-                              <button
-                                onClick={() =>
-                                  navigator.clipboard.writeText(
-                                    `${label}: ${value}`,
-                                  )
-                                }
-                                className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
-                              >
-                                <Clipboard className="w-3 h-3" /> 복사
-                              </button>
-                              <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
-                                <Icon className="w-3.5 h-3.5" /> {label}
-                              </div>
-                              <div
-                                className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}
-                              >
-                                {value}
-                              </div>
-                              {sub && (
-                                <div className="text-xs text-[#8A8480] mt-1">
-                                  {sub}
-                                </div>
-                              )}
-                              {tags && (
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {tags.map((t, i) => (
-                                    <span
-                                      key={i}
-                                      className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
-                                    >
-                                      {t}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
+                  {claudeResultCards.length > 0
+                    ? resultCards.map(({ label, Icon, value, sub, tags }, i) => {
+                        const c2 = claudeResultCards[i];
+                        return (
+                          <div key={i} className="mb-3 last:mb-0">
+                            <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                              <Icon className="w-3.5 h-3.5" /> {label}
                             </div>
-                          ),
-                        )}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative">
+                                <button
+                                  onClick={() =>
+                                    navigator.clipboard.writeText(`${label}: ${value}`)
+                                  }
+                                  className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
+                                >
+                                  <Clipboard className="w-3 h-3" /> 복사
+                                </button>
+                                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#EF6600] uppercase tracking-wide mb-1.5">
+                                  <FolderOpen className="w-3 h-3" /> 결과 1
+                                </div>
+                                <div
+                                  className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}
+                                >
+                                  {value}
+                                </div>
+                                {sub && (
+                                  <div className="text-xs text-[#8A8480] mt-1">
+                                    {sub}
+                                  </div>
+                                )}
+                                {tags && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {tags.map((t, j) => (
+                                      <span
+                                        key={j}
+                                        className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
+                                      >
+                                        {t}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative">
+                                <button
+                                  onClick={() =>
+                                    navigator.clipboard.writeText(`${label}: ${c2.value}`)
+                                  }
+                                  className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
+                                >
+                                  <Clipboard className="w-3 h-3" /> 복사
+                                </button>
+                                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                  <Sparkles className="w-3 h-3" /> 결과 2
+                                </div>
+                                <div
+                                  className={`text-sm font-semibold ${c2.tags ? "text-[#EF6600]" : "text-[#232323]"}`}
+                                >
+                                  {c2.value}
+                                </div>
+                                {c2.sub && (
+                                  <div className="text-xs text-[#8A8480] mt-1">
+                                    {c2.sub}
+                                  </div>
+                                )}
+                                {c2.tags && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {c2.tags.map((t, j) => (
+                                      <span
+                                        key={j}
+                                        className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
+                                      >
+                                        {t}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {resultCards.map(({ label, Icon, value, sub, tags }, i) => (
+                          <div
+                            key={i}
+                            className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative"
+                          >
+                            <button
+                              onClick={() =>
+                                navigator.clipboard.writeText(`${label}: ${value}`)
+                              }
+                              className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
+                            >
+                              <Clipboard className="w-3 h-3" /> 복사
+                            </button>
+                            <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                              <Icon className="w-3.5 h-3.5" /> {label}
+                            </div>
+                            <div
+                              className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}
+                            >
+                              {value}
+                            </div>
+                            {sub && (
+                              <div className="text-xs text-[#8A8480] mt-1">
+                                {sub}
+                              </div>
+                            )}
+                            {tags && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {tags.map((t, j) => (
+                                  <span
+                                    key={j}
+                                    className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
+                                  >
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    </>
-                  )}
+                    )}
                   <div className="mt-3 bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
                     <button
                       onClick={() => setResultMemoOpen((p) => !p)}
