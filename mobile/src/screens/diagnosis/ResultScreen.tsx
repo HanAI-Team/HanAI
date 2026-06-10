@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Alert, ScrollView, Text, TextInput, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Clipboard from "expo-clipboard";
 import {
   User,
@@ -35,10 +36,21 @@ export function ResultScreen({ route }: Props) {
   );
   const result = isDual ? diagnosis[activeTab] : diagnosis;
 
+  const [saved, setSaved] = useState(false);
   const [savedRecordId, setSavedRecordId] = useState(recordId || "");
   const [feedbackHelpful, setFeedbackHelpful] = useState<boolean | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setSaved(false);
+      setSavedRecordId(recordId || "");
+      setFeedbackHelpful(null);
+      setFeedbackComment("");
+      setFeedbackSubmitted(false);
+    }, [recordId])
+  );
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -48,6 +60,7 @@ export function ResultScreen({ route }: Props) {
         rawTranscription
       ),
     onSuccess: (data) => {
+      setSaved(true);
       setSavedRecordId(data.id);
       Alert.alert("저장 완료", "진료 기록이 저장되었습니다.");
     },
@@ -151,15 +164,15 @@ export function ResultScreen({ route }: Props) {
         </View>
         <View className="flex-1">
           <Button
-            label={savedRecordId ? "저장됨" : "저장"}
+            label={saved ? "저장됨" : "저장"}
             onPress={() => saveMutation.mutate()}
             loading={saveMutation.isPending}
-            disabled={!!savedRecordId}
+            disabled={saved}
           />
         </View>
       </View>
 
-      {savedRecordId && (
+      {saved && (
         <Card>
           {feedbackSubmitted ? (
             <View className="flex-row items-center justify-center gap-2 py-1">

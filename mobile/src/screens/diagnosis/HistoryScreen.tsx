@@ -2,15 +2,17 @@ import React, { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { ChevronDown, ChevronUp, User, Stethoscope, Leaf, MapPin, FileText, Clipboard } from "lucide-react-native";
 import { useQuery } from "@tanstack/react-query";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { DiagnosisStackParamList } from "../../navigation/types";
+import { RouteProp } from "@react-navigation/native";
+import { Patient } from "../../types";
 import { getPatientRecords } from "../../api/patients";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingIndicator } from "../../components/LoadingIndicator";
 import { parseChartSections } from "../../utils/chart";
 
-type Props = NativeStackScreenProps<DiagnosisStackParamList, "History">;
+type Props = {
+  route: RouteProp<{ History: { patient: Patient } }, "History">;
+};
 
 const SECTIONS = [
   { key: "사상체질", Icon: User },
