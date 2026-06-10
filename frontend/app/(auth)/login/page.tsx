@@ -1,11 +1,13 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { login } from '@/lib/api/auth'
+import { login, staffLogin } from '@/lib/api/auth'
 
 export default function LoginPage() {
   const router = useRouter()
+  const [userType, setUserType] = useState<'doctor' | 'nurse'>('doctor')
   const [licenseNumber, setLicenseNumber] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -15,7 +17,10 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     try {
-      const data = await login(licenseNumber, password)
+      const data =
+        userType === 'doctor'
+          ? await login(licenseNumber, password)
+          : await staffLogin(email, password)
       localStorage.setItem('token', data.access_token)
       router.push('/home')
     } catch (e: any) {
@@ -48,25 +53,66 @@ export default function LoginPage() {
           <p className="text-sm text-[#8A8480] mb-7">
             면허 한의사 전용 서비스입니다
           </p>
+
+          {/* 의사/간호사 탭 */}
+          <div className="flex bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-1 mb-5">
+            {[
+              { value: 'doctor', label: '의사' },
+              { value: 'nurse', label: '간호사' },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => {
+                  setUserType(tab.value as 'doctor' | 'nurse')
+                  setError('')
+                }}
+                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                  userType === tab.value
+                    ? 'bg-white text-[#232323] shadow-sm'
+                    : 'text-[#8A8480]'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
               {error}
             </div>
           )}
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <div>
-              <label className="block text-xs text-[#8A8480] uppercase tracking-wider mb-1.5">
-                면허번호
-              </label>
-              <input
-                type="text"
-                value={licenseNumber}
-                onChange={(e) => setLicenseNumber(e.target.value)}
-                className="w-full bg-white border border-[#C8BFB6] rounded-md px-4 py-3 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
-                placeholder="면허번호를 입력하세요"
-                required
-              />
-            </div>
+            {userType === 'doctor' ? (
+              <div>
+                <label className="block text-xs text-[#8A8480] uppercase tracking-wider mb-1.5">
+                  면허번호
+                </label>
+                <input
+                  type="text"
+                  value={licenseNumber}
+                  onChange={(e) => setLicenseNumber(e.target.value)}
+                  className="w-full bg-white border border-[#C8BFB6] rounded-md px-4 py-3 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                  placeholder="면허번호를 입력하세요"
+                  required
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs text-[#8A8480] uppercase tracking-wider mb-1.5">
+                  이메일
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-white border border-[#C8BFB6] rounded-md px-4 py-3 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                  placeholder="이메일을 입력하세요"
+                  required
+                />
+              </div>
+            )}
             <div>
               <label className="block text-xs text-[#8A8480] uppercase tracking-wider mb-1.5">
                 비밀번호
