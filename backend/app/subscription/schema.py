@@ -8,5 +8,6 @@ class SubscriptionResponse(BaseModel):
     tier: str
     status: str
     staff_limit: int
+
     started_at: Optional[datetime] = None
     expired_at: Optional[datetime] = None
