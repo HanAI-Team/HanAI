@@ -11,13 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class ClovaSpeechClient:
-    """
-    CLOVA Speech 장문인식 REST API 클라이언트
-    - 긴 음성 파일 전체를 한 번에 처리 (청크 분할 불필요)
-    - 화자 분리 지원
-    - 노이즈 필터링 지원
-    - 한의학 용어 키워드 부스팅 지원
-    """
 
     def __init__(self):
         self.secret_key = settings.CLOVA_SECRET_KEY
@@ -25,15 +18,15 @@ class ClovaSpeechClient:
 
     def _build_params(self) -> str:
         """API 요청 파라미터 생성"""
-        boosting_words = ",".join(postprocessor.glossary) if postprocessor.glossary else ""
+        boosting_words = (
+            ",".join(postprocessor.glossary) if postprocessor.glossary else ""
+        )
 
         params = {
             "language": "ko-KR",
             "completion": "sync",
             "noiseFiltering": True,
-            "diarization": {
-                "enable": True
-            },
+            "diarization": {"enable": True},
         }
 
         if boosting_words:
@@ -69,7 +62,12 @@ class ClovaSpeechClient:
         logger.info(f"[STT] 화자 분리 완료 — {len(segments)}개 세그먼트")
         return full_text
 
-    async def transcribe(self, audio_bytes: bytes) -> str:
+    async def transcribe(
+        self,
+        audio_bytes: bytes,
+        filename: str = "audio.mp3",
+        content_type: str = "audio/mpeg",
+    ) -> str:
         """
         음성 파일 전체 → 화자 분리 텍스트 변환
 
@@ -92,9 +90,9 @@ class ClovaSpeechClient:
                     f"{self.invoke_url}/recognizer/upload",
                     headers={"X-CLOVASPEECH-API-KEY": self.secret_key},
                     files={
-                        "media": ("audio.mp3", audio_bytes, "audio/mpeg"),
+                        "media": (filename, audio_bytes, content_type),
                         "params": (None, self._build_params(), "application/json"),
-                    }
+                    },
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -104,7 +102,9 @@ class ClovaSpeechClient:
             return text
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"[STT] API 오류 status={e.response.status_code} body={e.response.text}")
+            logger.error(
+                f"[STT] API 오류 status={e.response.status_code} body={e.response.text}"
+            )
             raise
         except httpx.TimeoutException:
             logger.error("[STT] API 타임아웃 (300초 초과)")
