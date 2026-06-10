@@ -1,4 +1,3 @@
-# app/charting/stt/client.py
 import json
 import logging
 
@@ -19,7 +18,7 @@ class ClovaSpeechClient:
     def _build_params(self) -> str:
         """API 요청 파라미터 생성"""
         boosting_words = (
-            ",".join(postprocessor.glossary) if postprocessor.glossary else ""
+            ",".join(postprocessor.glossary[:900]) if postprocessor.glossary else ""
         )
 
         params = {
