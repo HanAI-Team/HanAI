@@ -58,7 +58,7 @@ export default function LoginPage() {
           <div className="flex bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-1 mb-5">
             {[
               { value: 'doctor', label: '의사' },
-              { value: 'nurse', label: '간호사' },
+              { value: 'nurse', label: '직원' },
             ].map((tab) => (
               <button
                 key={tab.value}
