@@ -25,15 +25,15 @@ class ClovaSpeechClient:
 
     def _build_params(self) -> str:
         """API 요청 파라미터 생성"""
-        boosting_words = ",".join(postprocessor.glossary) if postprocessor.glossary else ""
+        boosting_words = (
+            ",".join(postprocessor.glossary) if postprocessor.glossary else ""
+        )
 
         params = {
             "language": "ko-KR",
             "completion": "sync",
             "noiseFiltering": True,
-            "diarization": {
-                "enable": True
-            },
+            "diarization": {"enable": True},
         }
 
         if boosting_words:
@@ -69,49 +69,57 @@ class ClovaSpeechClient:
         logger.info(f"[STT] 화자 분리 완료 — {len(segments)}개 세그먼트")
         return full_text
 
-    async def transcribe(self, audio_bytes: bytes) -> str:
-        """
-        음성 파일 전체 → 화자 분리 텍스트 변환
 
-        Args:
-            audio_bytes: 음성 파일 바이트 (mp3, wav, m4a 등)
+async def transcribe(
+    self,
+    audio_bytes: bytes,
+    filename: str = "audio.mp3",
+    content_type: str = "audio/mpeg",
+) -> str:
+    """
+    음성 파일 전체 → 화자 분리 텍스트 변환
 
-        Returns:
-            "[A] 텍스트\n[B] 텍스트" 형태의 화자 분리된 전체 텍스트
-        """
-        if not self.secret_key or not self.invoke_url:
-            raise ValueError("CLOVA_SECRET_KEY 또는 CLOVA_INVOKE_URL이 .env에 없습니다")
+    Args:
+        audio_bytes: 음성 파일 바이트 (mp3, wav, m4a 등)
 
-        if not audio_bytes:
-            logger.warning("[STT] 빈 오디오 데이터 수신")
-            return ""
+    Returns:
+        "[A] 텍스트\n[B] 텍스트" 형태의 화자 분리된 전체 텍스트
+    """
+    if not self.secret_key or not self.invoke_url:
+        raise ValueError("CLOVA_SECRET_KEY 또는 CLOVA_INVOKE_URL이 .env에 없습니다")
 
-        try:
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                response = await client.post(
-                    f"{self.invoke_url}/recognizer/upload",
-                    headers={"X-CLOVASPEECH-API-KEY": self.secret_key},
-                    files={
-                        "media": ("audio.mp3", audio_bytes, "audio/mpeg"),
-                        "params": (None, self._build_params(), "application/json"),
-                    }
-                )
-                response.raise_for_status()
-                result = response.json()
+    if not audio_bytes:
+        logger.warning("[STT] 빈 오디오 데이터 수신")
+        return ""
 
-            text = self._parse_segments(result)
-            logger.info(f"[STT] 변환 완료 — {len(text)}자")
-            return text
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.post(
+                f"{self.invoke_url}/recognizer/upload",
+                headers={"X-CLOVASPEECH-API-KEY": self.secret_key},
+                files={
+                    "media": (filename, audio_bytes, content_type),
+                    "params": (None, self._build_params(), "application/json"),
+                },
+            )
+            response.raise_for_status()
+            result = response.json()
 
-        except httpx.HTTPStatusError as e:
-            logger.error(f"[STT] API 오류 status={e.response.status_code} body={e.response.text}")
-            raise
-        except httpx.TimeoutException:
-            logger.error("[STT] API 타임아웃 (300초 초과)")
-            raise
-        except Exception as e:
-            logger.error(f"[STT] 오류: {e}")
-            raise
+        text = self._parse_segments(result)
+        logger.info(f"[STT] 변환 완료 — {len(text)}자")
+        return text
+
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            f"[STT] API 오류 status={e.response.status_code} body={e.response.text}"
+        )
+        raise
+    except httpx.TimeoutException:
+        logger.error("[STT] API 타임아웃 (300초 초과)")
+        raise
+    except Exception as e:
+        logger.error(f"[STT] 오류: {e}")
+        raise
 
 
 clova_client = ClovaSpeechClient()

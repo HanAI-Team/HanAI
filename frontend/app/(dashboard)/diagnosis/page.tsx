@@ -272,6 +272,19 @@ export default function DiagnosisPage() {
     const western_diagnosis = westernLine
       ? westernLine.replace(/^양방[^:]*:\s*/, "")
       : "-";
+  function mapSectionsToResult(
+    sections: Record<string, string>,
+    patientId: string,
+  ): DiagnosisResult {
+    const diagLines = (sections["한의학적 진단"] ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const diagnosis = diagLines.find((l) => !l.startsWith("양방")) ?? "-";
+    const westernLine = diagLines.find((l) => l.startsWith("양방"));
+    const western_diagnosis = westernLine
+      ? westernLine.replace(/^양방[^:]*:\s*/, "")
+      : "-";
 
     const herbLines = (sections["한약 처방"] ?? "")
       .split("\n")
@@ -287,11 +300,17 @@ export default function DiagnosisPage() {
       .split(",")
       .map((a) => a.trim())
       .filter(Boolean);
+    const acupuncture = (sections["침 처방"] ?? "")
+      .split(",")
+      .map((a) => a.trim())
+      .filter(Boolean);
 
     return {
       id: "",
+      id: "",
       patient_id: patientId,
       created_at: new Date().toISOString(),
+      constitution: sections["사상체질"]?.trim() || "-",
       constitution: sections["사상체질"]?.trim() || "-",
       diagnosis,
       western_diagnosis,
@@ -417,6 +436,7 @@ ${r.acupuncture?.join(", ")}`;
     try {
       await createPatient(newPatient);
       setPatientsLoading(true);
+      setPatientsLoading(true);
       const updated = await getPatients();
       setPatients(updated);
       setShowAddModal(false);
@@ -427,6 +447,7 @@ ${r.acupuncture?.join(", ")}`;
       );
     } finally {
       setAddLoading(false);
+      setPatientsLoading(false);
       setPatientsLoading(false);
     }
   }
@@ -440,6 +461,9 @@ ${r.acupuncture?.join(", ")}`;
     setAskHistory((prev) => [...prev, { question: q, answer: "" }]);
     const updateLast = (answer: string) =>
       setAskHistory((prev) =>
+        prev.map((item, i) =>
+          i === prev.length - 1 ? { ...item, answer } : item,
+        ),
         prev.map((item, i) =>
           i === prev.length - 1 ? { ...item, answer } : item,
         ),
@@ -770,6 +794,9 @@ ${historyLine}
           </div>
         </div>
         <div className="flex-1 overflow-y-auto py-1">
+          {patientsLoading ? (
+            <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto mt-8" />
+          ) : displayedPatients.length === 0 ? (
           {patientsLoading ? (
             <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto mt-8" />
           ) : displayedPatients.length === 0 ? (
