@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 
@@ -7,6 +8,5 @@ class SubscriptionResponse(BaseModel):
     tier: str
     status: str
     staff_limit: int
-    started_at: datetime
-    expired_at: datetime | None
-    is_active: bool
+    started_at: Optional[datetime] = None
+    expired_at: Optional[datetime] = None
