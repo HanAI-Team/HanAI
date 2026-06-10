@@ -23,6 +23,7 @@ export type PatientStackParamList = {
   PatientList: undefined;
   PatientDetail: { patient: Patient };
   AddPatient: undefined;
+  History: { patient: Patient };
 };
 
 export type SettingsStackParamList = {
