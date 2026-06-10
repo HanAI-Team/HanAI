@@ -21,6 +21,14 @@ export interface DiagnosisResult {
   created_at: string
 }
 
+export interface Staff {
+  id: string
+  name: string
+  email: string
+  role: string
+  is_active: boolean
+}
+
 export interface Doctor {
   id: string
   name: string
