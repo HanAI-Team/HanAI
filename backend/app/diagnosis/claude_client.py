@@ -11,8 +11,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 import asyncio
 
 from app.diagnosis.prompt import (
-    PROMPT_TEMPLATE,
-    PROMPT_TEMPLATE_GENERAL,
+    PROMPT_DIAG_TEMPLATE,
+    PROMPT_DIAG_TEMPLATE_GENERAL,
+    PROMPT_RX_TEMPLATE,
+    PROMPT_RX_TEMPLATE_GENERAL,
     QA_PROMPT_TEMPLATE,
 )
 from app.diagnosis.anonymize import anonymize
@@ -122,20 +124,26 @@ async def diagnose(transcription: str) -> dict:
     public_data = find_relevant_prescriptions(anon, n=5)
     cafe_data = find_relevant_cases(anon, n=3)
 
-    dataset_prompt = PROMPT_TEMPLATE.format(
+    dataset_diag_prompt = PROMPT_DIAG_TEMPLATE.format(
         transcription=anon,
-        public_data=public_data or "DB 데이터 없음",
         cafe_data=cafe_data or "임상 사례 없음",
     )
-    general_prompt = PROMPT_TEMPLATE_GENERAL.format(transcription=anon)
+    dataset_rx_prompt = PROMPT_RX_TEMPLATE.format(
+        transcription=anon,
+        public_data=public_data or "DB 데이터 없음",
+    )
+    general_diag_prompt = PROMPT_DIAG_TEMPLATE_GENERAL.format(transcription=anon)
+    general_rx_prompt = PROMPT_RX_TEMPLATE_GENERAL.format(transcription=anon)
 
-    dataset_result, general_result = await asyncio.gather(
-        _diagnose_from_prompt_async(dataset_prompt),
-        _diagnose_from_prompt_async(general_prompt),
+    dataset_diag, dataset_rx, general_diag, general_rx = await asyncio.gather(
+        _diagnose_from_prompt_async(dataset_diag_prompt),
+        _diagnose_from_prompt_async(dataset_rx_prompt),
+        _diagnose_from_prompt_async(general_diag_prompt),
+        _diagnose_from_prompt_async(general_rx_prompt),
     )
     return {
-        "dataset_based": dataset_result,
-        "claude_based": general_result,
+        "dataset_based": {**dataset_diag, **dataset_rx},
+        "claude_based": {**general_diag, **general_rx},
     }
 
 
