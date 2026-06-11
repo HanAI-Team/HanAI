@@ -389,6 +389,7 @@ ${r.acupuncture?.join(", ")}`;
           selectedPatient.id,
           audioFile,
           medicalHistory,
+          symptomText.trim() || null,
         );
         setResult(mapDiagnosisResult(data.diagnosis));
       } else {
@@ -1139,7 +1140,7 @@ ${historyLine}
                   <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
                     증상 직접 입력{" "}
                     <span className="normal-case text-[#B0AAA4]">
-                      (음성 없이 텍스트로 분석)
+                      (음성과 함께 추가 입력 가능)
                     </span>
                   </div>
                   <textarea
@@ -1147,13 +1148,7 @@ ${historyLine}
                     onChange={(e) => setSymptomText(e.target.value)}
                     placeholder="증상을 자세히 입력하세요&#10;예) 손발이 차고 식은땀이 나며 소화가 잘 안 됨. 평소 피로감이 많고 추위를 탐."
                     className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none min-h-[90px] transition-colors"
-                    disabled={!!audioFile}
                   />
-                  {audioFile && (
-                    <div className="text-xs text-[#B0AAA4] mt-1">
-                      음성 파일이 있으면 텍스트 입력은 무시됩니다.
-                    </div>
-                  )}
                 </div>
               </div>
               <div className="sm:col-span-2">

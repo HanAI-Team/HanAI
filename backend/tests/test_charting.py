@@ -109,6 +109,59 @@ async def test_비식별화_후_Claude_호출(db, monkeypatch):
     assert "010-1234-5678" not in received["text"]
 
 
+async def test_symptom_text_추가시_진단_텍스트에_포함됨(db, monkeypatch):
+    monkeypatch.setattr(
+        "app.charting.service.transcribe_chunks", AsyncMock(return_value=_SAMPLE_STT)
+    )
+
+    received = {}
+
+    async def _mock_diagnose(text):
+        received["text"] = text
+        return _SAMPLE_DIAGNOSIS
+
+    monkeypatch.setattr("app.charting.service.diagnose", _mock_diagnose)
+
+    patient_id, doctor_id, hospital_id = _uuids()
+    await process_chart(
+        audio_file=_FakeUploadFile(),
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        hospital_id=hospital_id,
+        db=db,
+        symptom_text="추가로 어지럼증도 있음",
+    )
+
+    assert "어지럼증" in received["text"]
+
+
+async def test_medical_history_저장됨(db, monkeypatch):
+    monkeypatch.setattr(
+        "app.charting.service.transcribe_chunks", AsyncMock(return_value=_SAMPLE_STT)
+    )
+    monkeypatch.setattr(
+        "app.charting.service.diagnose", AsyncMock(return_value=_SAMPLE_DIAGNOSIS)
+    )
+
+    patient_id, doctor_id, hospital_id = _uuids()
+    result = await process_chart(
+        audio_file=_FakeUploadFile(),
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        hospital_id=hospital_id,
+        db=db,
+        medical_history="고혈압 약 복용 중",
+    )
+
+    record = (
+        await db.execute(
+            select(MedicalRecord).where(MedicalRecord.id == result["record_id"])
+        )
+    ).scalar_one()
+
+    assert record.medical_history == "고혈압 약 복용 중"
+
+
 async def test_STT_오류_전파(db, monkeypatch):
     monkeypatch.setattr(
         "app.charting.service.transcribe_chunks",
