@@ -75,7 +75,7 @@ def find_relevant_cases(query: str, n: int = 3) -> str:
 def _call_claude(prompt: str) -> str:
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=3000,
+        max_tokens=4096,
         temperature=0.2,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -90,7 +90,7 @@ def _call_claude(prompt: str) -> str:
 async def _call_claude_async(prompt: str) -> str:
     message = await async_client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=3000,
+        max_tokens=4096,
         temperature=0.2,
         messages=[{"role": "user", "content": prompt}],
     )
