@@ -15,8 +15,8 @@ def run_ask(question: str) -> str:
     return ask(question)
 
 
-def run_diagnosis(transcription: str) -> dict:
-    return diagnose(transcription)
+async def run_diagnosis(transcription: str) -> dict:
+    return await diagnose(transcription)
 
 
 def _format_diagnosis_block(diagnosis: dict, label: str) -> str:

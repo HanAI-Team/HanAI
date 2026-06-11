@@ -31,6 +31,8 @@ export async function saveRecord(
   patientId: string,
   chartStructured: string,
   rawTranscription?: string,
+  medicalHistory?: string | null,
+  selectedResult?: string,
 ) {
   const res = await fetch(`${BASE_URL}/api/patients/${patientId}/records`, {
     method: "POST",
@@ -38,6 +40,8 @@ export async function saveRecord(
     body: JSON.stringify({
       chart_structured: chartStructured,
       raw_transcription: rawTranscription,
+      medical_history: medicalHistory,
+      selected_result: selectedResult,
     }),
   });
   if (!res.ok) throw new Error("저장 실패");

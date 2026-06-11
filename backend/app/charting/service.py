@@ -140,6 +140,10 @@ async def process_chart(
     if symptom_text and symptom_text.strip():
         corrected_text += f"\n\n[추가 증상 입력]\n{symptom_text.strip()}"
 
+    # 3-2. 기존 병력 추가
+    if medical_history and medical_history.strip():
+        corrected_text += f"\n\n[기존 병력]\n{medical_history.strip()}"
+
     # 4. AI 진단
     t = time.time()
     diagnosis = await diagnose(corrected_text)
@@ -185,6 +189,26 @@ async def update_medical_history(
     if not medical_record:
         raise HTTPException(status_code=404, detail="진료 기록을 찾을 수 없습니다.")
     medical_record.medical_history = medical_history  # type: ignore
+    await db.commit()
+    await db.refresh(medical_record)
+    return medical_record
+
+
+async def finalize_record(
+    db: AsyncSession,
+    record_id: UUID,
+    chart_structured: str,
+    selected_result: str | None = None,
+) -> MedicalRecord:
+    result = await db.execute(
+        select(MedicalRecord).where(MedicalRecord.id == record_id)
+    )
+    medical_record = result.scalar_one_or_none()
+    if not medical_record:
+        raise HTTPException(status_code=404, detail="진료 기록을 찾을 수 없습니다.")
+    medical_record.chart_structured = chart_structured  # type: ignore
+    medical_record.recorded_at = datetime.now(timezone.utc)  # type: ignore
+    medical_record.selected_result = selected_result  # type: ignore
     await db.commit()
     await db.refresh(medical_record)
     return medical_record

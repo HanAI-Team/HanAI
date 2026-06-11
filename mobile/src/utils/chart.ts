@@ -29,6 +29,10 @@ export function buildChartStructured(diagnosis: DiagnosisData): string {
   );
 }
 
+export function formatResultBlock(diagnosis: DiagnosisData, label: string): string {
+  return `■ ${label}\n${buildChartStructured(diagnosis)}`;
+}
+
 export function buildCopyText(
   diagnosis: DiagnosisData,
   patientName: string

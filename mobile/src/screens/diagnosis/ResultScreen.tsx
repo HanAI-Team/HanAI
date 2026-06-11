@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Clipboard from "expo-clipboard";
 import {
@@ -7,6 +7,7 @@ import {
   Stethoscope,
   Leaf,
   MapPin,
+  FileText,
   CircleCheck,
 } from "lucide-react-native";
 import { useMutation } from "@tanstack/react-query";
@@ -16,9 +17,10 @@ import { Card } from "../../components/Card";
 import { Button } from "../../components/Button";
 import { Tag } from "../../components/Tag";
 import { saveRecord } from "../../api/patients";
+import { finalizeRecord } from "../../api/charting";
 import { submitFeedback } from "../../api/feedback";
 import { getErrorMessage } from "../../api/client";
-import { buildChartStructured, buildCopyText, isDualDiagnosis } from "../../utils/chart";
+import { buildCopyText, formatResultBlock, isDualDiagnosis } from "../../utils/chart";
 
 type Props = NativeStackScreenProps<DiagnosisStackParamList, "Result">;
 
@@ -28,7 +30,7 @@ const TABS = [
 ];
 
 export function ResultScreen({ route }: Props) {
-  const { patient, recordId, diagnosis, rawTranscription } = route.params;
+  const { patient, recordId, diagnosis, rawTranscription, medicalHistory } = route.params;
 
   const isDual = isDualDiagnosis(diagnosis);
   const [activeTab, setActiveTab] = useState<"dataset_based" | "claude_based">(
@@ -38,6 +40,7 @@ export function ResultScreen({ route }: Props) {
 
   const [saved, setSaved] = useState(false);
   const [savedRecordId, setSavedRecordId] = useState(recordId || "");
+  const [saveSelection, setSaveSelection] = useState<"both" | "result1" | "result2">("both");
   const [feedbackHelpful, setFeedbackHelpful] = useState<boolean | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
@@ -46,6 +49,7 @@ export function ResultScreen({ route }: Props) {
     React.useCallback(() => {
       setSaved(false);
       setSavedRecordId(recordId || "");
+      setSaveSelection("both");
       setFeedbackHelpful(null);
       setFeedbackComment("");
       setFeedbackSubmitted(false);
@@ -53,12 +57,19 @@ export function ResultScreen({ route }: Props) {
   );
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      saveRecord(
-        patient.id,
-        buildChartStructured(result),
-        rawTranscription
-      ),
+    mutationFn: () => {
+      const chartStructured = isDual
+        ? saveSelection === "result1"
+          ? formatResultBlock(diagnosis.dataset_based, "결과 1")
+          : saveSelection === "result2"
+            ? formatResultBlock(diagnosis.claude_based, "결과 2")
+            : `${formatResultBlock(diagnosis.dataset_based, "결과 1")}\n\n${formatResultBlock(diagnosis.claude_based, "결과 2")}`
+        : formatResultBlock(diagnosis, "진단 결과");
+
+      return recordId
+        ? finalizeRecord(recordId, chartStructured, saveSelection)
+        : saveRecord(patient.id, chartStructured, rawTranscription, medicalHistory, saveSelection);
+    },
     onSuccess: (data) => {
       setSaved(true);
       setSavedRecordId(data.id);
@@ -118,6 +129,16 @@ export function ResultScreen({ route }: Props) {
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, gap: 12 }}>
+      {rawTranscription && (
+        <Card>
+          <View className="flex-row items-center gap-1.5 mb-2">
+            <FileText size={14} color="#8A8480" />
+            <Text className="text-xs text-subtext uppercase tracking-wide">주소증</Text>
+          </View>
+          <Text className="text-sm text-text">{rawTranscription}</Text>
+        </Card>
+      )}
+
       {isDual && (
         <View className="flex-row gap-2">
           {TABS.map(({ key, label }) => (
@@ -153,6 +174,40 @@ export function ResultScreen({ route }: Props) {
           )}
         </Card>
       ))}
+
+      {isDual && !saved && (
+        <Card>
+          <Text className="text-xs text-subtext uppercase tracking-wide mb-2">
+            저장할 결과 선택
+          </Text>
+          <View className="gap-2">
+            {(
+              [
+                { value: "both", label: "결과 1 + 결과 2 모두 저장" },
+                { value: "result1", label: "결과 1만 저장" },
+                { value: "result2", label: "결과 2만 저장" },
+              ] as const
+            ).map((opt) => (
+              <Pressable
+                key={opt.value}
+                onPress={() => setSaveSelection(opt.value)}
+                className="flex-row items-center gap-1.5"
+              >
+                <View
+                  className={`w-4 h-4 rounded-full border items-center justify-center ${
+                    saveSelection === opt.value ? "border-primary" : "border-borderStrong"
+                  }`}
+                >
+                  {saveSelection === opt.value && (
+                    <View className="w-2 h-2 rounded-full bg-primary" />
+                  )}
+                </View>
+                <Text className="text-sm text-text">{opt.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Card>
+      )}
 
       <View className="flex-row gap-2">
         <View className="flex-1">

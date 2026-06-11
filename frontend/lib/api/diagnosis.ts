@@ -35,6 +35,20 @@ export async function getDiagnosis(recordId: string) {
   return apiCall(`/api/diagnosis/${recordId}`)
 }
 
+export async function finalizeRecord(
+  recordId: string,
+  chartStructured: string,
+  selectedResult?: string,
+) {
+  return apiCall(`/api/charting/${recordId}/finalize`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      chart_structured: chartStructured,
+      selected_result: selectedResult,
+    }),
+  })
+}
+
 export async function askDiagnosis(question: string): Promise<{ answer: string }> {
   return apiCall('/api/diagnosis/ask', {
     method: 'POST',

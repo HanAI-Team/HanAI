@@ -61,3 +61,5 @@ class PatientDetailResponse(PatientResponse):
 class RecordCreate(BaseModel):
     chart_structured: str
     raw_transcription: Optional[str] = None
+    medical_history: Optional[str] = None
+    selected_result: Optional[str] = None

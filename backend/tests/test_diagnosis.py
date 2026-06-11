@@ -28,3 +28,42 @@ def test_이름_마스킹():
 def test_개인정보_없으면_그대로():
     text = "머리가 아프고 지끈지끈합니다."
     assert anonymize(text) == text
+
+
+async def test_diagnose_text_정상_응답(client, approved_doctor, monkeypatch):
+    _, headers = approved_doctor
+
+    async def _mock_diagnose(text):
+        return {"dataset_based": {}, "claude_based": {}}
+
+    monkeypatch.setattr("app.diagnosis.service.diagnose", _mock_diagnose)
+
+    resp = await client.post(
+        "/api/diagnosis/",
+        json={"transcription": "두통이 있습니다"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["result"] == {"dataset_based": {}, "claude_based": {}}
+
+
+async def test_diagnose_text_medical_history_포함됨(client, approved_doctor, monkeypatch):
+    _, headers = approved_doctor
+    received = {}
+
+    async def _mock_diagnose(text):
+        received["text"] = text
+        return {"dataset_based": {}, "claude_based": {}}
+
+    monkeypatch.setattr("app.diagnosis.service.diagnose", _mock_diagnose)
+
+    resp = await client.post(
+        "/api/diagnosis/",
+        json={
+            "transcription": "두통이 있습니다",
+            "medical_history": "고혈압 약 복용 중",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert "고혈압" in received["text"]
