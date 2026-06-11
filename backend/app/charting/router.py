@@ -95,4 +95,6 @@ async def finalize_record(
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await service.finalize_record(db, record_id, data.chart_structured)
+    return await service.finalize_record(
+        db, record_id, data.chart_structured, data.selected_result
+    )

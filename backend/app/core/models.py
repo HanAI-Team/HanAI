@@ -118,6 +118,7 @@ class MedicalRecord(Base):
     recorded_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     medical_history = Column(Text, nullable=True)
+    selected_result = Column(String, nullable=True)
 
     patient = relationship("Patient", back_populates="medical_records")
     doctor = relationship("Doctor", back_populates="medical_records")

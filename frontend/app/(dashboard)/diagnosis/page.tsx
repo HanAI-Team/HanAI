@@ -698,7 +698,7 @@ ${historyLine}
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
     try {
       const response = currentRecordId
-        ? await finalizeRecord(currentRecordId, text)
+        ? await finalizeRecord(currentRecordId, text, saveSelection)
         : await saveRecord(
             selectedPatient.id,
             text,
@@ -706,6 +706,7 @@ ${historyLine}
             recordMedicalHistory.hasHistory
               ? recordMedicalHistory.text || null
               : null,
+            saveSelection,
           );
       setSavedSymptomText(undefined);
       setFeedbackRecordId(response?.id ?? null);

@@ -17,6 +17,7 @@ class UpdateMedicalHistoryRequest(BaseModel):
 
 class FinalizeRecordRequest(BaseModel):
     chart_structured: str
+    selected_result: Optional[str] = None
 
 
 class MedicalRecordResponse(BaseModel):

@@ -38,10 +38,14 @@ export async function getDiagnosis(recordId: string) {
 export async function finalizeRecord(
   recordId: string,
   chartStructured: string,
+  selectedResult?: string,
 ) {
   return apiCall(`/api/charting/${recordId}/finalize`, {
     method: 'PATCH',
-    body: JSON.stringify({ chart_structured: chartStructured }),
+    body: JSON.stringify({
+      chart_structured: chartStructured,
+      selected_result: selectedResult,
+    }),
   })
 }
 

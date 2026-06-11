@@ -195,7 +195,10 @@ async def update_medical_history(
 
 
 async def finalize_record(
-    db: AsyncSession, record_id: UUID, chart_structured: str
+    db: AsyncSession,
+    record_id: UUID,
+    chart_structured: str,
+    selected_result: str | None = None,
 ) -> MedicalRecord:
     result = await db.execute(
         select(MedicalRecord).where(MedicalRecord.id == record_id)
@@ -205,6 +208,7 @@ async def finalize_record(
         raise HTTPException(status_code=404, detail="진료 기록을 찾을 수 없습니다.")
     medical_record.chart_structured = chart_structured  # type: ignore
     medical_record.recorded_at = datetime.now(timezone.utc)  # type: ignore
+    medical_record.selected_result = selected_result  # type: ignore
     await db.commit()
     await db.refresh(medical_record)
     return medical_record

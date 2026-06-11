@@ -228,6 +228,7 @@ async def create_record(
         chart_structured=data.chart_structured,
         raw_transcription=data.raw_transcription,
         medical_history=data.medical_history,
+        selected_result=data.selected_result,
         status="completed",
         recorded_at=datetime.now(timezone.utc),
     )

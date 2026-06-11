@@ -67,8 +67,8 @@ export function ResultScreen({ route }: Props) {
         : formatResultBlock(diagnosis, "진단 결과");
 
       return recordId
-        ? finalizeRecord(recordId, chartStructured)
-        : saveRecord(patient.id, chartStructured, rawTranscription, medicalHistory);
+        ? finalizeRecord(recordId, chartStructured, saveSelection)
+        : saveRecord(patient.id, chartStructured, rawTranscription, medicalHistory, saveSelection);
     },
     onSuccess: (data) => {
       setSaved(true);
