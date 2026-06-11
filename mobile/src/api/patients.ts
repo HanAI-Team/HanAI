@@ -54,11 +54,13 @@ export async function getPatientRecords(
 export async function saveRecord(
   patientId: string,
   chartStructured: string,
-  rawTranscription?: string
+  rawTranscription?: string,
+  medicalHistory?: string | null
 ) {
   const res = await apiClient.post(`/api/patients/${patientId}/records`, {
     chart_structured: chartStructured,
     raw_transcription: rawTranscription,
+    medical_history: medicalHistory,
   });
   return res.data;
 }

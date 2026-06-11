@@ -9,7 +9,7 @@ import { Card } from "../../components/Card";
 import { Button } from "../../components/Button";
 import { RecordingCard } from "../../components/RecordingCard";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
-import { uploadAndAnalyze, updateMedicalHistory, AudioFile } from "../../api/charting";
+import { uploadAndAnalyze, AudioFile } from "../../api/charting";
 import { diagnoseText } from "../../api/diagnosis";
 import { getErrorMessage } from "../../api/client";
 import { ChartingResponse, DiagnosisTextResponse } from "../../types";
@@ -55,11 +55,9 @@ export function DiagnosisScreen({ route, navigation }: Props) {
       if (audioFile) {
         const data: ChartingResponse = await uploadAndAnalyze(
           patient.id,
-          audioFile
+          audioFile,
+          medicalHistory
         );
-        if (medicalHistory) {
-          await updateMedicalHistory(data.record_id, medicalHistory);
-        }
         return {
           recordId: data.record_id,
           diagnosis: data.diagnosis,
@@ -67,7 +65,10 @@ export function DiagnosisScreen({ route, navigation }: Props) {
           medicalHistory,
         };
       }
-      const data: DiagnosisTextResponse = await diagnoseText(symptomText.trim());
+      const data: DiagnosisTextResponse = await diagnoseText(
+        symptomText.trim(),
+        medicalHistory
+      );
       return {
         recordId: "",
         diagnosis: data.result,

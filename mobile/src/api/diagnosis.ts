@@ -2,10 +2,12 @@ import { apiClient } from "./client";
 import { AskResponse, DiagnosisTextResponse } from "../types";
 
 export async function diagnoseText(
-  transcription: string
+  transcription: string,
+  medicalHistory?: string
 ): Promise<DiagnosisTextResponse> {
   const res = await apiClient.post<DiagnosisTextResponse>("/api/diagnosis/", {
     transcription,
+    ...(medicalHistory ? { medical_history: medicalHistory } : {}),
   });
   return res.data;
 }
