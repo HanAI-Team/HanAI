@@ -1,8 +1,6 @@
 on:
   pull_request:
     branches: [develop, main]
-    paths:
-      - "backend/**"
 
 jobs:
   test:
@@ -10,10 +8,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            backend:
+              - "backend/**"
+
       - uses: astral-sh/setup-uv@v3
+        if: steps.changes.outputs.backend == 'true'
       - name: Install dependencies
+        if: steps.changes.outputs.backend == 'true'
         run: cd backend && uv sync --dev
       - name: Run pytest
+        if: steps.changes.outputs.backend == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
