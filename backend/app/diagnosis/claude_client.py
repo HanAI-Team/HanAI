@@ -36,11 +36,11 @@ def _load_jsonl(path: str) -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def _build_index(records: list[dict]):
+def _build_index(records: list[dict], ngram_range: tuple[int, int] = (2, 3)):
     if not records:
         return None, None
     texts = [r["text"] for r in records]
-    vec = TfidfVectorizer(analyzer="char", ngram_range=(2, 3))
+    vec = TfidfVectorizer(analyzer="char", ngram_range=ngram_range)
     matrix = vec.fit_transform(texts)
     return vec, matrix
 
@@ -57,8 +57,13 @@ def _search(query: str, records: list[dict], vec, matrix, n: int) -> str:
 _rx_records = _load_jsonl(os.path.join(DATA_DIR, "rag_prescriptions.jsonl"))
 _rx_vec, _rx_matrix = _build_index(_rx_records)
 
-_cl_records = _load_jsonl(os.path.join(DATA_DIR, "rag_clinical.jsonl"))
-_cl_vec, _cl_matrix = _build_index(_cl_records)
+# 임상 사례 DB (한의학 임상 사례 + 카페 임상상담 게시글)
+# 카페 게시글 추가 후 char 3-gram 어휘가 ~2M개까지 늘어나 빌드 시 OOM이 발생했으므로
+# 2-gram만 사용해 어휘 크기를 억제한다.
+_cl_records = _load_jsonl(os.path.join(DATA_DIR, "rag_clinical.jsonl")) + _load_jsonl(
+    os.path.join(DATA_DIR, "rag_cafe_posts.jsonl")
+)
+_cl_vec, _cl_matrix = _build_index(_cl_records, ngram_range=(2, 2))
 
 logger.info(
     f"[RAG] 처방 DB {len(_rx_records)}건, 임상 사례 {len(_cl_records)}건 로드 완료"
