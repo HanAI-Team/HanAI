@@ -47,6 +47,13 @@ import {
 
 const PAGE_SIZE = 20;
 
+const ASK_SAVE_FIELDS: { key: string; label: string }[] = [
+  { key: "constitution", label: "사상체질" },
+  { key: "diagnosis", label: "한의학적 진단 / 양방 대응" },
+  { key: "prescription", label: "한약 처방" },
+  { key: "acupuncture", label: "침 처방" },
+];
+
 export default function DiagnosisPage() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -74,8 +81,13 @@ export default function DiagnosisPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [askQuestion, setAskQuestion] = useState("");
   const [askHistory, setAskHistory] = useState<
-    { question: string; answer: string }[]
+    { question: string; answer: string; result?: DiagnosisResult }[]
   >([]);
+  const [askSavePicker, setAskSavePicker] = useState<number | null>(null);
+  const [askSaveSelections, setAskSaveSelections] = useState<
+    Record<string, boolean>
+  >({});
+  const [askSaving, setAskSaving] = useState(false);
   const [askMode, setAskMode] = useState<"ask" | "diagnose">("ask");
   const [symptomText, setSymptomText] = useState("");
   const [savedSymptomText, setSavedSymptomText] = useState<string | undefined>(
@@ -439,10 +451,12 @@ ${r.acupuncture?.join(", ")}`;
     const q = askQuestion.trim();
     setAskQuestion("");
     setAskHistory((prev) => [...prev, { question: q, answer: "" }]);
-    const updateLast = (answer: string) =>
+    const updateLast = (answer: string, result?: DiagnosisResult) =>
       setAskHistory((prev) =>
         prev.map((item, i) =>
-          i === prev.length - 1 ? { ...item, answer } : item,
+          i === prev.length - 1
+            ? { ...item, answer, ...(result ? { result } : {}) }
+            : item,
         ),
       );
     try {
@@ -477,6 +491,7 @@ ${r.acupuncture?.join(", ")}`;
         const claudeText = formatOne(raw.claude_based ?? {});
         updateLast(
           `[결과 1]\n${datasetText}\n\n[결과 2]\n${claudeText}`,
+          mapDiagnosisResult(raw),
         );
       } else {
         const res = await askDiagnosis(q);
@@ -484,6 +499,75 @@ ${r.acupuncture?.join(", ")}`;
       }
     } catch {
       updateLast("답변을 가져오지 못했습니다. 다시 시도해주세요.");
+    }
+  }
+
+  function openAskSavePicker(index: number) {
+    const all: Record<string, boolean> = {};
+    for (const r of ["r1", "r2"]) {
+      for (const f of ASK_SAVE_FIELDS) {
+        all[`${r}.${f.key}`] = true;
+      }
+    }
+    setAskSaveSelections(all);
+    setAskSavePicker(index);
+  }
+
+  function formatSelectedAskBlock(
+    r: DiagnosisResult,
+    label: string,
+    prefix: string,
+  ): string | null {
+    const lines: string[] = [];
+    if (askSaveSelections[`${prefix}.constitution`])
+      lines.push(`▶ 사상체질\n${r.constitution}`);
+    if (askSaveSelections[`${prefix}.diagnosis`])
+      lines.push(
+        `▶ 한의학적 진단\n${r.diagnosis}\n양방 대응: ${r.western_diagnosis}`,
+      );
+    if (askSaveSelections[`${prefix}.prescription`])
+      lines.push(`▶ 한약 처방\n${r.prescription}\n${r.herbs?.join(", ")}`);
+    if (askSaveSelections[`${prefix}.acupuncture`])
+      lines.push(`▶ 침 처방\n${r.acupuncture?.join(", ")}`);
+    if (lines.length === 0) return null;
+    return `■ ${label}\n${lines.join("\n\n")}`;
+  }
+
+  async function handleAskSave() {
+    if (askSavePicker === null) return;
+    const item = askHistory[askSavePicker];
+    if (!item?.result || !selectedPatient) return;
+
+    const block1 = formatSelectedAskBlock(item.result, "결과 1", "r1");
+    const block2 = item.result.claudeBased
+      ? formatSelectedAskBlock(item.result.claudeBased, "결과 2", "r2")
+      : null;
+    const blocks = [block1, block2].filter((b): b is string => !!b);
+    if (blocks.length === 0) {
+      setErrorMessage("저장할 항목을 선택해주세요");
+      return;
+    }
+
+    const text = `[AI 한의 진단 보조 — Zinmac (한의학 검색)]
+환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
+
+▶ 질문/증상
+${item.question}
+
+${blocks.join("\n\n")}
+
+※ AI 참고용 / 최종 판단은 담당 한의사`;
+
+    setAskSaving(true);
+    try {
+      await saveRecord(selectedPatient.id, text, item.question);
+      setAskSavePicker(null);
+      setShowSavedModal(true);
+      setTimeout(() => setShowSavedModal(false), 2000);
+    } catch (e: any) {
+      setErrorMessage(e.message || "저장에 실패했습니다.");
+    } finally {
+      setAskSaving(false);
     }
   }
 
@@ -1768,6 +1852,15 @@ ${
                         {item.answer}
                       </div>
                     )}
+                    {item.result && item.answer !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => openAskSavePicker(i)}
+                        className="self-start flex items-center gap-1 text-xs text-[#8A8480] hover:text-[#EF6600] transition-colors px-1"
+                      >
+                        <Save className="w-3 h-3" /> 진료 기록에 저장
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1823,6 +1916,85 @@ ${
           )}
         </div>
       </div>
+
+      {/* 한의학 검색 - 진료 기록 저장 항목 선택 모달 */}
+      {askSavePicker !== null && askHistory[askSavePicker]?.result && (
+        <div
+          className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
+          onClick={() => setAskSavePicker(null)}
+        >
+          <div
+            className="bg-white rounded-xl w-full max-w-[420px] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5">
+              <div className="text-sm font-medium text-[#232323] mb-1">
+                진료 기록에 저장할 항목 선택
+              </div>
+              <div className="text-xs text-[#8A8480] mb-4">
+                {selectedPatient
+                  ? `${selectedPatient.name} 환자에게 저장됩니다`
+                  : "환자를 먼저 선택해주세요"}
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-5">
+                {(["r1", "r2"] as const).map((prefix) => {
+                  const r =
+                    prefix === "r1"
+                      ? askHistory[askSavePicker]!.result!
+                      : askHistory[askSavePicker]!.result!.claudeBased;
+                  if (!r) return null;
+                  return (
+                    <div key={prefix}>
+                      <div className="text-xs font-medium text-[#232323] mb-2">
+                        {prefix === "r1"
+                          ? "결과 1 (데이터셋 기반)"
+                          : "결과 2 (AI 종합 소견)"}
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        {ASK_SAVE_FIELDS.map((f) => (
+                          <label
+                            key={f.key}
+                            className="flex items-center gap-2 text-xs text-[#232323]"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={
+                                !!askSaveSelections[`${prefix}.${f.key}`]
+                              }
+                              onChange={(e) =>
+                                setAskSaveSelections((prev) => ({
+                                  ...prev,
+                                  [`${prefix}.${f.key}`]: e.target.checked,
+                                }))
+                              }
+                            />
+                            {f.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAskSave}
+                  disabled={askSaving || !selectedPatient}
+                  className="flex-1 bg-[#EF6600] text-white rounded-md py-2.5 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+                >
+                  {askSaving ? "저장 중..." : "저장"}
+                </button>
+                <button
+                  onClick={() => setAskSavePicker(null)}
+                  className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-sm text-[#8A8480] hover:border-[#232323] hover:text-[#232323] transition-all"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 저장 확인 모달 */}
       {showSaveModal && (
