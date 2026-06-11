@@ -124,9 +124,8 @@ async def process_chart(
     # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
     deid = deidentifier.process(raw_text)
 
-    # 3. 한의학 용어 후처리 ← 추가 에러때문에 임시로 일단
-    # corrected_text = postprocessor.correct(deid.cleaned)
-    corrected_text = deid.cleaned
+    # 3. 한의학 용어 후처리
+    corrected_text = postprocessor.correct(deid.cleaned)
 
     # 4. AI 진단
     diagnosis = diagnose(corrected_text)
