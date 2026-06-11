@@ -47,7 +47,9 @@ def _format_diagnosis_block(diagnosis: dict, label: str) -> str:
 
 
 def _format_chart_structured(diagnosis: dict) -> str:
-    dataset_part = _format_diagnosis_block(diagnosis.get("dataset_based") or {}, "결과 1")
+    dataset_part = _format_diagnosis_block(
+        diagnosis.get("dataset_based") or {}, "결과 1"
+    )
     claude_part = _format_diagnosis_block(diagnosis.get("claude_based") or {}, "결과 2")
     return f"{dataset_part}\n\n{claude_part}"
 
@@ -70,10 +72,12 @@ async def save_text_diagnosis(
     )
     db.add(record)
     await db.flush()
-    db.add(AIResult(
-        medical_record_id=record.id,
-        diagnosis_suggestion=json.dumps(diagnosis, ensure_ascii=False),
-    ))
+    db.add(
+        AIResult(
+            medical_record_id=record.id,
+            diagnosis_suggestion=json.dumps(diagnosis, ensure_ascii=False),
+        )
+    )
     await db.commit()
 
 
@@ -87,7 +91,7 @@ async def run_diagnosis_for_record(record_id: uuid_mod.UUID, db: AsyncSession) -
     if not record.chart_structured:
         raise HTTPException(status_code=400, detail="chart_structured is empty")
 
-    diagnosis = diagnose(record.chart_structured)
+    diagnosis = await diagnose(record.chart_structured)
     print(diagnosis)
     primary = diagnosis.get("dataset_based") or {}
     existing = await db.execute(

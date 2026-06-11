@@ -1,21 +1,27 @@
 import json
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
 
 import anthropic
+from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import asyncio
 
-from app.diagnosis.prompt import PROMPT_TEMPLATE, PROMPT_TEMPLATE_GENERAL, QA_PROMPT_TEMPLATE
+from app.diagnosis.prompt import (
+    PROMPT_TEMPLATE,
+    PROMPT_TEMPLATE_GENERAL,
+    QA_PROMPT_TEMPLATE,
+)
 from app.diagnosis.anonymize import anonymize
 
 logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+async_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 _default_data_dir = os.path.join(os.path.dirname(__file__), "../../../data")
 DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
@@ -46,15 +52,15 @@ def _search(query: str, records: list[dict], vec, matrix, n: int) -> str:
     return "\n".join(records[i]["text"][:400] for i in top_idx)
 
 
-# 처방 DB (3,094건)
 _rx_records = _load_jsonl(os.path.join(DATA_DIR, "rag_prescriptions.jsonl"))
 _rx_vec, _rx_matrix = _build_index(_rx_records)
 
-# 임상 사례 DB
 _cl_records = _load_jsonl(os.path.join(DATA_DIR, "rag_clinical.jsonl"))
 _cl_vec, _cl_matrix = _build_index(_cl_records)
 
-logger.info(f"[RAG] 처방 DB {len(_rx_records)}건, 임상 사례 {len(_cl_records)}건 로드 완료")
+logger.info(
+    f"[RAG] 처방 DB {len(_rx_records)}건, 임상 사례 {len(_cl_records)}건 로드 완료"
+)
 
 
 def find_relevant_prescriptions(query: str, n: int = 5) -> str:
@@ -65,6 +71,7 @@ def find_relevant_cases(query: str, n: int = 3) -> str:
     return _search(query, _cl_records, _cl_vec, _cl_matrix, n)
 
 
+# 동기 버전 유지 (ask 함수용)
 def _call_claude(prompt: str) -> str:
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -79,18 +86,38 @@ def _call_claude(prompt: str) -> str:
     return text.strip()
 
 
-def _diagnose_from_prompt(prompt: str) -> dict:
+# 비동기 버전
+async def _call_claude_async(prompt: str) -> str:
+    message = await async_client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=3000,
+        temperature=0.2,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = message.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1]
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
+async def _diagnose_from_prompt_async(prompt: str) -> dict:
     for attempt in range(2):
-        raw = _call_claude(prompt)
+        raw = await _call_claude_async(prompt)
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            logger.warning(f"[diagnosis] JSON 파싱 실패 (시도 {attempt + 1}/2): {raw[:200]}")
+            logger.warning(
+                f"[diagnosis] JSON 파싱 실패 (시도 {attempt + 1}/2): {raw[:200]}"
+            )
 
-    raise HTTPException(status_code=502, detail="AI 진단 결과를 파싱할 수 없습니다. 잠시 후 다시 시도해주세요.")
+    raise HTTPException(
+        status_code=502,
+        detail="AI 진단 결과를 파싱할 수 없습니다. 잠시 후 다시 시도해주세요.",
+    )
 
 
-def diagnose(transcription: str) -> dict:
+async def diagnose(transcription: str) -> dict:
     anon = anonymize(transcription)
     public_data = find_relevant_prescriptions(anon, n=5)
     cafe_data = find_relevant_cases(anon, n=3)
@@ -102,13 +129,14 @@ def diagnose(transcription: str) -> dict:
     )
     general_prompt = PROMPT_TEMPLATE_GENERAL.format(transcription=anon)
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        dataset_future = executor.submit(_diagnose_from_prompt, dataset_prompt)
-        general_future = executor.submit(_diagnose_from_prompt, general_prompt)
-        return {
-            "dataset_based": dataset_future.result(),
-            "claude_based": general_future.result(),
-        }
+    dataset_result, general_result = await asyncio.gather(
+        _diagnose_from_prompt_async(dataset_prompt),
+        _diagnose_from_prompt_async(general_prompt),
+    )
+    return {
+        "dataset_based": dataset_result,
+        "claude_based": general_result,
+    }
 
 
 def ask(question: str) -> str:
