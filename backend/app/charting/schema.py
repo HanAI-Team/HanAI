@@ -15,6 +15,10 @@ class UpdateMedicalHistoryRequest(BaseModel):
     medical_history: Optional[str] = None
 
 
+class FinalizeRecordRequest(BaseModel):
+    chart_structured: str
+
+
 class MedicalRecordResponse(BaseModel):
     id: UUID
     patient_id: UUID

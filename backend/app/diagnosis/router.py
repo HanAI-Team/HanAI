@@ -21,7 +21,10 @@ async def diagnose_text(
     allowed = await check_rate_limit(f"diagnosis:{current_doctor.id}", limit=3, window_seconds=60)
     if not allowed:
         raise HTTPException(status_code=429, detail="요청이 너무 많습니다. 1분 후 다시 시도해주세요.")
-    result = service.run_diagnosis(data.transcription)
+    transcription = data.transcription
+    if data.medical_history and data.medical_history.strip():
+        transcription += f"\n\n[기존 병력]\n{data.medical_history.strip()}"
+    result = await service.run_diagnosis(transcription)
     return DiagnosisResponse(result=result)
 
 
