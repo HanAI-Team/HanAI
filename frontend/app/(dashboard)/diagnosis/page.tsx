@@ -210,6 +210,7 @@ export default function DiagnosisPage() {
         const sections = parseChartSections(latest.chart_structured);
         if (!sections) return;
         setResult(mapSectionsToResult(sections, selectedPatient.id));
+        if (latest.raw_transcription) setChiefComplaint(latest.raw_transcription);
       })
       .catch(console.error);
   }, [selectedPatient?.id]);
