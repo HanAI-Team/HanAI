@@ -40,6 +40,12 @@ async def ask(
     return AskResponse(answer=answer)
 
 
+@router.post("/public-ask", response_model=AskResponse)
+async def public_ask(data: AskRequest):
+    answer = service.run_ask(data.question)
+    return AskResponse(answer=answer)
+
+
 @router.post("/{record_id}", response_model=DiagnosisRecordResponse)
 async def run_diagnosis(
     record_id: uuid.UUID,
