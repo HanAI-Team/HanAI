@@ -10,12 +10,14 @@ export async function uploadAndAnalyze(
   patientId: string,
   audioFile: File,
   medical_history?: string | null,
+  symptom_text?: string | null,
 ): Promise<ChartingResponse> {
   const token = localStorage.getItem('token')
   const formData = new FormData()
   formData.append('patient_id', patientId)
   formData.append('audio', audioFile)
   if (medical_history) formData.append('medical_history', medical_history)
+  if (symptom_text) formData.append('symptom_text', symptom_text)
 
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
   const res = await fetch(`${BASE_URL}/api/charting/`, {

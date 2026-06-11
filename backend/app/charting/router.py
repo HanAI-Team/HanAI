@@ -22,6 +22,8 @@ router = APIRouter(tags=["charting"])
 async def chart(
     patient_id: uuid.UUID = Form(...),
     audio: UploadFile = File(...),
+    symptom_text: str | None = Form(None),
+    medical_history: str | None = Form(None),
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -31,6 +33,8 @@ async def chart(
         doctor_id=UUID(str(current_doctor.id)),
         hospital_id=UUID(str(current_doctor.hospital_id)),
         db=db,
+        symptom_text=symptom_text,
+        medical_history=medical_history,
     )
     return ChartingResponse(**result)
 
