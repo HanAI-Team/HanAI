@@ -115,6 +115,8 @@ async def process_chart(
     doctor_id: uuid_mod.UUID,
     hospital_id: uuid_mod.UUID,
     db: AsyncSession,
+    symptom_text: str | None = None,
+    medical_history: str | None = None,
 ) -> dict:
     import time
     import logging
@@ -134,6 +136,10 @@ async def process_chart(
     # 3. 한의학 용어 후처리
     corrected_text = postprocessor.correct(deid.cleaned)
 
+    # 3-1. 직접 입력한 증상 텍스트 추가
+    if symptom_text and symptom_text.strip():
+        corrected_text += f"\n\n[추가 증상 입력]\n{symptom_text.strip()}"
+
     # 4. AI 진단
     t = time.time()
     diagnosis = await diagnose(corrected_text)
@@ -148,6 +154,7 @@ async def process_chart(
         raw_transcription=deid.original,
         chart_structured=corrected_text,
         status="completed",
+        medical_history=medical_history,
     )
     db.add(record)
     await db.flush()
