@@ -1,8 +1,8 @@
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+import logging
 
-import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from app.core.redis import check_rate_limit
@@ -15,6 +15,8 @@ from app.staff.router import router as staff_router
 from app.core.config import settings
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.discord import notify_discord
+
+logging.basicConfig(level=logging.INFO)
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
