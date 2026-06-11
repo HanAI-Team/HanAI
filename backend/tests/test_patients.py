@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy import select
+
 PATIENT_DATA = {
     "name": "김환자",
     "birth_date": "1990-01-01",
@@ -131,3 +133,29 @@ async def test_create_record_with_medical_history(client, approved_doctor):
     record = records_resp.json()["records"][0]
     assert record["raw_transcription"] == "두통이 있습니다"
     assert record["medical_history"] == "고혈압 약 복용 중"
+
+
+async def test_create_record_with_selected_result(client, approved_doctor, db):
+    from app.core.models import MedicalRecord
+
+    _, headers = approved_doctor
+    create_resp = await client.post(
+        "/api/patients/register", json=PATIENT_DATA, headers=headers
+    )
+    patient_id = create_resp.json()["id"]
+
+    resp = await client.post(
+        f"/api/patients/{patient_id}/records",
+        json={
+            "chart_structured": "■ 결과 1\n▶ 사상체질\n태음인",
+            "selected_result": "result1",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201
+
+    record_id = resp.json()["id"]
+    record = (
+        await db.execute(select(MedicalRecord).where(MedicalRecord.id == UUID(record_id)))
+    ).scalar_one()
+    assert record.selected_result == "result1"

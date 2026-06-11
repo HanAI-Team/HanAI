@@ -222,6 +222,30 @@ async def test_finalize_record_업데이트(db, monkeypatch):
     assert updated.medical_history == "고혈압 약 복용 중"
 
 
+async def test_finalize_record_selected_result_저장됨(db, monkeypatch):
+    monkeypatch.setattr(
+        "app.charting.service.transcribe_chunks", AsyncMock(return_value=_SAMPLE_STT)
+    )
+    monkeypatch.setattr(
+        "app.charting.service.diagnose", AsyncMock(return_value=_SAMPLE_DIAGNOSIS)
+    )
+
+    patient_id, doctor_id, hospital_id = _uuids()
+    result = await process_chart(
+        audio_file=_FakeUploadFile(),
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        hospital_id=hospital_id,
+        db=db,
+    )
+    record_id = result["record_id"]
+
+    chart_text = "■ 결과 1\n▶ 사상체질\n태음인"
+    updated = await finalize_record(db, record_id, chart_text, selected_result="result1")
+
+    assert updated.selected_result == "result1"
+
+
 async def test_STT_오류_전파(db, monkeypatch):
     monkeypatch.setattr(
         "app.charting.service.transcribe_chunks",

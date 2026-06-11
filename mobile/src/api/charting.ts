@@ -40,11 +40,12 @@ export async function updateMedicalHistory(
 
 export async function finalizeRecord(
   recordId: string,
-  chartStructured: string
+  chartStructured: string,
+  selectedResult?: string
 ): Promise<MedicalRecord> {
   const res = await apiClient.patch<MedicalRecord>(
     `/api/charting/${recordId}/finalize`,
-    { chart_structured: chartStructured }
+    { chart_structured: chartStructured, selected_result: selectedResult }
   );
   return res.data;
 }
