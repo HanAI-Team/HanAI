@@ -50,8 +50,10 @@ def _search(query: str, records: list[dict], vec, matrix, n: int) -> str:
 _rx_records = _load_jsonl(os.path.join(DATA_DIR, "rag_prescriptions.jsonl"))
 _rx_vec, _rx_matrix = _build_index(_rx_records)
 
-# 임상 사례 DB (2,505건)
-_cl_records = _load_jsonl(os.path.join(DATA_DIR, "rag_clinical.jsonl"))
+# 임상 사례 DB
+_cl_records = _load_jsonl(os.path.join(DATA_DIR, "rag_clinical.jsonl")) + _load_jsonl(
+    os.path.join(DATA_DIR, "rag_cafe_posts.jsonl")
+)
 _cl_vec, _cl_matrix = _build_index(_cl_records)
 
 logger.info(f"[RAG] 처방 DB {len(_rx_records)}건, 임상 사례 {len(_cl_records)}건 로드 완료")
