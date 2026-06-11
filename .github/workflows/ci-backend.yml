@@ -1,6 +1,8 @@
 on:
   pull_request:
     branches: [develop, main]
+    paths:
+      - "backend/**"
 
 jobs:
   test:

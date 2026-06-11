@@ -116,21 +116,31 @@ async def process_chart(
     hospital_id: uuid_mod.UUID,
     db: AsyncSession,
 ) -> dict:
+    import time
+    import logging
+
+    logger = logging.getLogger(__name__)
+    t = time.time()
     # 1. STT
     audio_bytes = await audio_file.read()
     fmt = (audio_file.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
     raw_text = await transcribe_chunks(audio_bytes, format=fmt)
-
+    logger.info(f"[PERF] STT: {time.time() - t:.2f}s")
     # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
+    t = time.time()
     deid = deidentifier.process(raw_text)
+    logger.info(f"[PERF] 비식별화: {time.time() - t:.2f}s")
 
     # 3. 한의학 용어 후처리
     corrected_text = postprocessor.correct(deid.cleaned)
 
     # 4. AI 진단
+    t = time.time()
     diagnosis = diagnose(corrected_text)
+    logger.info(f"[PERF] AI 진단: {time.time() - t:.2f}s")
 
     # 5. DB 저장
+    t = time.time()
     record = MedicalRecord(
         patient_id=patient_id,
         doctor_id=doctor_id,
@@ -148,6 +158,7 @@ async def process_chart(
     )
     db.add(ai_result)
     await db.commit()
+    logger.info(f"[PERF] DB 저장: {time.time() - t:.2f}s")
     await db.refresh(record)
 
     return {
