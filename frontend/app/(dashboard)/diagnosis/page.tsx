@@ -13,6 +13,7 @@ import {
   uploadAndAnalyze,
   askDiagnosis,
   diagnoseText,
+  finalizeRecord,
 } from "@/lib/api/diagnosis";
 import { Patient, DiagnosisResult } from "@/types";
 import {
@@ -93,6 +94,11 @@ export default function DiagnosisPage() {
   const [savedSymptomText, setSavedSymptomText] = useState<string | undefined>(
     undefined,
   );
+  const [currentRecordId, setCurrentRecordId] = useState<string | null>(null);
+  const [chiefComplaint, setChiefComplaint] = useState("");
+  const [saveSelection, setSaveSelection] = useState<
+    "both" | "result1" | "result2"
+  >("both");
   const [records, setRecords] = useState<
     {
       id: string;
@@ -190,6 +196,8 @@ export default function DiagnosisPage() {
 
   useEffect(() => {
     if (!selectedPatient) return;
+    setCurrentRecordId(null);
+    setChiefComplaint("");
     getPatientRecords(selectedPatient.id)
       .then((data) => {
         const sorted = [...data.records].sort((a, b) => {
@@ -404,14 +412,19 @@ ${r.acupuncture?.join(", ")}`;
           symptomText.trim() || null,
         );
         setResult(mapDiagnosisResult(data.diagnosis));
+        setCurrentRecordId(data.record_id);
+        setChiefComplaint(data.transcription);
       } else {
         const { result: raw } = await diagnoseText(
           symptomText.trim(),
           medicalHistory,
         );
         setSavedSymptomText(symptomText.trim());
+        setCurrentRecordId(null);
+        setChiefComplaint(symptomText.trim());
         setResult(mapDiagnosisResult(raw));
       }
+      setSaveSelection("both");
       setFeedbackAvailable(true);
       setResultMemoOpen(false);
       setActiveTab("result");
@@ -663,9 +676,14 @@ ${blocks.join("\n\n")}
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
         ? recordMedicalHistory.text.trim()
         : "없음";
-    const resultBlock = result.claudeBased
-      ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
-      : formatResultBlock(result, "진단 결과");
+    const resultBlock =
+      saveSelection === "result1"
+        ? formatResultBlock(result, "결과 1")
+        : saveSelection === "result2" && result.claudeBased
+          ? formatResultBlock(result.claudeBased, "결과 2")
+          : result.claudeBased
+            ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
+            : formatResultBlock(result, "진단 결과");
     const text = `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
 
@@ -679,11 +697,16 @@ ${historyLine}
 
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
     try {
-      const response = await saveRecord(
-        selectedPatient.id,
-        text,
-        savedSymptomText,
-      );
+      const response = currentRecordId
+        ? await finalizeRecord(currentRecordId, text)
+        : await saveRecord(
+            selectedPatient.id,
+            text,
+            chiefComplaint || savedSymptomText,
+            recordMedicalHistory.hasHistory
+              ? recordMedicalHistory.text || null
+              : null,
+          );
       setSavedSymptomText(undefined);
       setFeedbackRecordId(response?.id ?? null);
       setFeedbackHelpful(null);
@@ -1286,6 +1309,16 @@ ${historyLine}
                 </div>
               ) : (
                 <>
+                  {chiefComplaint && (
+                    <div className="mb-3 bg-white border border-[#D4CCC4] rounded-lg p-4">
+                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                        <FileText className="w-3.5 h-3.5" /> 주소증
+                      </div>
+                      <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                        {chiefComplaint}
+                      </div>
+                    </div>
+                  )}
                   {claudeResultCards.length > 0
                     ? resultCards.map(({ label, Icon, value, sub, tags }, i) => {
                         const c2 = claudeResultCards[i];
@@ -2034,9 +2067,33 @@ ${
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
-              <div className="text-sm font-medium text-[#232323] mb-6">
+              <div className="text-sm font-medium text-[#232323] mb-4">
                 저장하시겠습니까?
               </div>
+              {result?.claudeBased && (
+                <div className="flex flex-col gap-2 mb-5 text-left">
+                  {(
+                    [
+                      { value: "both", label: "결과 1 + 결과 2 모두 저장" },
+                      { value: "result1", label: "결과 1만 저장" },
+                      { value: "result2", label: "결과 2만 저장" },
+                    ] as const
+                  ).map((opt) => (
+                    <label
+                      key={opt.value}
+                      className="flex items-center gap-2 text-xs text-[#232323]"
+                    >
+                      <input
+                        type="radio"
+                        name="saveSelection"
+                        checked={saveSelection === opt.value}
+                        onChange={() => setSaveSelection(opt.value)}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              )}
               <div className="flex gap-2">
                 <button
                   onClick={() => {

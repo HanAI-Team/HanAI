@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.charting import service
 from app.charting.schema import (
     ChartingResponse,
+    FinalizeRecordRequest,
     MedicalRecordResponse,
     UpdateAudioUrlRequest,
     UpdateStatusRequest,
@@ -85,3 +86,13 @@ async def update_medical_history(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.update_medical_history(db, record_id, data.medical_history)
+
+
+@router.patch("/{record_id}/finalize", response_model=MedicalRecordResponse)
+async def finalize_record(
+    record_id: uuid.UUID,
+    data: FinalizeRecordRequest,
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.finalize_record(db, record_id, data.chart_structured)

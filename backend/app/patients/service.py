@@ -85,7 +85,10 @@ async def get_patient_with_records(
 
     result = await db.execute(
         select(MedicalRecord)
-        .where(MedicalRecord.patient_id == patient_id)
+        .where(
+            MedicalRecord.patient_id == patient_id,
+            MedicalRecord.recorded_at.isnot(None),
+        )
         .order_by(MedicalRecord.recorded_at.desc())
         .limit(5)
     )
