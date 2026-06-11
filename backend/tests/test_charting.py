@@ -29,7 +29,9 @@ async def test_정상_흐름_반환값_구조(db, monkeypatch):
     monkeypatch.setattr(
         "app.charting.service.transcribe_chunks", AsyncMock(return_value=_SAMPLE_STT)
     )
-    monkeypatch.setattr("app.charting.service.diagnose", lambda text: _SAMPLE_DIAGNOSIS)
+    monkeypatch.setattr(
+        "app.charting.service.diagnose", AsyncMock(return_value=_SAMPLE_DIAGNOSIS)
+    )
 
     patient_id, doctor_id, hospital_id = _uuids()
     result = await process_chart(
