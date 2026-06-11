@@ -136,7 +136,7 @@ async def process_chart(
 
     # 4. AI 진단
     t = time.time()
-    diagnosis = diagnose(corrected_text)
+    diagnosis = await diagnose(corrected_text)
     logger.info(f"[PERF] AI 진단: {time.time() - t:.2f}s")
 
     # 5. DB 저장
