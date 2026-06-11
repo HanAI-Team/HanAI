@@ -47,6 +47,17 @@ async def test_diagnose_text_정상_응답(client, approved_doctor, monkeypatch)
     assert resp.json()["result"] == {"dataset_based": {}, "claude_based": {}}
 
 
+async def test_public_ask_로그인_없이_응답(client, monkeypatch):
+    monkeypatch.setattr("app.diagnosis.service.run_ask", lambda question: "답변입니다")
+
+    resp = await client.post(
+        "/api/diagnosis/public-ask",
+        json={"question": "소음인 소화불량에 좋은 처방은?"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["answer"] == "답변입니다"
+
+
 async def test_diagnose_text_medical_history_포함됨(client, approved_doctor, monkeypatch):
     _, headers = approved_doctor
     received = {}
