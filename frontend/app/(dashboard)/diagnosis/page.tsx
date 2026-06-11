@@ -725,8 +725,8 @@ ${historyLine}
     }
   }
 
-  function copyAll() {
-    if (!result || !selectedPatient) return;
+  function buildResultText(): string | null {
+    if (!result || !selectedPatient) return null;
     const memoLine = memo.trim() || "-";
     const historyLine =
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
@@ -735,7 +735,7 @@ ${historyLine}
     const resultBlock = result.claudeBased
       ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
       : formatResultBlock(result, "진단 결과");
-    const text = `[AI 한의 진단 보조 — Zinmac]
+    return `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
 
 ${resultBlock}
@@ -747,9 +747,33 @@ ${memoLine}
 ${historyLine}
 
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
+  }
+
+  function copyAll() {
+    const text = buildResultText();
+    if (!text) return;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  }
+
+  function handlePrint() {
+    const text = buildResultText();
+    if (!text || !selectedPatient) return;
+    const printWindow = window.open("", "_blank", "width=800,height=900");
+    if (!printWindow) {
+      setErrorMessage("팝업이 차단되어 인쇄할 수 없습니다. 팝업 차단을 해제해주세요.");
+      return;
+    }
+    printWindow.document.title = `진단 결과 - ${selectedPatient.name}`;
+    const pre = printWindow.document.createElement("pre");
+    pre.style.cssText =
+      "white-space: pre-wrap; font-family: sans-serif; font-size: 13px; line-height: 1.6; color: #232323; padding: 24px; margin: 0;";
+    pre.textContent = text;
+    printWindow.document.body.appendChild(pre);
+    printWindow.focus();
+    printWindow.onafterprint = () => printWindow.close();
+    printWindow.print();
   }
 
   function formatPhone(value: string): string {
@@ -1484,7 +1508,10 @@ ${
                         </>
                       )}
                     </button>
-                    <button className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all flex items-center justify-center gap-1.5">
+                    <button
+                      onClick={handlePrint}
+                      className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all flex items-center justify-center gap-1.5"
+                    >
                       <Printer className="w-3.5 h-3.5" /> 인쇄
                     </button>
                     <button
