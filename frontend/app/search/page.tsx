@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { MessageCircle } from "lucide-react";
-import { publicAsk } from "@/lib/api/diagnosis";
+import { publicAskStream } from "@/lib/api/diagnosis";
 
 interface AskItem {
   question: string;
@@ -11,30 +11,30 @@ interface AskItem {
 export default function PublicSearchPage() {
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState<AskItem[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function appendToLast(chunk: string) {
+    setHistory((prev) =>
+      prev.map((item, i) =>
+        i === prev.length - 1 ? { ...item, answer: item.answer + chunk } : item,
+      ),
+    );
+  }
+
+  async function handleSubmit(e: { preventDefault: () => void }) {
     e.preventDefault();
-    const isLoading = history.at(-1)?.answer === "";
-    if (!question.trim() || isLoading) return;
+    if (!question.trim() || isStreaming) return;
     const q = question.trim();
     setQuestion("");
     setHistory((prev) => [...prev, { question: q, answer: "" }]);
+    setIsStreaming(true);
 
     try {
-      const res = await publicAsk(q);
-      setHistory((prev) =>
-        prev.map((item, i) =>
-          i === prev.length - 1 ? { ...item, answer: res.answer } : item,
-        ),
-      );
+      await publicAskStream(q, appendToLast);
     } catch {
-      setHistory((prev) =>
-        prev.map((item, i) =>
-          i === prev.length - 1
-            ? { ...item, answer: "답변을 가져오지 못했습니다. 다시 시도해주세요." }
-            : item,
-        ),
-      );
+      appendToLast("답변을 가져오지 못했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsStreaming(false);
     }
   }
 
@@ -85,11 +85,11 @@ export default function PublicSearchPage() {
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="한의학 관련 질문을 입력하세요..."
             className="flex-1 bg-white border border-[#D4CCC4] rounded-lg px-4 py-2.5 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
-            disabled={history.at(-1)?.answer === ""}
+            disabled={isStreaming}
           />
           <button
             type="submit"
-            disabled={history.at(-1)?.answer === "" || !question.trim()}
+            disabled={isStreaming || !question.trim()}
             className="bg-[#EF6600] text-white px-4 py-2.5 rounded-lg text-sm disabled:opacity-40 hover:opacity-90 transition-opacity"
           >
             전송

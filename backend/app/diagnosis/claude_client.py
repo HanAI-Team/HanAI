@@ -2,7 +2,6 @@ import json
 import logging
 import os
 
-import anthropic
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from fastapi import HTTPException
@@ -22,7 +21,6 @@ from app.diagnosis.anonymize import anonymize
 logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 async_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 _default_data_dir = os.path.join(os.path.dirname(__file__), "../../../data")
@@ -78,22 +76,6 @@ def find_relevant_cases(query: str, n: int = 3) -> str:
     return _search(query, _cl_records, _cl_vec, _cl_matrix, n)
 
 
-# 동기 버전 유지 (ask 함수용)
-def _call_claude(prompt: str) -> str:
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=4096,
-        temperature=0.2,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = message.content[0].text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[-1]
-        text = text.rsplit("```", 1)[0]
-    return text.strip()
-
-
-# 비동기 버전
 async def _call_claude_async(prompt: str) -> str:
     message = await async_client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -152,13 +134,27 @@ async def diagnose(transcription: str) -> dict:
     }
 
 
-def ask(question: str) -> str:
+def _build_ask_prompt(question: str) -> str:
     public_data = find_relevant_prescriptions(question, n=5)
     cafe_data = find_relevant_cases(question, n=3)
-
-    prompt = QA_PROMPT_TEMPLATE.format(
+    return QA_PROMPT_TEMPLATE.format(
         question=question,
         public_data=public_data or "DB 데이터 없음",
         cafe_data=cafe_data or "임상 사례 없음",
     )
-    return _call_claude(prompt)
+
+
+async def ask(question: str) -> str:
+    return await _call_claude_async(_build_ask_prompt(question))
+
+
+async def ask_stream(question: str):
+    prompt = _build_ask_prompt(question)
+    async with async_client.messages.stream(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=4096,
+        temperature=0.2,
+        messages=[{"role": "user", "content": prompt}],
+    ) as stream:
+        async for text in stream.text_stream:
+            yield text
