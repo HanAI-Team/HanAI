@@ -57,6 +57,8 @@ PROMPT_DIAG_TEMPLATE = """당신은 한의학 전문 AI 진료 보조입니다.
    - 화자 레이블([A], [B], [D] 등) 뒤에 단독으로 나오는 2~3글자 한글 (예: [D] 송명진 → [D] [인물])
    - 이름 + 조사 형태 (예: 박황훈이 약값은 → [환자명] 약값은 / 임은하한테 → [환자명]한테)
    - 대화 흐름과 무관하게 갑자기 등장하는 2~3글자 한글 고유명사
+6. chief_complaint_summary에는 환자가 직접 호소한 핵심 증상(주소증)을 1~2문장으로 간결하게 요약하세요.
+   AI의 진단/처방 의견이 아니라, 환자가 말한 내용을 기준으로 작성하세요.
 
 [진료 내용]
 {transcription}
@@ -71,6 +73,7 @@ PROMPT_DIAG_TEMPLATE = """당신은 한의학 전문 AI 진료 보조입니다.
     "reason": null,
     "recommendation": null
   }},
+  "chief_complaint_summary": "환자가 호소한 핵심 증상 1~2문장 요약",
   "sasang_constitution": {{
     "type": "태양인|태음인|소양인|소음인",
     "confidence": "high|medium|low",
@@ -105,6 +108,8 @@ PROMPT_DIAG_TEMPLATE_GENERAL = """당신은 한의학 전문 AI 진료 보조입
    - 화자 레이블([A], [B], [D] 등) 뒤에 단독으로 나오는 2~3글자 한글 (예: [D] 송명진 → [D] [인물])
    - 이름 + 조사 형태 (예: 박황훈이 약값은 → [환자명] 약값은 / 임은하한테 → [환자명]한테)
    - 대화 흐름과 무관하게 갑자기 등장하는 2~3글자 한글 고유명사
+5. chief_complaint_summary에는 환자가 직접 호소한 핵심 증상(주소증)을 1~2문장으로 간결하게 요약하세요.
+   AI의 진단/처방 의견이 아니라, 환자가 말한 내용을 기준으로 작성하세요.
 
 [진료 내용]
 {transcription}
@@ -116,6 +121,7 @@ PROMPT_DIAG_TEMPLATE_GENERAL = """당신은 한의학 전문 AI 진료 보조입
     "reason": null,
     "recommendation": null
   }},
+  "chief_complaint_summary": "환자가 호소한 핵심 증상 1~2문장 요약",
   "sasang_constitution": {{
     "type": "태양인|태음인|소양인|소음인",
     "confidence": "high|medium|low",
