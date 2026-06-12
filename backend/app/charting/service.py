@@ -5,7 +5,7 @@ from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.charting.stt.chunker import transcribe_chunks
-from app.diagnosis.claude_client import diagnose
+from app.diagnosis.claude_client import diagnose, diagnose_stream
 from app.core.models import AIResult, MedicalRecord
 from app.pipeline.deidentifier import deidentifier
 from app.pipeline.postprocessor import postprocessor
@@ -177,6 +177,77 @@ async def process_chart(
         "transcription": corrected_text,
         "diagnosis": diagnosis,
     }
+
+
+async def process_chart_stream(
+    audio_file: UploadFile,
+    patient_id: uuid_mod.UUID,
+    doctor_id: uuid_mod.UUID,
+    hospital_id: uuid_mod.UUID,
+    db: AsyncSession,
+    symptom_text: str | None = None,
+    medical_history: str | None = None,
+):
+    """결과1(dataset_based), 결과2(claude_based)를 완료되는 대로 yield하는 스트리밍 버전."""
+    import time
+    import logging
+
+    logger = logging.getLogger(__name__)
+    t = time.time()
+    # 1. STT
+    audio_bytes = await audio_file.read()
+    fmt = (audio_file.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
+    raw_text = await transcribe_chunks(audio_bytes, format=fmt)
+    logger.info(f"[PERF] STT: {time.time() - t:.2f}s")
+
+    # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
+    deid = deidentifier.process(raw_text)
+
+    # 3. 한의학 용어 후처리
+    corrected_text = postprocessor.correct(deid.cleaned)
+
+    # 3-1. 직접 입력한 증상 텍스트 추가
+    if symptom_text and symptom_text.strip():
+        corrected_text += f"\n\n[추가 증상 입력]\n{symptom_text.strip()}"
+
+    # 3-2. 기존 병력 추가
+    if medical_history and medical_history.strip():
+        corrected_text += f"\n\n[기존 병력]\n{medical_history.strip()}"
+
+    yield {"type": "transcription", "transcription": corrected_text}
+
+    # 4. AI 진단 — 결과1, 결과2를 완료되는 대로 전송
+    t = time.time()
+    diagnosis: dict = {}
+    async for key, value in diagnose_stream(corrected_text):
+        diagnosis[key] = value
+        logger.info(f"[PERF] AI 진단 ({key}): {time.time() - t:.2f}s")
+        yield {"type": key, "data": value}
+
+    # 5. DB 저장
+    t = time.time()
+    record = MedicalRecord(
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        hospital_id=hospital_id,
+        raw_transcription=deid.original,
+        chart_structured=corrected_text,
+        status="completed",
+        medical_history=medical_history,
+    )
+    db.add(record)
+    await db.flush()
+
+    ai_result = AIResult(
+        medical_record_id=record.id,
+        diagnosis_suggestion=json.dumps(diagnosis, ensure_ascii=False),
+    )
+    db.add(ai_result)
+    await db.commit()
+    logger.info(f"[PERF] DB 저장: {time.time() - t:.2f}s")
+    await db.refresh(record)
+
+    yield {"type": "done", "record_id": str(record.id)}
 
 
 async def update_medical_history(
