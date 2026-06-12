@@ -318,6 +318,7 @@ export default function DiagnosisPage() {
       id: "",
       patient_id: patientId,
       created_at: new Date().toISOString(),
+      chiefComplaintSummary: sections["주소증"]?.trim() || "",
       constitution: sections["사상체질"]?.trim() || "-",
       diagnosis,
       western_diagnosis,
@@ -341,6 +342,10 @@ export default function DiagnosisPage() {
       id: "",
       patient_id: selectedPatient?.id ?? "",
       created_at: new Date().toISOString(),
+      chiefComplaintSummary:
+        typeof raw.chief_complaint_summary === "string"
+          ? raw.chief_complaint_summary.trim()
+          : "",
       constitution: clean(r.sasang_constitution?.type),
       diagnosis: clean(r.tkm_diagnosis?.diagnosis_name),
       western_diagnosis: clean(
@@ -681,6 +686,7 @@ ${blocks.join("\n\n")}
 
   async function handleSave() {
     if (!result || !selectedPatient) return;
+    const ccLine = result.chiefComplaintSummary?.trim() || chiefComplaint.trim() || "-";
     const memoLine = memo.trim() || "-";
     const historyLine =
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
@@ -696,6 +702,9 @@ ${blocks.join("\n\n")}
             : formatResultBlock(result, "진단 결과");
     const text = `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
+
+▶ 주소증
+${ccLine}
 
 ${resultBlock}
 
@@ -761,7 +770,7 @@ ${historyLine}
 
   function buildResultText(): string | null {
     if (!result || !selectedPatient) return null;
-    const ccLine = chiefComplaint.trim() || "-";
+    const ccLine = result.chiefComplaintSummary?.trim() || chiefComplaint.trim() || "-";
     const memoLine = memo.trim() || "-";
     const historyLine =
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
@@ -1324,13 +1333,13 @@ ${historyLine}
                 </div>
               ) : (
                 <>
-                  {chiefComplaint && (
+                  {(result.chiefComplaintSummary || chiefComplaint) && (
                     <div className="mb-3 bg-white border border-[#D4CCC4] rounded-lg p-4">
                       <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
                         <FileText className="w-3.5 h-3.5" /> 주소증
                       </div>
                       <div className="text-sm text-[#232323] whitespace-pre-wrap">
-                        {chiefComplaint}
+                        {result.chiefComplaintSummary || chiefComplaint}
                       </div>
                     </div>
                   )}
@@ -1672,6 +1681,8 @@ ${
                       const prescSummary = sections?.["한약 처방"]
                         ?.split("\n")[0]
                         ?.trim();
+                      const ccText =
+                        sections?.["주소증"]?.trim() || r.raw_transcription;
                       return (
                         <div
                           key={r.id}
@@ -1723,7 +1734,7 @@ ${
                           </div>
                           {isOpen && (
                             <div className="border-t border-[#D4CCC4] p-4 flex flex-col gap-4">
-                              {r.raw_transcription && (
+                              {ccText && (
                                 <div>
                                   <button
                                     onClick={() =>
@@ -1746,7 +1757,7 @@ ${
                                   </button>
                                   {expandedCC.has(r.id) && (
                                     <div className="text-sm text-[#232323] whitespace-pre-wrap bg-[#F5F2EE] rounded p-2">
-                                      {r.raw_transcription}
+                                      {ccText}
                                     </div>
                                   )}
                                 </div>
