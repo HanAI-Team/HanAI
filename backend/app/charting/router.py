@@ -1,11 +1,13 @@
+import json
+import logging
 import uuid
 from uuid import UUID
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.charting import service
 from app.charting.schema import (
-    ChartingResponse,
     FinalizeRecordRequest,
     MedicalRecordResponse,
     UpdateAudioUrlRequest,
@@ -18,8 +20,24 @@ from app.core.models import Doctor, StaffAccount
 
 router = APIRouter(tags=["charting"])
 
+logger = logging.getLogger(__name__)
 
-@router.post("/", response_model=ChartingResponse)
+
+async def _stream_chart(**kwargs):
+    try:
+        async for event in service.process_chart_stream(**kwargs):
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+    except HTTPException as e:
+        yield json.dumps({"type": "error", "detail": e.detail}, ensure_ascii=False) + "\n"
+    except Exception:
+        logger.exception("[charting] 분석 스트리밍 중 오류")
+        yield json.dumps(
+            {"type": "error", "detail": "분석 중 오류가 발생했습니다."},
+            ensure_ascii=False,
+        ) + "\n"
+
+
+@router.post("/")
 async def chart(
     patient_id: uuid.UUID = Form(...),
     audio: UploadFile = File(...),
@@ -28,16 +46,18 @@ async def chart(
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await service.process_chart(
-        audio_file=audio,
-        patient_id=patient_id,
-        doctor_id=UUID(str(current_doctor.id)),
-        hospital_id=UUID(str(current_doctor.hospital_id)),
-        db=db,
-        symptom_text=symptom_text,
-        medical_history=medical_history,
+    return StreamingResponse(
+        _stream_chart(
+            audio_file=audio,
+            patient_id=patient_id,
+            doctor_id=UUID(str(current_doctor.id)),
+            hospital_id=UUID(str(current_doctor.hospital_id)),
+            db=db,
+            symptom_text=symptom_text,
+            medical_history=medical_history,
+        ),
+        media_type="application/x-ndjson",
     )
-    return ChartingResponse(**result)
 
 
 @router.get("/patient/{patient_id}", response_model=list[MedicalRecordResponse])

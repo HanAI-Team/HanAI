@@ -106,7 +106,8 @@ async def _diagnose_from_prompt_async(prompt: str) -> dict:
     )
 
 
-async def diagnose(transcription: str) -> dict:
+async def diagnose_stream(transcription: str):
+    """결과1(dataset_based), 결과2(claude_based)를 완료되는 순서대로 yield한다."""
     anon = anonymize(transcription)
     public_data = find_relevant_prescriptions(anon, n=5)
     cafe_data = find_relevant_cases(anon, n=3)
@@ -122,16 +123,27 @@ async def diagnose(transcription: str) -> dict:
     general_diag_prompt = PROMPT_DIAG_TEMPLATE_GENERAL.format(transcription=anon)
     general_rx_prompt = PROMPT_RX_TEMPLATE_GENERAL.format(transcription=anon)
 
-    dataset_diag, dataset_rx, general_diag, general_rx = await asyncio.gather(
+    dataset_task = asyncio.gather(
         _diagnose_from_prompt_async(dataset_diag_prompt),
         _diagnose_from_prompt_async(dataset_rx_prompt),
+    )
+    general_task = asyncio.gather(
         _diagnose_from_prompt_async(general_diag_prompt),
         _diagnose_from_prompt_async(general_rx_prompt),
     )
-    return {
-        "dataset_based": {**dataset_diag, **dataset_rx},
-        "claude_based": {**general_diag, **general_rx},
-    }
+
+    dataset_diag, dataset_rx = await dataset_task
+    yield "dataset_based", {**dataset_diag, **dataset_rx}
+
+    general_diag, general_rx = await general_task
+    yield "claude_based", {**general_diag, **general_rx}
+
+
+async def diagnose(transcription: str) -> dict:
+    result: dict = {}
+    async for key, value in diagnose_stream(transcription):
+        result[key] = value
+    return result
 
 
 def _build_ask_prompt(question: str) -> str:

@@ -14,6 +14,7 @@ import {
   askDiagnosis,
   diagnoseText,
   finalizeRecord,
+  ChartingEvent,
 } from "@/lib/api/diagnosis";
 import { Patient, DiagnosisResult } from "@/types";
 import {
@@ -70,6 +71,7 @@ export default function DiagnosisPage() {
   const [memo, setMemo] = useState("");
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingResult2, setLoadingResult2] = useState(false);
   const [copied, setCopied] = useState<"both" | "result1" | "result2" | null>(null);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -430,15 +432,39 @@ ${r.acupuncture?.join(", ")}`;
     }
     try {
       if (audioFile) {
-        const data = await uploadAndAnalyze(
+        await uploadAndAnalyze(
           selectedPatient.id,
           audioFile,
           medicalHistory,
           symptomText.trim() || null,
+          (event: ChartingEvent) => {
+            switch (event.type) {
+              case "transcription":
+                setChiefComplaint(event.transcription);
+                break;
+              case "dataset_based":
+                setResult(mapSingleDiagnosis(event.data));
+                setSaveSelection("both");
+                setFeedbackAvailable(true);
+                setResultMemoOpen(false);
+                setActiveTab("result");
+                setLoading(false);
+                setLoadingResult2(true);
+                break;
+              case "claude_based": {
+                const claudeBased = mapSingleDiagnosis(event.data);
+                setResult((prev) => (prev ? { ...prev, claudeBased } : prev));
+                setLoadingResult2(false);
+                break;
+              }
+              case "done":
+                setCurrentRecordId(event.record_id);
+                break;
+              case "error":
+                throw new Error(event.detail);
+            }
+          },
         );
-        setResult(mapDiagnosisResult(data.diagnosis));
-        setCurrentRecordId(data.record_id);
-        setChiefComplaint(data.transcription);
       } else {
         const { result: raw } = await diagnoseText(
           symptomText.trim(),
@@ -448,17 +474,18 @@ ${r.acupuncture?.join(", ")}`;
         setCurrentRecordId(null);
         setChiefComplaint(symptomText.trim());
         setResult(mapDiagnosisResult(raw));
+        setSaveSelection("both");
+        setFeedbackAvailable(true);
+        setResultMemoOpen(false);
+        setActiveTab("result");
       }
-      setSaveSelection("both");
-      setFeedbackAvailable(true);
-      setResultMemoOpen(false);
-      setActiveTab("result");
     } catch (e: any) {
       setErrorMessage(
         e.response?.data?.detail || e.message || "분석에 실패했습니다.",
       );
     } finally {
       setLoading(false);
+      setLoadingResult2(false);
     }
   }
 
@@ -1567,6 +1594,12 @@ ${historyLine}
                         ))}
                       </div>
                     )}
+                  {loadingResult2 && (
+                    <div className="flex items-center gap-2 text-xs text-[#8A8480] mt-2">
+                      <div className="w-3 h-3 border-2 border-[#D4CCC4] border-t-[#EF6600] rounded-full animate-spin" />
+                      결과 2 (일반 한의학 기반) 분석 중...
+                    </div>
+                  )}
                   <div className="mt-3 bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
                     <button
                       onClick={() => setResultMemoOpen((p) => !p)}
