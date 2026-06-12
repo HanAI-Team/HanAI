@@ -761,6 +761,7 @@ ${historyLine}
 
   function buildResultText(): string | null {
     if (!result || !selectedPatient) return null;
+    const ccLine = chiefComplaint.trim() || "-";
     const memoLine = memo.trim() || "-";
     const historyLine =
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
@@ -771,6 +772,9 @@ ${historyLine}
       : formatResultBlock(result, "진단 결과");
     return `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
+
+▶ 주소증
+${ccLine}
 
 ${resultBlock}
 
