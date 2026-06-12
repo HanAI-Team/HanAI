@@ -160,6 +160,15 @@ export default function DiagnosisPage() {
     activeTab === "history" &&
     !!selectedPatient &&
     recordsLastFetchedFor !== selectedPatient.id;
+  const chiefComplaintText = [
+    chiefComplaint,
+    memo.trim() ? `[메모]\n${memo.trim()}` : "",
+    recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
+      ? `[병력]\n${recordMedicalHistory.text.trim()}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1320,13 +1329,13 @@ ${historyLine}
                 </div>
               ) : (
                 <>
-                  {chiefComplaint && (
+                  {chiefComplaintText && (
                     <div className="mb-3 bg-white border border-[#D4CCC4] rounded-lg p-4">
                       <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
                         <FileText className="w-3.5 h-3.5" /> 주소증
                       </div>
                       <div className="text-sm text-[#232323] whitespace-pre-wrap">
-                        {chiefComplaint}
+                        {chiefComplaintText}
                       </div>
                     </div>
                   )}
@@ -1668,6 +1677,17 @@ ${
                       const prescSummary = sections?.["한약 처방"]
                         ?.split("\n")[0]
                         ?.trim();
+                      const historyMedicalHistory =
+                        sections?.["병력"] || r.medical_history;
+                      const ccText = [
+                        r.raw_transcription,
+                        sections?.["메모"] ? `[메모]\n${sections["메모"]}` : "",
+                        historyMedicalHistory
+                          ? `[병력]\n${historyMedicalHistory}`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join("\n\n");
                       return (
                         <div
                           key={r.id}
@@ -1719,7 +1739,7 @@ ${
                           </div>
                           {isOpen && (
                             <div className="border-t border-[#D4CCC4] p-4 flex flex-col gap-4">
-                              {r.raw_transcription && (
+                              {ccText && (
                                 <div>
                                   <button
                                     onClick={() =>
@@ -1742,7 +1762,7 @@ ${
                                   </button>
                                   {expandedCC.has(r.id) && (
                                     <div className="text-sm text-[#232323] whitespace-pre-wrap bg-[#F5F2EE] rounded p-2">
-                                      {r.raw_transcription}
+                                      {ccText}
                                     </div>
                                   )}
                                 </div>
