@@ -56,6 +56,13 @@ export async function askDiagnosis(question: string): Promise<{ answer: string }
   })
 }
 
+export async function publicAsk(question: string): Promise<{ answer: string }> {
+  return apiCall('/api/diagnosis/public-ask', {
+    method: 'POST',
+    body: JSON.stringify({ question }),
+  })
+}
+
 export async function diagnoseText(
   transcription: string,
   medical_history?: string | null,
