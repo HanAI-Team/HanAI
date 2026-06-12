@@ -1,17 +1,19 @@
 import { apiCall } from './client'
 
-export interface ChartingResponse {
-  record_id: string
-  transcription: string
-  diagnosis: Record<string, unknown>
-}
+export type ChartingEvent =
+  | { type: 'transcription'; transcription: string }
+  | { type: 'dataset_based'; data: Record<string, unknown> }
+  | { type: 'claude_based'; data: Record<string, unknown> }
+  | { type: 'done'; record_id: string }
+  | { type: 'error'; detail: string }
 
 export async function uploadAndAnalyze(
   patientId: string,
   audioFile: File,
-  medical_history?: string | null,
-  symptom_text?: string | null,
-): Promise<ChartingResponse> {
+  medical_history: string | null | undefined,
+  symptom_text: string | null | undefined,
+  onEvent: (event: ChartingEvent) => void,
+): Promise<void> {
   const token = localStorage.getItem('token')
   const formData = new FormData()
   formData.append('patient_id', patientId)
@@ -27,8 +29,24 @@ export async function uploadAndAnalyze(
     },
     body: formData,
   })
-  if (!res.ok) throw new Error('분석 실패')
-  return res.json()
+  if (!res.ok || !res.body) throw new Error('분석 실패')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let newlineIndex
+    while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, newlineIndex).trim()
+      buffer = buffer.slice(newlineIndex + 1)
+      if (line) onEvent(JSON.parse(line) as ChartingEvent)
+    }
+  }
+  const last = buffer.trim()
+  if (last) onEvent(JSON.parse(last) as ChartingEvent)
 }
 
 export async function getDiagnosis(recordId: string) {
