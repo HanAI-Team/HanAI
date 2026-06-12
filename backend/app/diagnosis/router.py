@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -36,14 +37,15 @@ async def ask(
     allowed = await check_rate_limit(f"diagnosis_ask:{current_doctor.id}", limit=10, window_seconds=60)
     if not allowed:
         raise HTTPException(status_code=429, detail="요청이 너무 많습니다. 1분 후 다시 시도해주세요.")
-    answer = service.run_ask(data.question)
+    answer = await service.run_ask(data.question)
     return AskResponse(answer=answer)
 
 
-@router.post("/public-ask", response_model=AskResponse)
+@router.post("/public-ask")
 async def public_ask(data: AskRequest):
-    answer = service.run_ask(data.question)
-    return AskResponse(answer=answer)
+    return StreamingResponse(
+        service.run_ask_stream(data.question), media_type="text/plain; charset=utf-8"
+    )
 
 
 @router.post("/{record_id}", response_model=DiagnosisRecordResponse)
