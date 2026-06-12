@@ -70,7 +70,7 @@ export default function DiagnosisPage() {
   const [memo, setMemo] = useState("");
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"both" | "result1" | "result2" | null>(null);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [newPatient, setNewPatient] = useState({
@@ -283,6 +283,20 @@ export default function DiagnosisPage() {
       if (title) sections[title] = content;
     }
     return Object.keys(sections).length > 0 ? sections : null;
+  }
+
+  function splitResultBlocks(
+    text: string | null,
+  ): { before: string; result1: string; result2: string } | null {
+    if (!text) return null;
+    const i1 = text.indexOf("■ 결과 1");
+    const i2 = text.indexOf("■ 결과 2");
+    if (i1 === -1 || i2 === -1) return null;
+    return {
+      before: text.slice(0, i1),
+      result1: text.slice(i1, i2),
+      result2: text.slice(i2),
+    };
   }
 
   function mapSectionsToResult(
@@ -768,7 +782,9 @@ ${historyLine}
     }
   }
 
-  function buildResultText(): string | null {
+  function buildResultText(
+    selection: "both" | "result1" | "result2" = "both",
+  ): string | null {
     if (!result || !selectedPatient) return null;
     const ccLine = result.chiefComplaintSummary?.trim() || chiefComplaint.trim() || "-";
     const memoLine = memo.trim() || "-";
@@ -776,9 +792,14 @@ ${historyLine}
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
         ? recordMedicalHistory.text.trim()
         : "없음";
-    const resultBlock = result.claudeBased
-      ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
-      : formatResultBlock(result, "진단 결과");
+    const resultBlock =
+      selection === "result1"
+        ? formatResultBlock(result, "결과 1")
+        : selection === "result2" && result.claudeBased
+          ? formatResultBlock(result.claudeBased, "결과 2")
+          : result.claudeBased
+            ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
+            : formatResultBlock(result, "진단 결과");
     return `[AI 한의 진단 보조 — Zinmac]
 환자: ${selectedPatient.name} / ${new Date().toLocaleDateString("ko-KR")}
 
@@ -796,12 +817,12 @@ ${historyLine}
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
   }
 
-  function copyAll() {
-    const text = buildResultText();
+  function copyResult(selection: "both" | "result1" | "result2") {
+    const text = buildResultText(selection);
     if (!text) return;
     navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setCopied(selection);
+    setTimeout(() => setCopied(null), 2500);
   }
 
   function handlePrint() {
@@ -903,6 +924,82 @@ ${historyLine}
     { key: "메모", Icon: FileText },
     { key: "병력", Icon: Clipboard },
   ];
+
+  function renderHistorySection(
+    sections: Record<string, string> | null,
+    sectionKey: string,
+    Icon: LucideIcon,
+    keyPrefix = "",
+  ) {
+    const content = sections?.[sectionKey] || "-";
+    const isHerbs = sectionKey === "한약 처방";
+    const isAcu = sectionKey === "침 처방";
+
+    if (isHerbs && content !== "-") {
+      const lines = content
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const prescName = lines[0];
+      const ingredients = lines
+        .slice(1)
+        .flatMap((l) => l.split(/[,，]/).map((s) => s.trim()))
+        .filter(Boolean);
+      return (
+        <div key={`${keyPrefix}${sectionKey}`}>
+          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+            <Icon className="w-3.5 h-3.5" /> {sectionKey}
+          </div>
+          <div className="text-sm font-semibold text-[#EF6600] mb-1.5">
+            {prescName}
+          </div>
+          {ingredients.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {ingredients.map((t, i) => (
+                <span
+                  key={i}
+                  className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const tags =
+      isAcu && content !== "-"
+        ? content
+            .split(/[,，\n]/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : null;
+    return (
+      <div key={`${keyPrefix}${sectionKey}`}>
+        <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+          <Icon className="w-3.5 h-3.5" /> {sectionKey}
+        </div>
+        {tags ? (
+          <div className="flex flex-wrap gap-1">
+            {tags.map((t, i) => (
+              <span
+                key={i}
+                className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+            {content}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-52px)] overflow-hidden">
@@ -1508,40 +1605,77 @@ ${historyLine}
                       </div>
                     )}
                   </div>
-                  <div className="bg-[#232323] rounded-lg p-5 mt-4 relative">
-                    <div className="flex items-center gap-1.5 text-xs text-[#A09892] uppercase tracking-wide mb-3">
-                      <Clipboard className="w-3.5 h-3.5" /> 동의보감 차팅용 전체
-                      복사
+                  <div className="bg-[#232323] rounded-lg p-5 mt-4">
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-xs text-[#A09892] uppercase tracking-wide">
+                        <Clipboard className="w-3.5 h-3.5" /> 동의보감 차팅용 전체
+                        복사
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {result.claudeBased && (
+                          <>
+                            <button
+                              onClick={() => copyResult("result1")}
+                              className={`text-xs px-2.5 py-1.5 rounded-md flex items-center gap-1.5 transition-all ${
+                                copied === "result1"
+                                  ? "bg-green-600 text-white"
+                                  : "bg-[#3A3A3A] text-white hover:opacity-90"
+                              }`}
+                            >
+                              {copied === "result1" ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" /> 복사 완료!
+                                </>
+                              ) : (
+                                <>
+                                  <Clipboard className="w-3.5 h-3.5" /> 결과 1 전체
+                                  복사
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => copyResult("result2")}
+                              className={`text-xs px-2.5 py-1.5 rounded-md flex items-center gap-1.5 transition-all ${
+                                copied === "result2"
+                                  ? "bg-green-600 text-white"
+                                  : "bg-[#3A3A3A] text-white hover:opacity-90"
+                              }`}
+                            >
+                              {copied === "result2" ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" /> 복사 완료!
+                                </>
+                              ) : (
+                                <>
+                                  <Clipboard className="w-3.5 h-3.5" /> 결과 2 전체
+                                  복사
+                                </>
+                              )}
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => copyResult("both")}
+                          className={`text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all ${
+                            copied === "both"
+                              ? "bg-green-600 text-white"
+                              : "bg-[#EF6600] text-white hover:opacity-90"
+                          }`}
+                        >
+                          {copied === "both" ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" /> 복사 완료!
+                            </>
+                          ) : (
+                            <>
+                              <Clipboard className="w-3.5 h-3.5" /> 전체 복사
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={copyAll}
-                      className={`absolute top-4 right-4 text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all ${
-                        copied
-                          ? "bg-green-600 text-white"
-                          : "bg-[#EF6600] text-white hover:opacity-90"
-                      }`}
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" /> 복사 완료!
-                        </>
-                      ) : (
-                        <>
-                          <Clipboard className="w-3.5 h-3.5" /> 전체 복사
-                        </>
-                      )}
-                    </button>
-                    <pre className="text-xs text-white/70 leading-relaxed whitespace-pre-wrap font-sans mt-6">
-                      {`[AI 한의 진단 보조 — Zinmac]
-환자: ${selectedPatient?.name} / ${new Date().toLocaleDateString("ko-KR")}
-
-${
-  result.claudeBased
-    ? `${formatResultBlock(result, "결과 1")}\n\n${formatResultBlock(result.claudeBased, "결과 2")}`
-    : formatResultBlock(result, "진단 결과")
-}
-
-※ AI 참고용 / 최종 판단은 담당 한의사`}
+                    <pre className="text-xs text-white/70 leading-relaxed whitespace-pre-wrap font-sans">
+                      {buildResultText("both")}
                     </pre>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-[#B0AAA4] mt-3 p-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-lg">
@@ -1674,15 +1808,24 @@ ${
                     })
                     .map((r) => {
                       const sections = parseChartSections(r.chart_structured);
+                      const blocks = splitResultBlocks(r.chart_structured);
+                      const sections1 = blocks
+                        ? parseChartSections(blocks.result1)
+                        : sections;
+                      const sections2 = blocks
+                        ? parseChartSections(blocks.result2)
+                        : null;
                       const isOpen = expandedRecord === r.id;
-                      const diagSummary = sections?.["한의학적 진단"]
+                      const diagSummary = sections1?.["한의학적 진단"]
                         ?.split("\n")[0]
                         ?.trim();
-                      const prescSummary = sections?.["한약 처방"]
+                      const prescSummary = sections1?.["한약 처방"]
                         ?.split("\n")[0]
                         ?.trim();
-                      const ccText =
-                        sections?.["주소증"]?.trim() || r.raw_transcription;
+                      const ccRaw = sections?.["주소증"]
+                        ?.replace(/\n*■[^\n]*$/, "")
+                        ?.trim();
+                      const ccText = ccRaw || r.raw_transcription;
                       return (
                         <div
                           key={r.id}
@@ -1762,79 +1905,35 @@ ${
                                   )}
                                 </div>
                               )}
-                              {sections ? (
-                                historySections.map(({ key, Icon }) => {
-                                  const content = sections[key] || "-";
-                                  const isHerbs = key === "한약 처방";
-                                  const isAcu = key === "침 처방";
-
-                                  if (isHerbs && content !== "-") {
-                                    const lines = content
-                                      .split("\n")
-                                      .map((s) => s.trim())
-                                      .filter(Boolean);
-                                    const prescName = lines[0];
-                                    const ingredients = lines
-                                      .slice(1)
-                                      .flatMap((l) =>
-                                        l.split(/[,，]/).map((s) => s.trim()),
-                                      )
-                                      .filter(Boolean);
-                                    return (
-                                      <div key={key}>
-                                        <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
-                                          <Icon className="w-3.5 h-3.5" /> {key}
-                                        </div>
-                                        <div className="text-sm font-semibold text-[#EF6600] mb-1.5">
-                                          {prescName}
-                                        </div>
-                                        {ingredients.length > 0 && (
-                                          <div className="flex flex-wrap gap-1">
-                                            {ingredients.map((t, i) => (
-                                              <span
-                                                key={i}
-                                                className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
-                                              >
-                                                {t}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  }
-
-                                  const tags =
-                                    isAcu && content !== "-"
-                                      ? content
-                                          .split(/[,，\n]/)
-                                          .map((s) => s.trim())
-                                          .filter(Boolean)
-                                      : null;
-                                  return (
-                                    <div key={key}>
-                                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
-                                        <Icon className="w-3.5 h-3.5" /> {key}
-                                      </div>
-                                      {tags ? (
-                                        <div className="flex flex-wrap gap-1">
-                                          {tags.map((t, i) => (
-                                            <span
-                                              key={i}
-                                              className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
-                                            >
-                                              {t}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <div className="text-sm text-[#232323] whitespace-pre-wrap">
-                                          {content}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })
+                              {blocks ? (
+                                <>
+                                  <div className="text-xs font-semibold text-[#EF6600] uppercase tracking-wide">
+                                    ■ 결과 1
+                                  </div>
+                                  {historySections.map(({ key, Icon }) =>
+                                    renderHistorySection(
+                                      sections1,
+                                      key,
+                                      Icon,
+                                      "r1-",
+                                    ),
+                                  )}
+                                  <div className="text-xs font-semibold text-[#8A8480] uppercase tracking-wide">
+                                    ■ 결과 2
+                                  </div>
+                                  {historySections.map(({ key, Icon }) =>
+                                    renderHistorySection(
+                                      sections2,
+                                      key,
+                                      Icon,
+                                      "r2-",
+                                    ),
+                                  )}
+                                </>
+                              ) : sections ? (
+                                historySections.map(({ key, Icon }) =>
+                                  renderHistorySection(sections, key, Icon),
+                                )
                               ) : (
                                 <div className="text-sm text-[#232323] whitespace-pre-wrap">
                                   {r.chart_structured || "차트 내용 없음"}
