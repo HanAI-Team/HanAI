@@ -44,6 +44,10 @@ export default function PublicSearchPage() {
         <div className="font-serif text-[19px] text-white">Zinmac 한의학 검색</div>
       </div>
 
+      <div className="bg-[#FFF3CD] text-[#856404] text-xs text-center py-2 px-4 flex-shrink-0">
+        ⚠️ 이 페이지는 Chrome 또는 Edge 브라우저에서 이용해주세요. (Internet Explorer 미지원)
+      </div>
+
       <div className="flex-1 flex flex-col max-w-2xl w-full mx-auto p-5 gap-4 min-h-0">
         <div className="flex-1 flex flex-col gap-3 overflow-y-auto min-h-0">
           {history.length === 0 && (
