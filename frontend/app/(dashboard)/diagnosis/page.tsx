@@ -108,6 +108,9 @@ export default function DiagnosisPage() {
       medical_history: string | null;
     }[]
   >([]);
+  const [latestChartStructured, setLatestChartStructured] = useState<
+    string | null
+  >(null);
   const [medicalHistories, setMedicalHistories] = useState<
     Record<string, { hasHistory: boolean; text: string }>
   >({});
@@ -198,6 +201,7 @@ export default function DiagnosisPage() {
     if (!selectedPatient) return;
     setCurrentRecordId(null);
     setChiefComplaint("");
+    setLatestChartStructured(null);
     getPatientRecords(selectedPatient.id)
       .then((data) => {
         const sorted = [...data.records].sort((a, b) => {
@@ -207,6 +211,7 @@ export default function DiagnosisPage() {
         });
         const latest = sorted[0];
         if (!latest?.chart_structured) return;
+        setLatestChartStructured(latest.chart_structured);
         const sections = parseChartSections(latest.chart_structured);
         if (!sections) return;
         setResult(mapSectionsToResult(sections, selectedPatient.id));
@@ -508,7 +513,11 @@ ${r.acupuncture?.join(", ")}`;
           mapDiagnosisResult(raw),
         );
       } else {
-        const res = await askDiagnosis(q);
+        const sentQuestion =
+          selectedPatient && latestChartStructured
+            ? `[환자 정보]\n이름: ${selectedPatient.name} / ${patientSubtext(selectedPatient)}\n\n[최근 진료 기록]\n${latestChartStructured}\n\n[질문]\n${q}`
+            : q;
+        const res = await askDiagnosis(sentQuestion);
         updateLast(res.answer);
       }
     } catch {
