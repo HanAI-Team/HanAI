@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { login, staffLogin } from '@/lib/api/auth'
 
@@ -36,6 +37,14 @@ export default function LoginPage() {
       <div className="flex-1 min-h-[220px] sm:min-h-0 flex items-center justify-center p-10 relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_40%_60%,rgba(239,102,0,0.14),transparent_65%)]" />
         <div className="relative z-10 text-center">
+          <Image
+            src="/logo.png"
+            alt="Zinmac"
+            width={64}
+            height={64}
+            className="mx-auto mb-3 w-12 h-12 sm:w-16 sm:h-16"
+            priority
+          />
           <h1 className="font-serif text-5xl sm:text-6xl text-white tracking-tight">
             Zinmac
           </h1>
