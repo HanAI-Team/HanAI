@@ -1,0 +1,17 @@
+{
+  "name": "Zinmac",
+  "short_name": "Zinmac",
+  "description": "한의사 전용 AI 진단 보조",
+  "start_url": "/home",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#EF6600",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "880x880",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

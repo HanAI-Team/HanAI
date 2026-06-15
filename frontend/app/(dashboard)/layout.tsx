@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
+import PwaInstallGuide from "@/components/PwaInstallGuide";
 
 export default function DashboardLayout({
   children,
@@ -122,6 +123,8 @@ export default function DashboardLayout({
           </div>
         </div>
       </div>
+
+      <PwaInstallGuide />
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1">{children}</main>
