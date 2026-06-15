@@ -47,7 +47,10 @@ async def get_stats(
 
     recent_result = await db.execute(
         select(MedicalRecord)
-        .where(MedicalRecord.doctor_id == doctor.id)
+        .where(
+            MedicalRecord.doctor_id == doctor.id,
+            MedicalRecord.recorded_at.isnot(None),
+        )
         .order_by(MedicalRecord.recorded_at.desc())
         .limit(5)
     )
