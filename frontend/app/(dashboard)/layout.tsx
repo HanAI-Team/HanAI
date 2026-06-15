@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 
 export default function DashboardLayout({
@@ -32,7 +33,10 @@ export default function DashboardLayout({
     <div className="flex flex-col min-h-screen">
       {/* PC 네비바 */}
       <nav className="hidden sm:flex h-[52px] bg-[#232323] items-center px-6 flex-shrink-0">
-        <div className="font-serif text-[19px] text-white mr-9">Zinmac</div>
+        <div className="flex items-center gap-2 mr-9">
+          <Image src="/logo.png" alt="Zinmac" width={40} height={40} className="w-10 h-10" />
+          <div className="font-serif text-[19px] text-white">Zinmac</div>
+        </div>
         <div className="flex gap-1 flex-1">
           {navLinks.map((link) => (
             <button
@@ -52,7 +56,10 @@ export default function DashboardLayout({
 
       {/* 모바일 헤더 */}
       <div className="sm:hidden flex h-[50px] bg-[#232323] items-center px-4 justify-between flex-shrink-0">
-        <div className="font-serif text-[19px] text-white">Zinmac</div>
+        <div className="flex items-center gap-2">
+          <Image src="/logo.png" alt="Zinmac" width={36} height={36} className="w-9 h-9" />
+          <div className="font-serif text-[19px] text-white">Zinmac</div>
+        </div>
         <button
           onClick={() => setDrawerOpen(true)}
           className="flex flex-col gap-1 p-1"
@@ -76,7 +83,10 @@ export default function DashboardLayout({
         className={`fixed top-0 bottom-0 left-0 w-[240px] bg-[#232323] z-[101] flex flex-col transition-transform duration-300 sm:hidden ${drawerOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
-          <div className="font-serif text-[18px] text-white">Zinmac</div>
+          <div className="flex items-center gap-2">
+            <Image src="/logo.png" alt="Zinmac" width={32} height={32} className="w-8 h-8" />
+            <div className="font-serif text-[18px] text-white">Zinmac</div>
+          </div>
           <button
             onClick={() => setDrawerOpen(false)}
             className="text-[#585753] text-xl"
