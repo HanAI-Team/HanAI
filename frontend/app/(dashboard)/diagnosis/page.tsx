@@ -11,7 +11,7 @@ import {
 } from "@/lib/api/patients";
 import {
   uploadAndAnalyze,
-  askDiagnosis,
+  askDiagnosisStream,
   diagnoseText,
   finalizeRecord,
   ChartingEvent,
@@ -563,8 +563,11 @@ ${r.acupuncture?.join(", ")}`;
           selectedPatient && latestChartStructured
             ? `[환자 정보]\n이름: ${selectedPatient.name} / ${patientSubtext(selectedPatient)}\n\n[최근 진료 기록]\n${latestChartStructured}\n\n[질문]\n${q}`
             : q;
-        const res = await askDiagnosis(sentQuestion);
-        updateLast(res.answer);
+        let answer = "";
+        await askDiagnosisStream(sentQuestion, (chunk) => {
+          answer += chunk;
+          updateLast(answer);
+        });
       }
     } catch {
       updateLast("답변을 가져오지 못했습니다. 다시 시도해주세요.");
