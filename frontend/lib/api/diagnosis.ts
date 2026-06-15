@@ -74,6 +74,34 @@ export async function askDiagnosis(question: string): Promise<{ answer: string }
   })
 }
 
+export async function askDiagnosisStream(
+  question: string,
+  onChunk: (chunk: string) => void,
+): Promise<void> {
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  const token = localStorage.getItem('token')
+  const res = await fetch(`${BASE_URL}/api/diagnosis/ask-stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ question }),
+  })
+  if (!res.ok || !res.body) {
+    const error = await res.json().catch(() => ({}))
+    throw new Error(error.detail || '오류가 발생했습니다')
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    onChunk(decoder.decode(value, { stream: true }))
+  }
+}
+
 export async function publicAskStream(
   question: string,
   onChunk: (chunk: string) => void,
