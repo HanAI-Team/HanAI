@@ -81,7 +81,7 @@ class StaffCreateRequest(BaseModel):
 
 
 class StaffLoginRequest(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 

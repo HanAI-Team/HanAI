@@ -39,16 +39,27 @@ async def create_staff(
             detail="하위 계정 생성 한도를 초과했습니다.",
         )
 
-    email_result = await db.execute(
-        select(StaffAccount).where(StaffAccount.email == data.email)
+    username_result = await db.execute(
+        select(StaffAccount).where(StaffAccount.username == data.username)
     )
-    if email_result.scalar_one_or_none():
+    if username_result.scalar_one_or_none():
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="이미 사용 중인 이메일입니다."
+            status_code=status.HTTP_409_CONFLICT, detail="이미 사용 중인 아이디입니다."
         )
+
+    if data.email:
+        email_result = await db.execute(
+            select(StaffAccount).where(StaffAccount.email == data.email)
+        )
+        if email_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="이미 사용 중인 이메일입니다."
+            )
+
     staff_account = StaffAccount(
         hospital_id=hospital_id,
         name=data.name,
+        username=data.username,
         email=data.email,
         role=data.role,
         password_hash=pwd_context.hash(data.password),

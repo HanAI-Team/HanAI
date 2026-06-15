@@ -128,8 +128,10 @@ async def approve_doctor(db: AsyncSession, doctor_id: UUID) -> dict:
     return {"doctor": doctor, "access_token": access_token}
 
 
-async def get_staff_by_email(db: AsyncSession, email: str):
+async def get_staff_by_username(db: AsyncSession, username: str):
     from app.core.models import StaffAccount
 
-    result = await db.execute(select(StaffAccount).where(StaffAccount.email == email))
+    result = await db.execute(
+        select(StaffAccount).where(StaffAccount.username == username)
+    )
     return result.scalar_one_or_none()
