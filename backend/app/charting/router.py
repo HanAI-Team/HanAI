@@ -40,7 +40,7 @@ async def _stream_chart(**kwargs):
 @router.post("/")
 async def chart(
     patient_id: uuid.UUID = Form(...),
-    audio: UploadFile = File(...),
+    audios: list[UploadFile] = File(...),
     symptom_text: str | None = Form(None),
     medical_history: str | None = Form(None),
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
@@ -48,7 +48,7 @@ async def chart(
 ):
     return StreamingResponse(
         _stream_chart(
-            audio_file=audio,
+            audio_files=audios,
             patient_id=patient_id,
             doctor_id=UUID(str(current_doctor.id)),
             hospital_id=UUID(str(current_doctor.hospital_id)),

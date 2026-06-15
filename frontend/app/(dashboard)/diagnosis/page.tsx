@@ -67,7 +67,7 @@ export default function DiagnosisPage() {
   >("record");
   const [isRecording, setIsRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
-  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioFiles, setAudioFiles] = useState<File[]>([]);
   const [memo, setMemo] = useState("");
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -253,9 +253,12 @@ export default function DiagnosisPage() {
       recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
       recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        setAudioFile(
-          new File([blob], "recording.webm", { type: "audio/webm" }),
-        );
+        setAudioFiles((prev) => [
+          ...prev,
+          new File([blob], `recording-${prev.length + 1}.webm`, {
+            type: "audio/webm",
+          }),
+        ]);
       };
       recorder.start();
       mediaRef.current = recorder;
@@ -411,7 +414,7 @@ ${r.acupuncture?.join(", ")}`;
 
   async function startAnalysis() {
     if (!selectedPatient) return setErrorMessage("환자를 선택해주세요");
-    if (!audioFile && !symptomText.trim())
+    if (audioFiles.length === 0 && !symptomText.trim())
       return setErrorMessage(
         "녹음, 파일 업로드 또는 증상 입력 중 하나가 필요합니다",
       );
@@ -431,10 +434,10 @@ ${r.acupuncture?.join(", ")}`;
         .catch(() => {});
     }
     try {
-      if (audioFile) {
+      if (audioFiles.length > 0) {
         await uploadAndAnalyze(
           selectedPatient.id,
-          audioFile,
+          audioFiles,
           medicalHistory,
           symptomText.trim() || null,
           (event: ChartingEvent) => {
@@ -1279,7 +1282,7 @@ ${historyLine}
                   <div className="text-sm font-medium text-[#232323] mb-1">
                     {isRecording
                       ? "녹음 중..."
-                      : audioFile
+                      : audioFiles.length > 0
                         ? "녹음 완료"
                         : "녹음 시작"}
                   </div>
@@ -1312,20 +1315,53 @@ ${historyLine}
                   <label className="border-[1.5px] border-dashed border-[#C8BFB6] rounded-lg p-5 text-center cursor-pointer hover:border-[#EF6600] transition-all bg-[#EDE8E2] block">
                     <FolderOpen className="w-7 h-7 text-[#B0AAA4] mx-auto mb-2" />
                     <div className="text-xs text-[#8A8480]">
-                      {audioFile ? audioFile.name : "파일을 드래그하거나 클릭"}
+                      {audioFiles.length > 0
+                        ? `${audioFiles.length}개 파일 선택됨 (추가 선택 가능)`
+                        : "파일을 드래그하거나 클릭"}
                     </div>
                     <div className="text-xs text-[#B0AAA4] mt-1">
-                      mp3, wav, m4a · 최대 100MB
+                      mp3, wav, m4a · 최대 100MB · 끊긴 구간별로 여러 파일 업로드 가능
                     </div>
                     <input
                       type="file"
                       accept=".mp3,.wav,.m4a,.webm"
+                      multiple
                       className="hidden"
-                      onChange={(e) =>
-                        e.target.files && setAudioFile(e.target.files[0])
-                      }
+                      onChange={(e) => {
+                        if (!e.target.files) return;
+                        setAudioFiles((prev) => [
+                          ...prev,
+                          ...Array.from(e.target.files as FileList),
+                        ]);
+                        e.target.value = "";
+                      }}
                     />
                   </label>
+                  {audioFiles.length > 0 && (
+                    <ul className="mt-3 flex flex-col gap-1.5">
+                      {audioFiles.map((file, i) => (
+                        <li
+                          key={`${file.name}-${i}`}
+                          className="flex items-center justify-between gap-2 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-xs text-[#232323]"
+                        >
+                          <span className="truncate">
+                            {i + 1}. {file.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAudioFiles((prev) =>
+                                prev.filter((_, idx) => idx !== i),
+                              )
+                            }
+                            className="text-[#B0AAA4] hover:text-[#EF6600] flex-shrink-0"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
                   <button
@@ -1433,7 +1469,9 @@ ${historyLine}
               <div className="sm:col-span-2">
                 <button
                   onClick={startAnalysis}
-                  disabled={loading || (!audioFile && !symptomText.trim())}
+                  disabled={
+                    loading || (audioFiles.length === 0 && !symptomText.trim())
+                  }
                   className="w-full bg-[#EF6600] text-white rounded-md py-3.5 text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40"
                 >
                   {loading ? (
