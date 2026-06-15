@@ -150,6 +150,7 @@ export default function DiagnosisPage() {
     new Set(),
   );
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const secondsRef = useRef(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -252,6 +253,10 @@ export default function DiagnosisPage() {
       chunksRef.current = [];
       recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
       recorder.onstop = () => {
+        if (secondsRef.current < 10) {
+          setErrorMessage("녹음 파일이 너무 짧아요. 10초 이상 녹음해주세요.");
+          return;
+        }
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         setAudioFile(
           new File([blob], "recording.webm", { type: "audio/webm" }),
@@ -261,7 +266,11 @@ export default function DiagnosisPage() {
       mediaRef.current = recorder;
       setIsRecording(true);
       setSeconds(0);
-      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+      secondsRef.current = 0;
+      timerRef.current = setInterval(() => {
+        secondsRef.current += 1;
+        setSeconds(secondsRef.current);
+      }, 1000);
     } else {
       mediaRef.current?.stop();
       setIsRecording(false);
