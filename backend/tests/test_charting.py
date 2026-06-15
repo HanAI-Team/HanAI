@@ -35,7 +35,7 @@ async def test_정상_흐름_반환값_구조(db, monkeypatch):
 
     patient_id, doctor_id, hospital_id = _uuids()
     result = await process_chart(
-        audio_file=_FakeUploadFile(),
+        audio_files=[_FakeUploadFile()],
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
@@ -57,7 +57,7 @@ async def test_DB에_MedicalRecord_AIResult_저장됨(db, monkeypatch):
 
     patient_id, doctor_id, hospital_id = _uuids()
     result = await process_chart(
-        audio_file=_FakeUploadFile(),
+        audio_files=[_FakeUploadFile()],
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
@@ -98,7 +98,7 @@ async def test_비식별화_후_Claude_호출(db, monkeypatch):
 
     patient_id, doctor_id, hospital_id = _uuids()
     await process_chart(
-        audio_file=_FakeUploadFile(),
+        audio_files=[_FakeUploadFile()],
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
@@ -124,7 +124,7 @@ async def test_symptom_text_추가시_진단_텍스트에_포함됨(db, monkeypa
 
     patient_id, doctor_id, hospital_id = _uuids()
     await process_chart(
-        audio_file=_FakeUploadFile(),
+        audio_files=[_FakeUploadFile()],
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
@@ -145,7 +145,7 @@ async def test_medical_history_저장됨(db, monkeypatch):
 
     patient_id, doctor_id, hospital_id = _uuids()
     result = await process_chart(
-        audio_file=_FakeUploadFile(),
+        audio_files=[_FakeUploadFile()],
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
@@ -177,7 +177,7 @@ async def test_medical_history_진단_텍스트에_포함됨(db, monkeypatch):
 
     patient_id, doctor_id, hospital_id = _uuids()
     await process_chart(
-        audio_file=_FakeUploadFile(),
+        audio_files=[_FakeUploadFile()],
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
@@ -198,7 +198,7 @@ async def test_finalize_record_업데이트(db, monkeypatch):
 
     patient_id, doctor_id, hospital_id = _uuids()
     result = await process_chart(
-        audio_file=_FakeUploadFile(),
+        audio_files=[_FakeUploadFile()],
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
@@ -232,7 +232,7 @@ async def test_finalize_record_selected_result_저장됨(db, monkeypatch):
 
     patient_id, doctor_id, hospital_id = _uuids()
     result = await process_chart(
-        audio_file=_FakeUploadFile(),
+        audio_files=[_FakeUploadFile()],
         patient_id=patient_id,
         doctor_id=doctor_id,
         hospital_id=hospital_id,
@@ -254,7 +254,7 @@ async def test_STT_오류_전파(db, monkeypatch):
 
     with pytest.raises(Exception, match="CLOVA API 오류"):
         await process_chart(
-            audio_file=_FakeUploadFile(),
+            audio_files=[_FakeUploadFile()],
             patient_id=uuid.uuid4(),
             doctor_id=uuid.uuid4(),
             hospital_id=uuid.uuid4(),
@@ -276,10 +276,47 @@ async def test_진단_실패시_502_예외_전파(db, monkeypatch):
 
     with pytest.raises(HTTPException) as exc_info:
         await process_chart(
-            audio_file=_FakeUploadFile(),
+            audio_files=[_FakeUploadFile()],
             patient_id=uuid.uuid4(),
             doctor_id=uuid.uuid4(),
             hospital_id=uuid.uuid4(),
             db=db,
         )
     assert exc_info.value.status_code == 502
+
+
+async def test_복수_파일_업로드시_텍스트_순서대로_합쳐짐(db, monkeypatch):
+    monkeypatch.setattr(
+        "app.charting.service.transcribe_chunks",
+        AsyncMock(side_effect=["첫번째 구간 내용", "두번째 구간 내용"]),
+    )
+
+    received = {}
+
+    async def _mock_diagnose(text):
+        received["text"] = text
+        return _SAMPLE_DIAGNOSIS
+
+    monkeypatch.setattr("app.charting.service.diagnose", _mock_diagnose)
+
+    patient_id, doctor_id, hospital_id = _uuids()
+    result = await process_chart(
+        audio_files=[
+            _FakeUploadFile(filename="part1.mp3"),
+            _FakeUploadFile(filename="part2.mp3"),
+        ],
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        hospital_id=hospital_id,
+        db=db,
+    )
+
+    record = (
+        await db.execute(
+            select(MedicalRecord).where(MedicalRecord.id == result["record_id"])
+        )
+    ).scalar_one()
+
+    assert record.raw_transcription == "첫번째 구간 내용\n\n두번째 구간 내용"
+    assert "첫번째 구간 내용" in received["text"]
+    assert "두번째 구간 내용" in received["text"]

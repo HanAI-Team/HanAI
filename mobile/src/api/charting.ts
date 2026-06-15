@@ -14,7 +14,7 @@ export async function uploadAndAnalyze(
 ): Promise<ChartingResponse> {
   const formData = new FormData();
   formData.append("patient_id", patientId);
-  formData.append("audio", {
+  formData.append("audios", {
     uri: audio.uri,
     name: audio.name,
     type: audio.type,
