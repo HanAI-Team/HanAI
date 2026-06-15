@@ -14,11 +14,11 @@ export async function login(license_number: string, password: string) {
   return res.json()
 }
 
-export async function staffLogin(email: string, password: string) {
+export async function staffLogin(username: string, password: string) {
   const res = await fetch(`${BASE_URL}/api/auth/staff/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ username, password }),
   })
   if (!res.ok) {
     const err = await res.json()

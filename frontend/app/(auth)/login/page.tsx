@@ -7,7 +7,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [userType, setUserType] = useState<'doctor' | 'nurse'>('doctor')
   const [licenseNumber, setLicenseNumber] = useState('')
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -20,7 +20,7 @@ export default function LoginPage() {
       const data =
         userType === 'doctor'
           ? await login(licenseNumber, password)
-          : await staffLogin(email, password)
+          : await staffLogin(username, password)
       localStorage.setItem('token', data.access_token)
       router.push('/home')
     } catch (e: any) {
@@ -101,14 +101,14 @@ export default function LoginPage() {
             ) : (
               <div>
                 <label className="block text-xs text-[#8A8480] uppercase tracking-wider mb-1.5">
-                  이메일
+                  아이디
                 </label>
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="w-full bg-white border border-[#C8BFB6] rounded-md px-4 py-3 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
-                  placeholder="이메일을 입력하세요"
+                  placeholder="아이디를 입력하세요"
                   required
                 />
               </div>
