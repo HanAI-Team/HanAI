@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -5,7 +6,8 @@ from pydantic import BaseModel
 
 class StaffCreateRequest(BaseModel):
     name: str
-    email: str
+    username: str
+    email: Optional[str] = None
     password: str
     role: str
 
@@ -13,6 +15,7 @@ class StaffCreateRequest(BaseModel):
 class StaffResponse(BaseModel):
     id: UUID
     name: str
-    email: str
+    username: str
+    email: Optional[str] = None
     role: str
     is_active: bool

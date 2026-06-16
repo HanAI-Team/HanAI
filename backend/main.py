@@ -73,6 +73,7 @@ async def discord_error_middleware(request: Request, call_next):
 
 RATE_LIMIT_PATHS = {
     "/api/auth/login": {"limit": 5, "window_seconds": 60},
+    "/api/auth/staff/login": {"limit": 5, "window_seconds": 60},
     "/api/diagnosis/ask": {"limit": 3, "window_seconds": 30},
     "/api/diagnosis/analyze": {"limit": 3, "window_seconds": 30},
     "/api/diagnosis/public-ask": {"limit": 5, "window_seconds": 60},

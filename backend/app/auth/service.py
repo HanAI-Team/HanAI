@@ -19,8 +19,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def validate_license_format(license_number: str) -> bool:
-    return bool(re.fullmatch(r"\d{8}", license_number))
-
+    return bool(re.fullmatch(r"\d{4,}", license_number))
 
 def create_access_token(doctor_id: UUID, hospital_id: UUID, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
@@ -128,8 +127,10 @@ async def approve_doctor(db: AsyncSession, doctor_id: UUID) -> dict:
     return {"doctor": doctor, "access_token": access_token}
 
 
-async def get_staff_by_email(db: AsyncSession, email: str):
+async def get_staff_by_username(db: AsyncSession, username: str):
     from app.core.models import StaffAccount
 
-    result = await db.execute(select(StaffAccount).where(StaffAccount.email == email))
+    result = await db.execute(
+        select(StaffAccount).where(StaffAccount.username == username)
+    )
     return result.scalar_one_or_none()

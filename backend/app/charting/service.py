@@ -110,7 +110,7 @@ async def update_audio_url(db, record_id: UUID, audio_file_url: str) -> MedicalR
 
 
 async def process_chart(
-    audio_file: UploadFile,
+    audio_files: list[UploadFile],
     patient_id: uuid_mod.UUID,
     doctor_id: uuid_mod.UUID,
     hospital_id: uuid_mod.UUID,
@@ -123,11 +123,19 @@ async def process_chart(
 
     logger = logging.getLogger(__name__)
     t = time.time()
-    # 1. STT
-    audio_bytes = await audio_file.read()
-    fmt = (audio_file.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
-    raw_text = await transcribe_chunks(audio_bytes, format=fmt)
-    logger.info(f"[PERF] STT: {time.time() - t:.2f}s")
+    # 1. STT — 업로드 순서대로 변환 후 합산
+    texts = []
+    for i, audio_file in enumerate(audio_files):
+        file_t = time.time()
+        audio_bytes = await audio_file.read()
+        fmt = (audio_file.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
+        texts.append(await transcribe_chunks(audio_bytes, format=fmt))
+        logger.info(
+            f"[PERF] STT ({i + 1}/{len(audio_files)}, {audio_file.filename}): "
+            f"{time.time() - file_t:.2f}s"
+        )
+    raw_text = "\n\n".join(texts)
+    logger.info(f"[PERF] STT 전체: {time.time() - t:.2f}s")
     # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
     t = time.time()
     deid = deidentifier.process(raw_text)
@@ -180,7 +188,7 @@ async def process_chart(
 
 
 async def process_chart_stream(
-    audio_file: UploadFile,
+    audio_files: list[UploadFile],
     patient_id: uuid_mod.UUID,
     doctor_id: uuid_mod.UUID,
     hospital_id: uuid_mod.UUID,
@@ -194,11 +202,19 @@ async def process_chart_stream(
 
     logger = logging.getLogger(__name__)
     t = time.time()
-    # 1. STT
-    audio_bytes = await audio_file.read()
-    fmt = (audio_file.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
-    raw_text = await transcribe_chunks(audio_bytes, format=fmt)
-    logger.info(f"[PERF] STT: {time.time() - t:.2f}s")
+    # 1. STT — 업로드 순서대로 변환 후 합산
+    texts = []
+    for i, audio_file in enumerate(audio_files):
+        file_t = time.time()
+        audio_bytes = await audio_file.read()
+        fmt = (audio_file.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
+        texts.append(await transcribe_chunks(audio_bytes, format=fmt))
+        logger.info(
+            f"[PERF] STT ({i + 1}/{len(audio_files)}, {audio_file.filename}): "
+            f"{time.time() - file_t:.2f}s"
+        )
+    raw_text = "\n\n".join(texts)
+    logger.info(f"[PERF] STT 전체: {time.time() - t:.2f}s")
 
     # 2. 비식별화 — 원본은 DB 저장, 마스킹본은 Claude로
     deid = deidentifier.process(raw_text)

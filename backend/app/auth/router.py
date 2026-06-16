@@ -62,6 +62,7 @@ async def reset_password(
     return {"temp_password": temp_password}
 
 
+# 테스트용
 @router.post(
     "/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED
 )
@@ -82,6 +83,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
+# 의사 진짜 인증 하는거
 @router.post("/register/verify")
 async def register_verify(
     data: RegisterVerifyRequest,
@@ -259,6 +261,7 @@ async def get_me(
         return {
             "id": user.id,
             "name": user.name,
+            "username": user.username,
             "email": user.email,
             "role": user.role,
             "hospital_id": user.hospital_id,
@@ -271,11 +274,11 @@ async def get_me(
 
 @router.post("/staff/login", response_model=TokenResponse)
 async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db)):
-    staff = await service.get_staff_by_email(db, data.email)
+    staff = await service.get_staff_by_username(db, data.username)
     if staff is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="등록되지 않은 이메일입니다.",
+            detail="등록되지 않은 아이디입니다.",
         )
     is_verified = service.pwd_context.verify(data.password, str(staff.password_hash))
     if not is_verified:

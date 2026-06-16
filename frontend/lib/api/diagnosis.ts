@@ -9,7 +9,7 @@ export type ChartingEvent =
 
 export async function uploadAndAnalyze(
   patientId: string,
-  audioFile: File,
+  audioFiles: File[],
   medical_history: string | null | undefined,
   symptom_text: string | null | undefined,
   onEvent: (event: ChartingEvent) => void,
@@ -17,7 +17,7 @@ export async function uploadAndAnalyze(
   const token = localStorage.getItem('token')
   const formData = new FormData()
   formData.append('patient_id', patientId)
-  formData.append('audio', audioFile)
+  audioFiles.forEach((file) => formData.append('audios', file))
   if (medical_history) formData.append('medical_history', medical_history)
   if (symptom_text) formData.append('symptom_text', symptom_text)
 
