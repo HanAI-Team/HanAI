@@ -96,3 +96,22 @@ class StaffResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+class VerifyInitResponse(BaseModel):
+    callback_id: str
+    callback_type: str
+    message: str = "앱에서 인증을 완료한 후 confirm을 호출해주세요."
+
+
+class VerifyConfirmRequest(BaseModel):
+    callback_id: str
+    callback_type: str = "SIMPLE"
+    callback_data: str = ""
+    # 회원가입 데이터
+    name: str
+    license_number: str
+    password: str
+    clinic_name: str
+    clinic_address: Optional[str] = None
+    clinic_phone: Optional[str] = None
