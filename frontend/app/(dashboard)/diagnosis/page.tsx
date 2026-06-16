@@ -11,7 +11,7 @@ import {
 } from "@/lib/api/patients";
 import {
   uploadAndAnalyze,
-  askDiagnosis,
+  askDiagnosisStream,
   diagnoseText,
   finalizeRecord,
   ChartingEvent,
@@ -150,6 +150,7 @@ export default function DiagnosisPage() {
     new Set(),
   );
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const secondsRef = useRef(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -252,6 +253,10 @@ export default function DiagnosisPage() {
       chunksRef.current = [];
       recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
       recorder.onstop = () => {
+        if (secondsRef.current < 10) {
+          setErrorMessage("녹음 파일이 너무 짧아요. 10초 이상 녹음해주세요.");
+          return;
+        }
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         setAudioFiles((prev) => [
           ...prev,
@@ -264,7 +269,11 @@ export default function DiagnosisPage() {
       mediaRef.current = recorder;
       setIsRecording(true);
       setSeconds(0);
-      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+      secondsRef.current = 0;
+      timerRef.current = setInterval(() => {
+        secondsRef.current += 1;
+        setSeconds(secondsRef.current);
+      }, 1000);
     } else {
       mediaRef.current?.stop();
       setIsRecording(false);
@@ -566,8 +575,11 @@ ${r.acupuncture?.join(", ")}`;
           selectedPatient && latestChartStructured
             ? `[환자 정보]\n이름: ${selectedPatient.name} / ${patientSubtext(selectedPatient)}\n\n[최근 진료 기록]\n${latestChartStructured}\n\n[질문]\n${q}`
             : q;
-        const res = await askDiagnosis(sentQuestion);
-        updateLast(res.answer);
+        let answer = "";
+        await askDiagnosisStream(sentQuestion, (chunk) => {
+          answer += chunk;
+          updateLast(answer);
+        });
       }
     } catch {
       updateLast("답변을 가져오지 못했습니다. 다시 시도해주세요.");

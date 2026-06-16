@@ -1,7 +1,7 @@
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
-export const BASE_URL = "https://hanai-production.up.railway.app";
+export const BASE_URL = "https://hanai-production-918d.up.railway.app";
 
 declare module "axios" {
   export interface AxiosRequestConfig {

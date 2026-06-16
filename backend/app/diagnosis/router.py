@@ -41,6 +41,19 @@ async def ask(
     return AskResponse(answer=answer)
 
 
+@router.post("/ask-stream")
+async def ask_stream(
+    data: AskRequest,
+    current_doctor=Depends(get_current_doctor),
+):
+    allowed = await check_rate_limit(f"diagnosis_ask:{current_doctor.id}", limit=10, window_seconds=60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="요청이 너무 많습니다. 1분 후 다시 시도해주세요.")
+    return StreamingResponse(
+        service.run_ask_stream(data.question), media_type="text/plain; charset=utf-8"
+    )
+
+
 @router.post("/public-ask")
 async def public_ask(data: AskRequest):
     return StreamingResponse(
