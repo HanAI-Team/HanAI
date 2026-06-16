@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.core.config import settings
 
 TIER_SESSION_LIMITS = {
@@ -70,3 +72,24 @@ async def remove_session(hospital_id: str, token: str) -> None:
         return
     session_key = f"sessions:{hospital_id}"
     _redis.lrem(session_key, 0, token)
+
+
+def set_verify_pending(callback_id: str, data: dict, ttl: int = 300) -> None:
+    if _redis is None:
+        return
+    _redis.set(f"verify:{callback_id}", json.dumps(data), ex=ttl)
+
+
+def get_verify_pending(callback_id: str) -> dict | None:
+    if _redis is None:
+        return None
+    raw = _redis.get(f"verify:{callback_id}")
+    if raw is None:
+        return None
+    return json.loads(raw)
+
+
+def del_verify_pending(callback_id: str) -> None:
+    if _redis is None:
+        return
+    _redis.delete(f"verify:{callback_id}")
