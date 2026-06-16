@@ -29,6 +29,7 @@ if settings.SENTRY_DSN:
 from app.charting.router import router as charting_router
 from app.patients.router import router as patients_router
 from app.subscription.router import router as subscription_router
+from app.kcd.router import router as kcd_router
 
 # async def notify_discord(message: str):
 #     if not settings.DISCORD_WEBHOOK_URL:
@@ -109,6 +110,7 @@ app.include_router(
 )
 app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
 app.include_router(staff_router, prefix="/api/staff", tags=["staff"])
+app.include_router(kcd_router, prefix="/api/kcd", tags=["kcd"])
 
 
 @app.get("/health")

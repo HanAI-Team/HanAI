@@ -191,3 +191,13 @@ class Prescription(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     medical_record = relationship("MedicalRecord", back_populates="prescriptions")
+
+
+class KcdUCode(Base):
+    __tablename__ = "kcd_u_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(20), unique=True, nullable=False, index=True)
+    korean_name = Column(String(100), nullable=False)
+    hanja = Column(String(100))
+    category = Column(String(100))

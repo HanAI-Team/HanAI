@@ -2,6 +2,7 @@
 venv/
 __pycache__/
 *.csv
+!backend/data/kcd8_u_codes.csv
 *.db
 data/*.jsonl
 backend/.venv/
