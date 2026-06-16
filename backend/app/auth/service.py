@@ -19,8 +19,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def validate_license_format(license_number: str) -> bool:
-    return bool(re.fullmatch(r"\d{8}", license_number))
-
+    return bool(re.fullmatch(r"\d{4,}", license_number))
 
 def create_access_token(doctor_id: UUID, hospital_id: UUID, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)

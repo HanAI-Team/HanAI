@@ -62,6 +62,7 @@ async def reset_password(
     return {"temp_password": temp_password}
 
 
+# 테스트용
 @router.post(
     "/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED
 )
@@ -82,6 +83,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
+# 의사 진짜 인증 하는거
 @router.post("/register/verify")
 async def register_verify(
     data: RegisterVerifyRequest,
