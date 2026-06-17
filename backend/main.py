@@ -48,6 +48,8 @@ app.add_middleware(
         "http://localhost:3000",
         "https://zinmac.ai",
         "https://zinmac.vercel.app",
+        "https://zinmac.kr",
+        "https://www.zinmac.kr",
     ],
     allow_origin_regex=r"https://zinmac.*\.vercel\.app",
     allow_credentials=True,
