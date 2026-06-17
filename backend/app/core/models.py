@@ -207,6 +207,18 @@ class AuditLog(Base):
     detail = Column(Text, nullable=True)
 
 
+class AcupuncturePoint(Base):
+    __tablename__ = "acupuncture_points"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), unique=True, nullable=False, index=True)
+    korean_name = Column(String(50), nullable=False)
+    meridian = Column(String(30), nullable=True)
+    location = Column(Text, nullable=True)
+    # True면 해당 회차에 다른 단독침술과 동시 청구 불가
+    is_standalone = Column(Boolean, default=False, nullable=False)
+
+
 class KcdUCode(Base):
     __tablename__ = "kcd_u_codes"
 
