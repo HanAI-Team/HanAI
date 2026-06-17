@@ -29,9 +29,9 @@ class RegisterRequest(BaseModel):
 
     @field_validator("license_number")
     @classmethod
-    def license_number_must_be_8_digits(cls, v: str) -> str:
-        if not re.fullmatch(r"\d{8}", v):
-            raise ValueError("면허번호는 8자리 숫자여야 합니다.")
+    def license_number_must_be_digits(cls, v: str) -> str:
+        if not re.fullmatch(r"\d{4,}", v):
+            raise ValueError("면허번호는 4자리 이상 숫자여야 합니다.")
         return v
 
 
