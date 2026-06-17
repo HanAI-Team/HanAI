@@ -118,6 +118,7 @@ class MedicalRecord(Base):
     status = Column(String, default="recording")
     recorded_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     medical_history = Column(Text, nullable=True)
     selected_result = Column(String, nullable=True)
 
@@ -193,6 +194,19 @@ class Prescription(Base):
     medical_record = relationship("MedicalRecord", back_populates="prescriptions")
 
 
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    table_name = Column(String(50), nullable=False)
+    record_id = Column(String(36), nullable=False)
+    action = Column(String(10), nullable=False)  # INSERT / UPDATE / DELETE
+    actor_id = Column(UUID(as_uuid=True), nullable=True)
+    actor_type = Column(String(20), nullable=True)  # doctor / staff
+    changed_at = Column(String(14), nullable=False)  # CCYYMMDDHHMMSS
+    detail = Column(Text, nullable=True)
+
+
 class KcdUCode(Base):
     __tablename__ = "kcd_u_codes"
 
@@ -201,3 +215,5 @@ class KcdUCode(Base):
     korean_name = Column(String(100), nullable=False)
     hanja = Column(String(100))
     category = Column(String(100))
+    effective_date = Column(Date, nullable=True)
+    expired_date = Column(Date, nullable=True)

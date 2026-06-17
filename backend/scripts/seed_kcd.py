@@ -32,6 +32,17 @@ async def seed():
             print(f"이미 {count}개의 코드가 있습니다. 덮어쓰려면 테이블을 비우고 다시 실행하세요.")
             return
 
+        from datetime import date as date_type
+
+        def _parse_date(val: str):
+            val = val.strip()
+            if not val:
+                return None
+            try:
+                return date_type.fromisoformat(val)
+            except ValueError:
+                return None
+
         rows = []
         with open(CSV_PATH, encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -39,8 +50,10 @@ async def seed():
                 rows.append(KcdUCode(
                     code=row["code"].strip(),
                     korean_name=row["korean_name"].strip(),
-                    hanja=row["hanja"].strip() or None,
-                    category=row["category"].strip() or None,
+                    hanja=row.get("hanja", "").strip() or None,
+                    category=row.get("category", "").strip() or None,
+                    effective_date=_parse_date(row.get("effective_date", "")),
+                    expired_date=_parse_date(row.get("expired_date", "")),
                 ))
 
         session.add_all(rows)
