@@ -9,6 +9,7 @@ from app.diagnosis.claude_client import diagnose, diagnose_stream
 from app.core.models import AIResult, MedicalRecord
 from app.pipeline.deidentifier import deidentifier
 from app.pipeline.postprocessor import postprocessor
+from app.core.audit import write_audit
 from uuid import UUID
 from datetime import datetime, timezone
 from sqlalchemy import select
@@ -36,6 +37,15 @@ async def create_medical_record(db, doctor, patient_id: UUID) -> MedicalRecord:
         recorded_at=datetime.utcnow(),
     )
     db.add(medical_record)
+    await db.flush()
+    await write_audit(
+        db,
+        table_name="medical_records",
+        record_id=str(medical_record.id),
+        action="INSERT",
+        actor_id=doctor.id,
+        actor_type="doctor",
+    )
     await db.commit()
     await db.refresh(medical_record)
     return medical_record
@@ -276,6 +286,13 @@ async def update_medical_history(
     if not medical_record:
         raise HTTPException(status_code=404, detail="진료 기록을 찾을 수 없습니다.")
     medical_record.medical_history = medical_history  # type: ignore
+    await write_audit(
+        db,
+        table_name="medical_records",
+        record_id=str(record_id),
+        action="UPDATE",
+        detail="medical_history",
+    )
     await db.commit()
     await db.refresh(medical_record)
     return medical_record
@@ -296,6 +313,13 @@ async def finalize_record(
     medical_record.chart_structured = chart_structured  # type: ignore
     medical_record.recorded_at = datetime.now(timezone.utc)  # type: ignore
     medical_record.selected_result = selected_result  # type: ignore
+    await write_audit(
+        db,
+        table_name="medical_records",
+        record_id=str(record_id),
+        action="UPDATE",
+        detail="finalize",
+    )
     await db.commit()
     await db.refresh(medical_record)
     return medical_record
