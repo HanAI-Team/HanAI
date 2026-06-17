@@ -202,3 +202,5 @@ class KcdUCode(Base):
     korean_name = Column(String(100), nullable=False)
     hanja = Column(String(100))
     category = Column(String(100))
+    effective_date = Column(Date, nullable=True)
+    expired_date = Column(Date, nullable=True)
