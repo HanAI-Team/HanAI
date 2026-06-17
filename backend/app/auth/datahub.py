@@ -72,7 +72,7 @@ async def request_verification(
     logger.warning("DATAHUB step1 raw: %s", data)
 
     if data.get("result") == "SUCCESS":
-        return _parse_license_list(data)
+        return _parse_license_list(data.get("data", {}))
 
     # errCode 0001: 추가 인증 필요 (Naver/PASS/SMS 콜백 대기)
     if data.get("errCode") == "0001":
@@ -113,13 +113,10 @@ async def confirm_verification(
     logger.warning("DATAHUB step2 raw: %s", data)
 
     if data.get("result") == "SUCCESS":
-        result = _parse_license_list(data)
-        if result.get("verified"):
-            return result
         inner = data.get("data", {})
         if isinstance(inner, dict) and inner.get("RESULT") == "FAIL":
             return {"verified": False, "error": inner.get("ERRMSG", "면허 조회 실패")}
-        return result
+        return _parse_license_list(inner)
 
     if data.get("errCode") == "0001":
         return {"needs_callback": True, "error": "아직 인증이 완료되지 않았습니다."}
