@@ -8,6 +8,7 @@ import {
   saveRecord,
   updatePatient,
   deleteRecord,
+  importPatientsFromExcel,
 } from "@/lib/api/patients";
 import {
   uploadAndAnalyze,
@@ -128,7 +129,9 @@ export default function DiagnosisPage() {
   const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<
     string | null
   >(null);
-  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
   const [expandedCC, setExpandedCC] = useState<Set<string>>(new Set());
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -498,6 +501,23 @@ ${r.acupuncture?.join(", ")}`;
     } finally {
       setLoading(false);
       setLoadingResult2(false);
+    }
+  }
+
+  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImportLoading(true);
+    try {
+      const result = await importPatientsFromExcel(file);
+      setImportResult(result);
+      const updated = await getPatients();
+      setPatients(updated);
+    } catch {
+      // silent fail — user sees nothing if import errors
+    } finally {
+      setImportLoading(false);
     }
   }
 
@@ -1200,11 +1220,19 @@ ${historyLine}
         )}
         <div className="p-3 border-t border-[#D4CCC4] flex flex-col gap-2">
           <button
-            onClick={() => setShowSyncModal(true)}
-            className="w-full border border-[#C8BFB6] rounded-md py-2 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center justify-center gap-1.5"
+            onClick={() => excelInputRef.current?.click()}
+            disabled={importLoading}
+            className="w-full border border-[#C8BFB6] rounded-md py-2 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5" /> 환자 정보 가져오기
+            <Download className="w-3.5 h-3.5" /> {importLoading ? "가져오는 중..." : "환자 정보 가져오기"}
           </button>
+          <input
+            ref={excelInputRef}
+            type="file"
+            accept=".xls,.xlsx"
+            className="hidden"
+            onChange={handleExcelImport}
+          />
           <button
             onClick={() => setShowAddModal(true)}
             className="w-full bg-[#EF6600] text-white rounded-md py-2 text-xs flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
@@ -2478,67 +2506,21 @@ ${historyLine}
         </div>
       )}
 
-      {/* 동기화 에이전트 안내 모달 */}
-      {showSyncModal && (
-        <div
-          className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowSyncModal(false)}
-        >
-          <div
-            className="bg-white rounded-xl w-full max-w-[440px] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#D4CCC4]">
-              <div className="text-sm font-medium text-[#232323]">
-                환자 정보 자동 동기화 설정
-              </div>
-              <button
-                onClick={() => setShowSyncModal(false)}
-                className="text-[#8A8480] hover:text-[#232323] transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      {/* 엑셀 가져오기 결과 모달 */}
+      {importResult && (
+        <div className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
+            <div className="text-base font-semibold text-[#232323] mb-2">가져오기 완료</div>
+            <div className="text-sm text-[#8A8480] mb-4">
+              <span className="text-[#EF6600] font-medium">{importResult.inserted}명</span> 등록됨
+              {importResult.skipped > 0 && ` · ${importResult.skipped}건 건너뜀`}
             </div>
-            <div className="p-5 flex flex-col gap-4 text-sm text-[#232323]">
-              <p className="text-[#8A8480] text-xs leading-relaxed">
-                기존 차팅 프로그램의 환자 데이터를 Zinmac으로 자동으로
-                가져옵니다.
-                <br />
-                한의맥 또는 네오보감이 설치된 Windows 컴퓨터에서 아래 스크립트를
-                한 번만 실행하면 이후 1시간마다 자동 동기화됩니다.
-              </p>
-              <div className="flex flex-col gap-3">
-                {[
-                  {
-                    name: "한의맥",
-                    file: "hanimac_setup.bat",
-                    color: "bg-[#EEF4FF] border-[#C7D9F8] text-[#2563EB]",
-                  },
-                  {
-                    name: "네오보감",
-                    file: "neobogam_setup.bat",
-                    color: "bg-[#F0FDF4] border-[#BBF7D0] text-[#16A34A]",
-                  },
-                ].map(({ name, file, color }) => (
-                  <div key={name} className={`rounded-lg border p-4 ${color}`}>
-                    <div className="font-medium mb-2">{name}</div>
-                    <ol className="text-xs leading-relaxed list-decimal list-inside flex flex-col gap-1 text-[#232323]">
-                      <li>
-                        관리자에게{" "}
-                        <span className="font-mono font-semibold">{file}</span>{" "}
-                        파일 요청
-                      </li>
-                      <li>{name} Windows 컴퓨터에서 파일 실행</li>
-                      <li>Zinmac 면허번호 · 비밀번호 입력</li>
-                      <li>완료 — 이후 자동 동기화</li>
-                    </ol>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-[#B0AAA4]">
-                문의: 관리자에게 연락하세요.
-              </p>
-            </div>
+            <button
+              onClick={() => setImportResult(null)}
+              className="bg-[#EF6600] text-white rounded-md px-6 py-2 text-sm hover:opacity-90 transition-opacity"
+            >
+              확인
+            </button>
           </div>
         </div>
       )}
