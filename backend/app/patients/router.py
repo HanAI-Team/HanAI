@@ -1,8 +1,10 @@
 import io
+import uuid
 from datetime import date, datetime, timezone
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import insert as sa_insert
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
@@ -143,9 +145,9 @@ async def import_csv(
     except Exception:
         raise HTTPException(status_code=400, detail="CSV 파일을 읽을 수 없습니다.")
 
-    patients_to_insert: list[Patient] = []
+    rows_to_insert = []
     skipped = 0
-    for _, row in df.iterrows():
+    for row in df.to_dict("records"):
         name = str(row.get("cm_CustName", "")).strip()
         if not name:
             skipped += 1
@@ -156,25 +158,20 @@ async def import_csv(
         gender = _normalize_gender(row.get("cm_Sex"))
         phone = str(row.get("cm_HP") or row.get("cm_Tel") or "").strip() or None
 
-        patients_to_insert.append(
-            Patient(
-                hospital_id=doctor.hospital_id,
-                name=name,
-                birth_date=birth_date,
-                gender=gender,
-                phone=phone,
-            )
-        )
+        rows_to_insert.append({
+            "id": uuid.uuid4(),
+            "hospital_id": doctor.hospital_id,
+            "name": name,
+            "birth_date": birth_date,
+            "gender": gender,
+            "phone": phone,
+        })
 
-    BATCH = 1000
-    inserted = 0
-    for i in range(0, len(patients_to_insert), BATCH):
-        batch = patients_to_insert[i : i + BATCH]
-        db.add_all(batch)
+    if rows_to_insert:
+        await db.execute(sa_insert(Patient), rows_to_insert)
         await db.commit()
-        inserted += len(batch)
 
-    return {"inserted": inserted, "skipped": skipped}
+    return {"inserted": len(rows_to_insert), "skipped": skipped}
 
 
 @router.post("/import/excel")
@@ -193,9 +190,9 @@ async def import_excel(
 
     df.columns = [str(c).strip() for c in df.columns]
 
-    patients_to_insert: list[Patient] = []
+    rows_to_insert = []
     skipped = 0
-    for _, row in df.iterrows():
+    for row in df.to_dict("records"):
         name = str(row.get("환자명", "")).strip()
         if not name or name.lower() == "nan":
             skipped += 1
@@ -219,27 +216,21 @@ async def import_excel(
         memo_parts = [p for p in [address, notes] if p and p.lower() != "nan"]
         memo = " | ".join(memo_parts) or None
 
-        patients_to_insert.append(
-            Patient(
-                hospital_id=doctor.hospital_id,
-                name=name,
-                birth_date=birth_date,
-                gender=gender,
-                phone=phone,
-                memo=memo,
-            )
-        )
+        rows_to_insert.append({
+            "id": uuid.uuid4(),
+            "hospital_id": doctor.hospital_id,
+            "name": name,
+            "birth_date": birth_date,
+            "gender": gender,
+            "phone": phone,
+            "memo": memo,
+        })
 
-    # 1000개씩 배치 INSERT — 10만 건도 수십 초 내 처리
-    BATCH = 1000
-    inserted = 0
-    for i in range(0, len(patients_to_insert), BATCH):
-        batch = patients_to_insert[i : i + BATCH]
-        db.add_all(batch)
+    if rows_to_insert:
+        await db.execute(sa_insert(Patient), rows_to_insert)
         await db.commit()
-        inserted += len(batch)
 
-    return {"inserted": inserted, "skipped": skipped}
+    return {"inserted": len(rows_to_insert), "skipped": skipped}
 
 
 @router.get("/{patient_id}", response_model=PatientResponse)
