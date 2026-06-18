@@ -21,7 +21,7 @@ from app.diagnosis.anonymize import anonymize
 logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
-async_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+async_client = AsyncAnthropic(api_key=(os.getenv("ANTHROPIC_API_KEY") or "").strip())
 
 _default_data_dir = os.path.join(os.path.dirname(__file__), "../../../data")
 DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
