@@ -143,7 +143,8 @@ async def import_csv(
     except Exception:
         raise HTTPException(status_code=400, detail="CSV 파일을 읽을 수 없습니다.")
 
-    inserted = skipped = 0
+    patients_to_insert: list[Patient] = []
+    skipped = 0
     for _, row in df.iterrows():
         name = str(row.get("cm_CustName", "")).strip()
         if not name:
@@ -155,20 +156,23 @@ async def import_csv(
         gender = _normalize_gender(row.get("cm_Sex"))
         phone = str(row.get("cm_HP") or row.get("cm_Tel") or "").strip() or None
 
-        try:
-            await service.create_patient(
-                db,
-                doctor,
-                PatientCreate(
-                    name=name,
-                    birth_date=birth_date,
-                    gender=gender,
-                    phone=phone,
-                ),
+        patients_to_insert.append(
+            Patient(
+                hospital_id=doctor.hospital_id,
+                name=name,
+                birth_date=birth_date,
+                gender=gender,
+                phone=phone,
             )
-            inserted += 1
-        except Exception:
-            skipped += 1
+        )
+
+    BATCH = 1000
+    inserted = 0
+    for i in range(0, len(patients_to_insert), BATCH):
+        batch = patients_to_insert[i : i + BATCH]
+        db.add_all(batch)
+        await db.commit()
+        inserted += len(batch)
 
     return {"inserted": inserted, "skipped": skipped}
 
@@ -189,7 +193,8 @@ async def import_excel(
 
     df.columns = [str(c).strip() for c in df.columns]
 
-    inserted = skipped = 0
+    patients_to_insert: list[Patient] = []
+    skipped = 0
     for _, row in df.iterrows():
         name = str(row.get("환자명", "")).strip()
         if not name or name.lower() == "nan":
@@ -214,21 +219,25 @@ async def import_excel(
         memo_parts = [p for p in [address, notes] if p and p.lower() != "nan"]
         memo = " | ".join(memo_parts) or None
 
-        try:
-            await service.create_patient(
-                db,
-                doctor,
-                PatientCreate(
-                    name=name,
-                    birth_date=birth_date,
-                    gender=gender,
-                    phone=phone,
-                    memo=memo,
-                ),
+        patients_to_insert.append(
+            Patient(
+                hospital_id=doctor.hospital_id,
+                name=name,
+                birth_date=birth_date,
+                gender=gender,
+                phone=phone,
+                memo=memo,
             )
-            inserted += 1
-        except Exception:
-            skipped += 1
+        )
+
+    # 1000개씩 배치 INSERT — 10만 건도 수십 초 내 처리
+    BATCH = 1000
+    inserted = 0
+    for i in range(0, len(patients_to_insert), BATCH):
+        batch = patients_to_insert[i : i + BATCH]
+        db.add_all(batch)
+        await db.commit()
+        inserted += len(batch)
 
     return {"inserted": inserted, "skipped": skipped}
 
