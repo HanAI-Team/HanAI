@@ -145,6 +145,7 @@ async def import_csv(
     except Exception:
         raise HTTPException(status_code=400, detail="CSV 파일을 읽을 수 없습니다.")
 
+    existing = await _existing_patient_keys(db, doctor.hospital_id)
     rows_to_insert = []
     skipped = 0
     for row in df.to_dict("records"):
@@ -155,6 +156,9 @@ async def import_csv(
         birth_date = _parse_yyyymmdd(row.get("cm_Birth")) or _birth_from_lifeno(
             row.get("cm_LifeNo")
         )
+        if (name, birth_date) in existing:
+            skipped += 1
+            continue
         gender = _normalize_gender(row.get("cm_Sex"))
         phone = str(row.get("cm_HP") or row.get("cm_Tel") or "").strip() or None
 
@@ -166,12 +170,20 @@ async def import_csv(
             "gender": gender,
             "phone": phone,
         })
+        existing.add((name, birth_date))
 
     if rows_to_insert:
         await db.execute(sa_insert(Patient), rows_to_insert)
         await db.commit()
 
     return {"inserted": len(rows_to_insert), "skipped": skipped}
+
+
+async def _existing_patient_keys(db: AsyncSession, hospital_id) -> set[tuple]:
+    result = await db.execute(
+        select(Patient.name, Patient.birth_date).where(Patient.hospital_id == hospital_id)
+    )
+    return {(row.name, row.birth_date) for row in result}
 
 
 @router.post("/import/excel")
@@ -190,6 +202,7 @@ async def import_excel(
 
     df.columns = [str(c).strip() for c in df.columns]
 
+    existing = await _existing_patient_keys(db, doctor.hospital_id)
     rows_to_insert = []
     skipped = 0
     for row in df.to_dict("records"):
@@ -199,6 +212,10 @@ async def import_excel(
             continue
 
         birth_date = _birth_from_lifeno(row.get("주민번호"))
+
+        if (name, birth_date) in existing:
+            skipped += 1
+            continue
 
         gender_age = str(row.get("성별나이", "")).strip()
         if gender_age.startswith("여"):
@@ -225,6 +242,7 @@ async def import_excel(
             "phone": phone,
             "memo": memo,
         })
+        existing.add((name, birth_date))
 
     if rows_to_insert:
         await db.execute(sa_insert(Patient), rows_to_insert)
