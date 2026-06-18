@@ -173,6 +173,66 @@ async def import_csv(
     return {"inserted": inserted, "skipped": skipped}
 
 
+@router.post("/import/excel")
+async def import_excel(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    content = await file.read()
+    filename = (file.filename or "").lower()
+    try:
+        engine = "openpyxl" if filename.endswith(".xlsx") else "xlrd"
+        df = pd.read_excel(io.BytesIO(content), engine=engine, dtype=str, header=0)
+    except Exception:
+        raise HTTPException(status_code=400, detail="엑셀 파일을 읽을 수 없습니다.")
+
+    df.columns = [str(c).strip() for c in df.columns]
+
+    inserted = skipped = 0
+    for _, row in df.iterrows():
+        name = str(row.get("환자명", "")).strip()
+        if not name or name.lower() == "nan":
+            skipped += 1
+            continue
+
+        birth_date = _birth_from_lifeno(row.get("주민번호"))
+
+        gender_age = str(row.get("성별나이", "")).strip()
+        if gender_age.startswith("여"):
+            gender = "female"
+        elif gender_age.startswith("남"):
+            gender = "male"
+        else:
+            gender = None
+
+        phone_raw = str(row.get("휴대전화", "") or "").strip()
+        phone = phone_raw if phone_raw and phone_raw.lower() != "nan" else None
+
+        address = str(row.get("주소", "") or "").strip()
+        notes = str(row.get("비고", "") or "").strip()
+        memo_parts = [p for p in [address, notes] if p and p.lower() != "nan"]
+        memo = " | ".join(memo_parts) or None
+
+        try:
+            await service.create_patient(
+                db,
+                doctor,
+                PatientCreate(
+                    name=name,
+                    birth_date=birth_date,
+                    gender=gender,
+                    phone=phone,
+                    memo=memo,
+                ),
+            )
+            inserted += 1
+        except Exception:
+            skipped += 1
+
+    return {"inserted": inserted, "skipped": skipped}
+
+
 @router.get("/{patient_id}", response_model=PatientResponse)
 async def get_patient(
     patient_id: UUID,

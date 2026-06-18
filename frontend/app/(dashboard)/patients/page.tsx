@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getPatients, createPatient } from "@/lib/api/patients";
+import { getPatients, createPatient, importPatientsFromExcel } from "@/lib/api/patients";
 import { Patient } from "@/types";
 import { Search, Plus, ChevronRight, X } from "lucide-react";
 
@@ -22,7 +22,10 @@ export default function PatientsPage() {
   });
   const [addLoading, setAddLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
 
   const filtered = patients.filter((p) => p.name.includes(search));
   const displayed = filtered.slice(0, page * PAGE_SIZE);
@@ -56,6 +59,23 @@ export default function PatientsPage() {
       birth && age ? `${birth} (${age})` : birth,
     ].filter(Boolean);
     return parts.join(", ") || p.phone || "-";
+  }
+
+  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImportLoading(true);
+    try {
+      const result = await importPatientsFromExcel(file);
+      setImportResult(result);
+      const updated = await getPatients();
+      setPatients(updated);
+    } catch {
+      setErrorMessage("엑셀 파일 가져오기에 실패했습니다.");
+    } finally {
+      setImportLoading(false);
+    }
   }
 
   async function handleAddPatient(e: React.FormEvent) {
@@ -134,13 +154,27 @@ export default function PatientsPage() {
       </div>
 
       {/* 하단 버튼 */}
-      <div className="p-4 bg-white border-t border-[#D4CCC4] sticky bottom-0">
+      <div className="p-4 bg-white border-t border-[#D4CCC4] sticky bottom-0 flex flex-col gap-2">
         <button
           onClick={() => setShowAddModal(true)}
           className="w-full bg-[#EF6600] text-white rounded-md py-3 text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
         >
           <Plus className="w-4 h-4" /> 신규 환자 등록
         </button>
+        <button
+          onClick={() => excelInputRef.current?.click()}
+          disabled={importLoading}
+          className="w-full border border-[#D4CCC4] text-[#232323] rounded-md py-3 text-sm flex items-center justify-center gap-2 hover:bg-[#F5F2EE] transition-colors disabled:opacity-50"
+        >
+          {importLoading ? "가져오는 중..." : "📂 엑셀로 환자 가져오기"}
+        </button>
+        <input
+          ref={excelInputRef}
+          type="file"
+          accept=".xls,.xlsx"
+          className="hidden"
+          onChange={handleExcelImport}
+        />
       </div>
 
       {/* 신규 환자 등록 모달 */}
@@ -234,6 +268,25 @@ export default function PatientsPage() {
                 {addLoading ? "등록 중..." : "등록"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 엑셀 가져오기 결과 모달 */}
+      {importResult && (
+        <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
+            <div className="text-base font-semibold text-[#232323] mb-2">가져오기 완료</div>
+            <div className="text-sm text-[#8A8480] mb-4">
+              <span className="text-[#EF6600] font-medium">{importResult.inserted}명</span> 등록됨
+              {importResult.skipped > 0 && ` · ${importResult.skipped}건 건너뜀`}
+            </div>
+            <button
+              onClick={() => setImportResult(null)}
+              className="bg-[#EF6600] text-white rounded-md px-6 py-2 text-sm hover:opacity-90 transition-opacity"
+            >
+              확인
+            </button>
           </div>
         </div>
       )}
