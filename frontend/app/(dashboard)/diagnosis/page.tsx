@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   getPatients,
+  getPatient,
   createPatient,
   getPatientRecords,
   saveRecord,
@@ -194,14 +195,16 @@ export default function DiagnosisPage() {
   }, [hasMore, patientsLoading]);
 
   useEffect(() => {
-    if (!urlPatientIdRef.current || patients.length === 0) return;
-    const found = patients.find((p) => p.id === urlPatientIdRef.current);
-    if (found) {
-      setSelectedPatient(found);
-      setMemo(found.memo || "");
-      urlPatientIdRef.current = null;
-    }
-  }, [patients]);
+    const id = urlPatientIdRef.current;
+    if (!id) return;
+    urlPatientIdRef.current = null;
+    getPatient(id)
+      .then((p: Patient) => {
+        setSelectedPatient(p);
+        setMemo(p.memo || "");
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (!selectedPatient) return;
