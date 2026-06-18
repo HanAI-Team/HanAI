@@ -34,6 +34,7 @@ export default function PwaInstallGuide() {
   useEffect(() => {
     if (isInstalled()) return;
     if (localStorage.getItem("pwa-dismissed")) return;
+    if (sessionStorage.getItem("pwa-closed")) return;
 
     const p = detectPlatform();
     setPlatform(p);
@@ -53,6 +54,11 @@ export default function PwaInstallGuide() {
   }, []);
 
   function dismiss() {
+    setShow(false);
+    sessionStorage.setItem("pwa-closed", "1");
+  }
+
+  function dismissForever() {
     setShow(false);
     localStorage.setItem("pwa-dismissed", "1");
   }
@@ -180,6 +186,12 @@ export default function PwaInstallGuide() {
             </p>
           </>
         )}
+        <button
+          onClick={dismissForever}
+          className="mt-4 w-full text-xs text-gray-400 hover:text-gray-600"
+        >
+          다시 안 보기
+        </button>
       </div>
     </div>
   );
