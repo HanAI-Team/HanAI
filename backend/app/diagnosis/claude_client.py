@@ -21,7 +21,7 @@ from app.diagnosis.anonymize import anonymize
 logger = logging.getLogger(__name__)
 
 load_dotenv(override=True)
-async_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+async_client = AsyncAnthropic(api_key=(os.getenv("ANTHROPIC_API_KEY") or "").strip())
 
 _default_data_dir = os.path.join(os.path.dirname(__file__), "../../../data")
 DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
@@ -77,12 +77,19 @@ def find_relevant_cases(query: str, n: int = 3) -> str:
 
 
 async def _call_claude_async(prompt: str) -> str:
-    message = await async_client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=4096,
-        temperature=0.2,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    import httpx as _httpx
+    try:
+        message = await async_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=4096,
+            temperature=0.2,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except (_httpx.ConnectError, _httpx.TimeoutException):
+        raise HTTPException(status_code=503, detail="AI 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.")
+    except Exception as e:
+        logger.error(f"[claude] API 호출 실패: {e}")
+        raise HTTPException(status_code=503, detail="AI 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     text = message.content[0].text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[-1]

@@ -180,6 +180,12 @@ export default function PwaInstallGuide() {
             </p>
           </>
         )}
+        <button
+          onClick={dismiss}
+          className="mt-4 w-full text-xs text-gray-400 hover:text-gray-600"
+        >
+          다시 안 보기
+        </button>
       </div>
     </div>
   );

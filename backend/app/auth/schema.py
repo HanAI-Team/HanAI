@@ -29,9 +29,9 @@ class RegisterRequest(BaseModel):
 
     @field_validator("license_number")
     @classmethod
-    def license_number_must_be_8_digits(cls, v: str) -> str:
-        if not re.fullmatch(r"\d{8}", v):
-            raise ValueError("면허번호는 8자리 숫자여야 합니다.")
+    def license_number_must_be_digits(cls, v: str) -> str:
+        if not re.fullmatch(r"\d{4,}", v):
+            raise ValueError("면허번호는 4자리 이상 숫자여야 합니다.")
         return v
 
 
@@ -96,3 +96,22 @@ class StaffResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+class VerifyInitResponse(BaseModel):
+    callback_id: str
+    callback_type: str
+    message: str = "앱에서 인증을 완료한 후 confirm을 호출해주세요."
+
+
+class VerifyConfirmRequest(BaseModel):
+    callback_id: str
+    callback_type: str = "SIMPLE"
+    callback_data: str = ""
+    # 회원가입 데이터
+    name: str
+    license_number: str
+    password: str
+    clinic_name: str
+    clinic_address: Optional[str] = None
+    clinic_phone: Optional[str] = None

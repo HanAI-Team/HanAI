@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getPatients, createPatient } from "@/lib/api/patients";
+import { getPatients, createPatient, importPatientsFromExcel } from "@/lib/api/patients";
 import { Patient } from "@/types";
 import { Search, Plus, ChevronRight, X } from "lucide-react";
 
@@ -22,7 +22,10 @@ export default function PatientsPage() {
   });
   const [addLoading, setAddLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
 
   const filtered = patients.filter((p) => p.name.includes(search));
   const displayed = filtered.slice(0, page * PAGE_SIZE);
@@ -58,6 +61,23 @@ export default function PatientsPage() {
     return parts.join(", ") || p.phone || "-";
   }
 
+  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImportLoading(true);
+    try {
+      const result = await importPatientsFromExcel(file);
+      setImportResult(result);
+      const updated = await getPatients();
+      setPatients(updated);
+    } catch {
+      setErrorMessage("엑셀 파일 가져오기에 실패했습니다.");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
   async function handleAddPatient(e: React.FormEvent) {
     e.preventDefault();
     setAddLoading(true);
@@ -76,12 +96,12 @@ export default function PatientsPage() {
   }
 
   return (
-    <div className="flex flex-col bg-[#F5F2EE]" style={{ minHeight: "100%" }}>
+    <div className="flex flex-col bg-bg" style={{ minHeight: "100%" }}>
       {/* 검색 헤더 */}
-      <div className="bg-white border-b border-[#D4CCC4] px-4 pt-4 pb-3 flex flex-col gap-3 sticky top-0 z-10">
-        <div className="text-sm font-medium text-[#232323]">환자 목록</div>
-        <div className="flex items-center gap-2 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2">
-          <Search className="w-3.5 h-3.5 text-[#B0AAA4] flex-shrink-0" />
+      <div className="bg-card border-b border-border px-4 pt-4 pb-3 flex flex-col gap-3 sticky top-0 z-10">
+        <div className="text-sm font-medium text-text">환자 목록</div>
+        <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2">
+          <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
           <input
             value={search}
             onChange={(e) => {
@@ -89,7 +109,7 @@ export default function PatientsPage() {
               setPage(1);
             }}
             placeholder="이름 검색..."
-            className="flex-1 bg-transparent text-xs text-[#232323] outline-none"
+            className="flex-1 bg-transparent text-xs text-text outline-none"
           />
         </div>
       </div>
@@ -97,11 +117,11 @@ export default function PatientsPage() {
       {/* 환자 목록 */}
       <div className="flex-1">
         {loading ? (
-          <div className="text-sm text-[#B0AAA4] text-center py-16">
+          <div className="text-sm text-muted text-center py-16">
             불러오는 중...
           </div>
         ) : displayed.length === 0 ? (
-          <div className="text-sm text-[#B0AAA4] text-center py-16">
+          <div className="text-sm text-muted text-center py-16">
             {search ? "검색 결과가 없습니다" : "등록된 환자가 없습니다"}
           </div>
         ) : (
@@ -112,20 +132,20 @@ export default function PatientsPage() {
                 onClick={() =>
                   router.push(`/diagnosis?patientId=${patient.id}`)
                 }
-                className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-[#EDE8E2] bg-white hover:bg-[#F5F2EE] transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-border bg-card hover:bg-bg transition-colors text-left"
               >
                 <div className="w-9 h-9 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
                   {patient.name[0]}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-[#232323]">
+                  <div className="text-sm font-medium text-text">
                     {patient.name}
                   </div>
-                  <div className="text-xs text-[#8A8480] mt-0.5">
+                  <div className="text-xs text-subtext mt-0.5">
                     {patientSubtext(patient)}
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#B0AAA4] flex-shrink-0" />
+                <ChevronRight className="w-4 h-4 text-muted flex-shrink-0" />
               </button>
             ))}
             <div ref={sentinelRef} className="h-2" />
@@ -134,33 +154,47 @@ export default function PatientsPage() {
       </div>
 
       {/* 하단 버튼 */}
-      <div className="p-4 bg-white border-t border-[#D4CCC4] sticky bottom-0">
+      <div className="p-4 bg-card border-t border-border sticky bottom-0 flex flex-col gap-2">
         <button
           onClick={() => setShowAddModal(true)}
           className="w-full bg-[#EF6600] text-white rounded-md py-3 text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
         >
           <Plus className="w-4 h-4" /> 신규 환자 등록
         </button>
+        <button
+          onClick={() => excelInputRef.current?.click()}
+          disabled={importLoading}
+          className="w-full border border-border text-text rounded-md py-3 text-sm flex items-center justify-center gap-2 hover:bg-bg transition-colors disabled:opacity-50"
+        >
+          {importLoading ? "가져오는 중..." : "📂 엑셀로 환자 가져오기"}
+        </button>
+        <input
+          ref={excelInputRef}
+          type="file"
+          accept=".xls,.xlsx"
+          className="hidden"
+          onChange={handleExcelImport}
+        />
       </div>
 
       {/* 신규 환자 등록 모달 */}
       {showAddModal && (
         <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-sm shadow-xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#D4CCC4]">
-              <div className="text-sm font-medium text-[#232323]">
+          <div className="bg-card rounded-xl w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="text-sm font-medium text-text">
                 신규 환자 등록
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-[#8A8480] hover:text-[#232323] transition-colors"
+                className="text-subtext hover:text-text transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleAddPatient} className="p-5 flex flex-col gap-3">
               <div>
-                <label className="text-xs text-[#8A8480] mb-1 block">
+                <label className="text-xs text-subtext mb-1 block">
                   이름 *
                 </label>
                 <input
@@ -169,11 +203,11 @@ export default function PatientsPage() {
                     setNewPatient((p) => ({ ...p, name: e.target.value }))
                   }
                   required
-                  className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
               <div>
-                <label className="text-xs text-[#8A8480] mb-1 block">
+                <label className="text-xs text-subtext mb-1 block">
                   생년월일
                 </label>
                 <input
@@ -182,11 +216,11 @@ export default function PatientsPage() {
                   onChange={(e) =>
                     setNewPatient((p) => ({ ...p, birth_date: e.target.value }))
                   }
-                  className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
               <div>
-                <label className="text-xs text-[#8A8480] mb-1 block">
+                <label className="text-xs text-subtext mb-1 block">
                   성별
                 </label>
                 <div className="flex gap-4">
@@ -208,13 +242,13 @@ export default function PatientsPage() {
                         }
                         className="accent-[#EF6600]"
                       />
-                      <span className="text-sm text-[#232323]">{opt.label}</span>
+                      <span className="text-sm text-text">{opt.label}</span>
                     </label>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-[#8A8480] mb-1 block">
+                <label className="text-xs text-subtext mb-1 block">
                   전화번호
                 </label>
                 <input
@@ -223,7 +257,7 @@ export default function PatientsPage() {
                     setNewPatient((p) => ({ ...p, phone: e.target.value }))
                   }
                   placeholder="010-0000-0000"
-                  className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
               <button
@@ -238,11 +272,30 @@ export default function PatientsPage() {
         </div>
       )}
 
+      {/* 엑셀 가져오기 결과 모달 */}
+      {importResult && (
+        <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
+            <div className="text-base font-semibold text-text mb-2">가져오기 완료</div>
+            <div className="text-sm text-subtext mb-4">
+              <span className="text-[#EF6600] font-medium">{importResult.inserted}명</span> 등록됨
+              {importResult.skipped > 0 && ` · ${importResult.skipped}건 건너뜀`}
+            </div>
+            <button
+              onClick={() => setImportResult(null)}
+              className="bg-[#EF6600] text-white rounded-md px-6 py-2 text-sm hover:opacity-90 transition-opacity"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 에러 모달 */}
       {errorMessage && (
         <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
-            <div className="text-sm text-[#232323] mb-4">{errorMessage}</div>
+          <div className="bg-card rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
+            <div className="text-sm text-text mb-4">{errorMessage}</div>
             <button
               onClick={() => setErrorMessage(null)}
               className="bg-[#EF6600] text-white rounded-md px-6 py-2 text-sm hover:opacity-90 transition-opacity"

@@ -29,6 +29,9 @@ if settings.SENTRY_DSN:
 from app.charting.router import router as charting_router
 from app.patients.router import router as patients_router
 from app.subscription.router import router as subscription_router
+from app.kcd.router import router as kcd_router
+from app.acupuncture.router import router as acupuncture_router
+from app.billing.router import router as billing_router
 
 # async def notify_discord(message: str):
 #     if not settings.DISCORD_WEBHOOK_URL:
@@ -45,6 +48,8 @@ app.add_middleware(
         "http://localhost:3000",
         "https://zinmac.ai",
         "https://zinmac.vercel.app",
+        "https://zinmac.kr",
+        "https://www.zinmac.kr",
     ],
     allow_origin_regex=r"https://zinmac.*\.vercel\.app",
     allow_credentials=True,
@@ -109,6 +114,9 @@ app.include_router(
 )
 app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
 app.include_router(staff_router, prefix="/api/staff", tags=["staff"])
+app.include_router(kcd_router, prefix="/api/kcd", tags=["kcd"])
+app.include_router(acupuncture_router, prefix="/api/acupuncture", tags=["acupuncture"])
+app.include_router(billing_router, prefix="/api/billing", tags=["billing"])
 
 
 @app.get("/health")

@@ -1,8 +1,10 @@
 import io
+import uuid
 from datetime import date, datetime, timezone
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import insert as sa_insert
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
@@ -143,8 +145,10 @@ async def import_csv(
     except Exception:
         raise HTTPException(status_code=400, detail="CSV 파일을 읽을 수 없습니다.")
 
-    inserted = skipped = 0
-    for _, row in df.iterrows():
+    existing = await _existing_patient_keys(db, doctor.hospital_id)
+    rows_to_insert = []
+    skipped = 0
+    for row in df.to_dict("records"):
         name = str(row.get("cm_CustName", "")).strip()
         if not name:
             skipped += 1
@@ -152,25 +156,99 @@ async def import_csv(
         birth_date = _parse_yyyymmdd(row.get("cm_Birth")) or _birth_from_lifeno(
             row.get("cm_LifeNo")
         )
+        if (name, birth_date) in existing:
+            skipped += 1
+            continue
         gender = _normalize_gender(row.get("cm_Sex"))
         phone = str(row.get("cm_HP") or row.get("cm_Tel") or "").strip() or None
 
-        try:
-            await service.create_patient(
-                db,
-                doctor,
-                PatientCreate(
-                    name=name,
-                    birth_date=birth_date,
-                    gender=gender,
-                    phone=phone,
-                ),
-            )
-            inserted += 1
-        except Exception:
-            skipped += 1
+        rows_to_insert.append({
+            "id": uuid.uuid4(),
+            "hospital_id": doctor.hospital_id,
+            "name": name,
+            "birth_date": birth_date,
+            "gender": gender,
+            "phone": phone,
+        })
+        existing.add((name, birth_date))
 
-    return {"inserted": inserted, "skipped": skipped}
+    if rows_to_insert:
+        await db.execute(sa_insert(Patient), rows_to_insert)
+        await db.commit()
+
+    return {"inserted": len(rows_to_insert), "skipped": skipped}
+
+
+async def _existing_patient_keys(db: AsyncSession, hospital_id) -> set[tuple]:
+    result = await db.execute(
+        select(Patient.name, Patient.birth_date).where(Patient.hospital_id == hospital_id)
+    )
+    return {(row.name, row.birth_date) for row in result}
+
+
+@router.post("/import/excel")
+async def import_excel(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    content = await file.read()
+    filename = (file.filename or "").lower()
+    try:
+        engine = "openpyxl" if filename.endswith(".xlsx") else "xlrd"
+        df = pd.read_excel(io.BytesIO(content), engine=engine, dtype=str, header=0)
+    except Exception:
+        raise HTTPException(status_code=400, detail="엑셀 파일을 읽을 수 없습니다.")
+
+    df.columns = [str(c).strip() for c in df.columns]
+
+    existing = await _existing_patient_keys(db, doctor.hospital_id)
+    rows_to_insert = []
+    skipped = 0
+    for row in df.to_dict("records"):
+        name = str(row.get("환자명", "")).strip()
+        if not name or name.lower() == "nan":
+            skipped += 1
+            continue
+
+        birth_date = _birth_from_lifeno(row.get("주민번호"))
+
+        if (name, birth_date) in existing:
+            skipped += 1
+            continue
+
+        gender_age = str(row.get("성별나이", "")).strip()
+        if gender_age.startswith("여"):
+            gender = "female"
+        elif gender_age.startswith("남"):
+            gender = "male"
+        else:
+            gender = None
+
+        phone_raw = str(row.get("휴대전화", "") or "").strip()
+        phone = phone_raw if phone_raw and phone_raw.lower() != "nan" else None
+
+        address = str(row.get("주소", "") or "").strip()
+        notes = str(row.get("비고", "") or "").strip()
+        memo_parts = [p for p in [address, notes] if p and p.lower() != "nan"]
+        memo = " | ".join(memo_parts) or None
+
+        rows_to_insert.append({
+            "id": uuid.uuid4(),
+            "hospital_id": doctor.hospital_id,
+            "name": name,
+            "birth_date": birth_date,
+            "gender": gender,
+            "phone": phone,
+            "memo": memo,
+        })
+        existing.add((name, birth_date))
+
+    if rows_to_insert:
+        await db.execute(sa_insert(Patient), rows_to_insert)
+        await db.commit()
+
+    return {"inserted": len(rows_to_insert), "skipped": skipped}
 
 
 @router.get("/{patient_id}", response_model=PatientResponse)

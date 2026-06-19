@@ -1,12 +1,15 @@
 import React, { useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
+import { MessageSquare } from "lucide-react-native";
 import { useAuthStore } from "../../store/authStore";
 import { Card } from "../../components/Card";
 import { Input } from "../../components/Input";
 import { Button } from "../../components/Button";
 import { changePassword } from "../../api/auth";
 import { getErrorMessage } from "../../api/client";
+
+const BETA_FEEDBACK_FORM_URL = "https://forms.gle/6HANKvSxdvfwKXFP9";
 
 export function SettingsScreen() {
   const doctor = useAuthStore((state) => state.doctor);
@@ -101,6 +104,16 @@ export function SettingsScreen() {
       <Card>
         <Text className="text-xs font-medium text-text uppercase tracking-wide mb-4">계정</Text>
         <Button label="로그아웃" variant="outline" onPress={handleLogout} />
+      </Card>
+
+      <Card>
+        <Pressable
+          onPress={() => Linking.openURL(BETA_FEEDBACK_FORM_URL)}
+          className="flex-row items-center justify-between"
+        >
+          <Text className="text-sm text-text">베타 피드백 남기기</Text>
+          <MessageSquare size={18} color="#8A8480" />
+        </Pressable>
       </Card>
     </ScrollView>
   );

@@ -3,11 +3,13 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   getPatients,
+  getPatient,
   createPatient,
   getPatientRecords,
   saveRecord,
   updatePatient,
   deleteRecord,
+  importPatientsFromExcel,
 } from "@/lib/api/patients";
 import {
   uploadAndAnalyze,
@@ -17,6 +19,7 @@ import {
   ChartingEvent,
 } from "@/lib/api/diagnosis";
 import { Patient, DiagnosisResult } from "@/types";
+import BetaFeedbackBanner from "@/components/BetaFeedbackBanner";
 import {
   Search,
   Mic,
@@ -128,7 +131,9 @@ export default function DiagnosisPage() {
   const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<
     string | null
   >(null);
-  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
   const [expandedCC, setExpandedCC] = useState<Set<string>>(new Set());
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -191,14 +196,16 @@ export default function DiagnosisPage() {
   }, [hasMore, patientsLoading]);
 
   useEffect(() => {
-    if (!urlPatientIdRef.current || patients.length === 0) return;
-    const found = patients.find((p) => p.id === urlPatientIdRef.current);
-    if (found) {
-      setSelectedPatient(found);
-      setMemo(found.memo || "");
-      urlPatientIdRef.current = null;
-    }
-  }, [patients]);
+    const id = urlPatientIdRef.current;
+    if (!id) return;
+    urlPatientIdRef.current = null;
+    getPatient(id)
+      .then((p: Patient) => {
+        setSelectedPatient(p);
+        setMemo(p.memo || "");
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (!selectedPatient) return;
@@ -498,6 +505,23 @@ ${r.acupuncture?.join(", ")}`;
     } finally {
       setLoading(false);
       setLoadingResult2(false);
+    }
+  }
+
+  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImportLoading(true);
+    try {
+      const result = await importPatientsFromExcel(file);
+      setImportResult(result);
+      const updated = await getPatients();
+      setPatients(updated);
+    } catch {
+      // silent fail — user sees nothing if import errors
+    } finally {
+      setImportLoading(false);
     }
   }
 
@@ -989,7 +1013,7 @@ ${historyLine}
         .filter(Boolean);
       return (
         <div key={`${keyPrefix}${sectionKey}`}>
-          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5">
             <Icon className="w-3.5 h-3.5" /> {sectionKey}
           </div>
           <div className="text-sm font-semibold text-[#EF6600] mb-1.5">
@@ -1000,7 +1024,7 @@ ${historyLine}
               {ingredients.map((t, i) => (
                 <span
                   key={i}
-                  className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
+                  className="inline-block bg-bg border border-border rounded px-2 py-0.5 text-xs text-text"
                 >
                   {t}
                 </span>
@@ -1020,7 +1044,7 @@ ${historyLine}
         : null;
     return (
       <div key={`${keyPrefix}${sectionKey}`}>
-        <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+        <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5">
           <Icon className="w-3.5 h-3.5" /> {sectionKey}
         </div>
         {tags ? (
@@ -1028,14 +1052,14 @@ ${historyLine}
             {tags.map((t, i) => (
               <span
                 key={i}
-                className="inline-block bg-[#F5F2EE] border border-[#D4CCC4] rounded px-2 py-0.5 text-xs text-[#232323]"
+                className="inline-block bg-bg border border-border rounded px-2 py-0.5 text-xs text-text"
               >
                 {t}
               </span>
             ))}
           </div>
         ) : (
-          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+          <div className="text-sm text-text whitespace-pre-wrap">
             {content}
           </div>
         )}
@@ -1046,13 +1070,13 @@ ${historyLine}
   return (
     <div className="flex h-[calc(100vh-52px)] overflow-hidden">
       {/* 왼쪽 환자 패널 */}
-      <div className="hidden sm:flex w-[260px] flex-shrink-0 bg-white border-r border-[#D4CCC4] flex-col">
-        <div className="p-3 border-b border-[#D4CCC4]">
-          <div className="text-xs font-medium text-[#232323] uppercase tracking-wide mb-2">
+      <div className="hidden sm:flex w-[260px] flex-shrink-0 bg-card border-r border-border flex-col">
+        <div className="p-3 border-b border-border">
+          <div className="text-xs font-medium text-text uppercase tracking-wide mb-2">
             환자 목록
           </div>
-          <div className="flex items-center gap-2 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2">
-            <Search className="w-3.5 h-3.5 text-[#B0AAA4] flex-shrink-0" />
+          <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2">
+            <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
             <input
               value={search}
               onChange={(e) => {
@@ -1060,7 +1084,7 @@ ${historyLine}
                 setPage(1);
               }}
               placeholder="이름 검색..."
-              className="flex-1 bg-transparent text-xs text-[#232323] outline-none"
+              className="flex-1 bg-transparent text-xs text-text outline-none"
             />
           </div>
         </div>
@@ -1068,7 +1092,7 @@ ${historyLine}
           {patientsLoading ? (
             <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto mt-8" />
           ) : displayedPatients.length === 0 ? (
-            <div className="text-xs text-[#B0AAA4] text-center py-8">
+            <div className="text-xs text-muted text-center py-8">
               등록된 환자가 없습니다
             </div>
           ) : (
@@ -1077,8 +1101,8 @@ ${historyLine}
                 key={patient.id}
                 className={`group flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer transition-all border-l-[2.5px] ${
                   selectedPatient?.id === patient.id
-                    ? "bg-[#F5F2EE] border-l-[#EF6600]"
-                    : "border-l-transparent hover:bg-[#F5F2EE]"
+                    ? "bg-bg border-l-[#EF6600]"
+                    : "border-l-transparent hover:bg-bg"
                 }`}
                 onClick={() => {
                   setSelectedPatient(patient);
@@ -1096,10 +1120,10 @@ ${historyLine}
                   {patient.name[0]}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-[#232323]">
+                  <div className="text-sm font-medium text-text">
                     {patient.name}
                   </div>
-                  <div className="text-xs text-[#8A8480]">
+                  <div className="text-xs text-subtext">
                     {patientSubtext(patient)}
                   </div>
                 </div>
@@ -1112,30 +1136,30 @@ ${historyLine}
                       memo: patient.memo || "",
                     });
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#D4CCC4] transition-all flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-border transition-all flex-shrink-0"
                   title="환자 정보 수정"
                 >
-                  <Pencil className="w-3 h-3 text-[#8A8480]" />
+                  <Pencil className="w-3 h-3 text-subtext" />
                 </button>
               </div>
             ))
           )}
         </div>
         {selectedPatient && (
-          <div className="border-t border-[#D4CCC4]">
+          <div className="border-t border-border">
             <button
               onClick={() => {
                 if (!memoEditing) setMemoSectionOpen((p) => !p);
               }}
               className="w-full flex items-center justify-between px-3 py-2 text-left"
             >
-              <span className="text-xs text-[#8A8480] uppercase tracking-wide">
+              <span className="text-xs text-subtext uppercase tracking-wide">
                 메모
               </span>
               {memoSectionOpen ? (
-                <ChevronUp className="w-3 h-3 text-[#B0AAA4]" />
+                <ChevronUp className="w-3 h-3 text-muted" />
               ) : (
-                <ChevronDown className="w-3 h-3 text-[#B0AAA4]" />
+                <ChevronDown className="w-3 h-3 text-muted" />
               )}
             </button>
             {memoSectionOpen && (
@@ -1147,9 +1171,9 @@ ${historyLine}
                         setMemoEditing(true);
                         setMemoDraft(selectedPatient.memo || "");
                       }}
-                      className="p-1 rounded hover:bg-[#D4CCC4] transition-all"
+                      className="p-1 rounded hover:bg-border transition-all"
                     >
-                      <Pencil className="w-3 h-3 text-[#8A8480]" />
+                      <Pencil className="w-3 h-3 text-subtext" />
                     </button>
                   </div>
                 )}
@@ -1160,7 +1184,7 @@ ${historyLine}
                       onChange={(e) => setMemoDraft(e.target.value)}
                       autoFocus
                       rows={3}
-                      className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1.5 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none transition-colors"
+                      className="w-full bg-fill border border-border rounded-md px-2 py-1.5 text-xs text-text outline-none focus:border-[#EF6600] resize-none transition-colors"
                     />
                     <div className="flex gap-1.5">
                       <button
@@ -1171,7 +1195,7 @@ ${historyLine}
                       </button>
                       <button
                         onClick={() => setMemoEditing(false)}
-                        className="flex-1 border border-[#C8BFB6] rounded-md py-1.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all"
+                        className="flex-1 border border-border-strong rounded-md py-1.5 text-xs text-subtext hover:border-text transition-all"
                       >
                         취소
                       </button>
@@ -1183,12 +1207,12 @@ ${historyLine}
                       setMemoEditing(true);
                       setMemoDraft(selectedPatient.memo || "");
                     }}
-                    className="text-xs text-[#232323] cursor-pointer hover:bg-[#EDE8E2] rounded-md px-2 py-1.5 min-h-[28px] whitespace-pre-wrap transition-colors"
+                    className="text-xs text-text cursor-pointer hover:bg-fill rounded-md px-2 py-1.5 min-h-[28px] whitespace-pre-wrap transition-colors"
                   >
                     {selectedPatient.memo ? (
                       selectedPatient.memo
                     ) : (
-                      <span className="text-[#B0AAA4]">
+                      <span className="text-muted">
                         클릭하여 메모 입력...
                       </span>
                     )}
@@ -1198,13 +1222,21 @@ ${historyLine}
             )}
           </div>
         )}
-        <div className="p-3 border-t border-[#D4CCC4] flex flex-col gap-2">
+        <div className="p-3 border-t border-border flex flex-col gap-2">
           <button
-            onClick={() => setShowSyncModal(true)}
-            className="w-full border border-[#C8BFB6] rounded-md py-2 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center justify-center gap-1.5"
+            onClick={() => excelInputRef.current?.click()}
+            disabled={importLoading}
+            className="w-full border border-border-strong rounded-md py-2 text-xs text-subtext hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5" /> 환자 정보 가져오기
+            <Download className="w-3.5 h-3.5" /> {importLoading ? "가져오는 중..." : "환자 정보 가져오기"}
           </button>
+          <input
+            ref={excelInputRef}
+            type="file"
+            accept=".xls,.xlsx"
+            className="hidden"
+            onChange={handleExcelImport}
+          />
           <button
             onClick={() => setShowAddModal(true)}
             className="w-full bg-[#EF6600] text-white rounded-md py-2 text-xs flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
@@ -1217,20 +1249,20 @@ ${historyLine}
       {/* 오른쪽 메인 */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* 모바일 환자 정보 바 */}
-        <div className="sm:hidden bg-white border-b border-[#D4CCC4] flex items-center justify-between px-4 py-2 flex-shrink-0">
+        <div className="sm:hidden bg-card border-b border-border flex items-center justify-between px-4 py-2 flex-shrink-0">
           {selectedPatient ? (
             <>
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white">
                   {selectedPatient.name[0]}
                 </div>
-                <span className="text-sm font-medium text-[#232323]">
+                <span className="text-sm font-medium text-text">
                   {selectedPatient.name}
                 </span>
               </div>
               <button
                 onClick={() => router.push("/patients")}
-                className="text-xs text-[#8A8480] border border-[#D4CCC4] rounded-md px-3 py-1 hover:border-[#EF6600] hover:text-[#EF6600] transition-all"
+                className="text-xs text-subtext border border-border rounded-md px-3 py-1 hover:border-[#EF6600] hover:text-[#EF6600] transition-all"
               >
                 변경
               </button>
@@ -1244,7 +1276,7 @@ ${historyLine}
             </button>
           )}
         </div>
-        <div className="flex border-b border-[#D4CCC4] bg-white flex-shrink-0">
+        <div className="flex border-b border-border bg-card flex-shrink-0">
           {(["record", "result", "history", "ask"] as const).map((tab, i) => (
             <button
               key={tab}
@@ -1252,7 +1284,7 @@ ${historyLine}
               className={`px-5 py-3.5 text-xs transition-all border-b-2 ${
                 activeTab === tab
                   ? "text-[#EF6600] border-[#EF6600]"
-                  : "text-[#8A8480] border-transparent hover:text-[#232323]"
+                  : "text-subtext border-transparent hover:text-text"
               }`}
             >
               {["진료 기록", "진단 결과", "진료 이력", "한의학 검색"][i]}
@@ -1264,7 +1296,7 @@ ${historyLine}
           className={`flex-1 p-5 ${activeTab === "ask" ? "overflow-hidden flex flex-col" : "overflow-y-auto"}`}
         >
           {!selectedPatient && activeTab !== "ask" && (
-            <div className="text-sm text-[#B0AAA4] text-center py-16">
+            <div className="text-sm text-muted text-center py-16">
               왼쪽에서 환자를 선택해주세요
             </div>
           )}
@@ -1272,11 +1304,11 @@ ${historyLine}
           {/* 진료 녹음 탭 */}
           {activeTab === "record" && selectedPatient && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
-                <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
+              <div className="bg-card border border-border rounded-lg p-5">
+                <div className="text-xs text-subtext uppercase tracking-wide mb-3">
                   음성 녹음
                 </div>
-                <div className="text-center p-6 bg-[#EDE8E2] border border-[#D4CCC4] rounded-lg mb-3">
+                <div className="text-center p-6 bg-fill border border-border rounded-lg mb-3">
                   <button
                     onClick={toggleRecording}
                     className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 transition-all ${
@@ -1291,7 +1323,7 @@ ${historyLine}
                       <Mic className="w-5 h-5 text-white" />
                     )}
                   </button>
-                  <div className="text-sm font-medium text-[#232323] mb-1">
+                  <div className="text-sm font-medium text-text mb-1">
                     {isRecording
                       ? "녹음 중..."
                       : audioFiles.length > 0
@@ -1309,10 +1341,10 @@ ${historyLine}
                       ))}
                     </div>
                   )}
-                  <div className="text-lg font-light text-[#232323] tabular-nums">
+                  <div className="text-lg font-light text-text tabular-nums">
                     {timer}
                   </div>
-                  <div className="text-xs text-[#8A8480] mt-1">
+                  <div className="text-xs text-subtext mt-1">
                     {isRecording
                       ? "버튼을 눌러 중지하세요"
                       : "버튼을 눌러 녹음을 시작하세요"}
@@ -1320,18 +1352,18 @@ ${historyLine}
                 </div>
               </div>
               <div className="flex flex-col gap-4">
-                <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
-                  <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
+                <div className="bg-card border border-border rounded-lg p-5">
+                  <div className="text-xs text-subtext uppercase tracking-wide mb-3">
                     파일 업로드
                   </div>
-                  <label className="border-[1.5px] border-dashed border-[#C8BFB6] rounded-lg p-5 text-center cursor-pointer hover:border-[#EF6600] transition-all bg-[#EDE8E2] block">
-                    <FolderOpen className="w-7 h-7 text-[#B0AAA4] mx-auto mb-2" />
-                    <div className="text-xs text-[#8A8480]">
+                  <label className="border-[1.5px] border-dashed border-border-strong rounded-lg p-5 text-center cursor-pointer hover:border-[#EF6600] transition-all bg-fill block">
+                    <FolderOpen className="w-7 h-7 text-muted mx-auto mb-2" />
+                    <div className="text-xs text-subtext">
                       {audioFiles.length > 0
                         ? `${audioFiles.length}개 파일 선택됨 (추가 선택 가능)`
                         : "파일을 드래그하거나 클릭"}
                     </div>
-                    <div className="text-xs text-[#B0AAA4] mt-1">
+                    <div className="text-xs text-muted mt-1">
                       mp3, wav, m4a · 최대 100MB · 끊긴 구간별로 여러 파일 업로드 가능
                     </div>
                     <input
@@ -1354,7 +1386,7 @@ ${historyLine}
                       {audioFiles.map((file, i) => (
                         <li
                           key={`${file.name}-${i}`}
-                          className="flex items-center justify-between gap-2 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-xs text-[#232323]"
+                          className="flex items-center justify-between gap-2 bg-fill border border-border rounded-md px-3 py-2 text-xs text-text"
                         >
                           <span className="truncate">
                             {i + 1}. {file.name}
@@ -1366,7 +1398,7 @@ ${historyLine}
                                 prev.filter((_, idx) => idx !== i),
                               )
                             }
-                            className="text-[#B0AAA4] hover:text-[#EF6600] flex-shrink-0"
+                            className="text-muted hover:text-[#EF6600] flex-shrink-0"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -1375,47 +1407,47 @@ ${historyLine}
                     </ul>
                   )}
                 </div>
-                <div className="bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
+                <div className="bg-card border border-border rounded-lg overflow-hidden">
                   <button
                     onClick={() => setRecordMemoOpen((p) => !p)}
                     className="w-full flex items-center justify-between px-5 py-3 text-left"
                   >
-                    <span className="text-xs text-[#8A8480] uppercase tracking-wide">
+                    <span className="text-xs text-subtext uppercase tracking-wide">
                       추가 메모
                     </span>
                     {recordMemoOpen ? (
-                      <ChevronUp className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                      <ChevronUp className="w-3.5 h-3.5 text-muted" />
                     ) : (
-                      <ChevronDown className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                      <ChevronDown className="w-3.5 h-3.5 text-muted" />
                     )}
                   </button>
                   {recordMemoOpen && (
-                    <div className="px-5 pb-5 border-t border-[#D4CCC4] pt-3">
+                    <div className="px-5 pb-5 border-t border-border pt-3">
                       <textarea
                         value={memo}
                         onChange={(e) => setMemo(e.target.value)}
                         placeholder="주요 증상, 특이사항...&#10;예) 소화불량 3개월, 스트레스"
-                        className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none min-h-[80px] transition-colors"
+                        className="w-full bg-fill border border-border rounded-md p-3 text-xs text-text outline-none focus:border-[#EF6600] resize-none min-h-[80px] transition-colors"
                       />
                     </div>
                   )}
                 </div>
-                <div className="bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
+                <div className="bg-card border border-border rounded-lg overflow-hidden">
                   <button
                     onClick={() => setRecordHistoryOpen((p) => !p)}
                     className="w-full flex items-center justify-between px-5 py-3 text-left"
                   >
-                    <span className="text-xs text-[#8A8480] uppercase tracking-wide">
+                    <span className="text-xs text-subtext uppercase tracking-wide">
                       병력
                     </span>
                     {recordHistoryOpen ? (
-                      <ChevronUp className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                      <ChevronUp className="w-3.5 h-3.5 text-muted" />
                     ) : (
-                      <ChevronDown className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                      <ChevronDown className="w-3.5 h-3.5 text-muted" />
                     )}
                   </button>
                   {recordHistoryOpen && (
-                    <div className="px-5 pb-5 border-t border-[#D4CCC4] pt-3">
+                    <div className="px-5 pb-5 border-t border-border pt-3">
                       <div className="flex gap-4 mb-2">
                         {["없음", "있음"].map((opt) => (
                           <label
@@ -1438,7 +1470,7 @@ ${historyLine}
                               }
                               className="accent-[#EF6600]"
                             />
-                            <span className="text-xs text-[#232323]">
+                            <span className="text-xs text-text">
                               {opt}
                             </span>
                           </label>
@@ -1455,7 +1487,7 @@ ${historyLine}
                           }
                           placeholder="병력을 입력하세요"
                           rows={3}
-                          className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none transition-colors"
+                          className="w-full bg-fill border border-border rounded-md p-3 text-xs text-text outline-none focus:border-[#EF6600] resize-none transition-colors"
                         />
                       )}
                     </div>
@@ -1463,10 +1495,10 @@ ${historyLine}
                 </div>
               </div>
               <div className="sm:col-span-2">
-                <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
-                  <div className="text-xs text-[#8A8480] uppercase tracking-wide mb-3">
+                <div className="bg-card border border-border rounded-lg p-5">
+                  <div className="text-xs text-subtext uppercase tracking-wide mb-3">
                     증상 직접 입력{" "}
-                    <span className="normal-case text-[#B0AAA4]">
+                    <span className="normal-case text-muted">
                       (음성과 함께 추가 입력 가능)
                     </span>
                   </div>
@@ -1474,7 +1506,7 @@ ${historyLine}
                     value={symptomText}
                     onChange={(e) => setSymptomText(e.target.value)}
                     placeholder="증상을 자세히 입력하세요&#10;예) 손발이 차고 식은땀이 나며 소화가 잘 안 됨. 평소 피로감이 많고 추위를 탐."
-                    className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-3 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none min-h-[90px] transition-colors"
+                    className="w-full bg-fill border border-border rounded-md p-3 text-xs text-text outline-none focus:border-[#EF6600] resize-none min-h-[90px] transition-colors"
                   />
                 </div>
               </div>
@@ -1502,17 +1534,18 @@ ${historyLine}
           {activeTab === "result" && selectedPatient && (
             <div>
               {!result ? (
-                <div className="text-sm text-[#B0AAA4] text-center py-12">
+                <div className="text-sm text-muted text-center py-12">
                   아직 진단 결과가 없습니다.
                 </div>
               ) : (
                 <>
+                  <BetaFeedbackBanner />
                   {(result.chiefComplaintSummary || chiefComplaint) && (
-                    <div className="mb-3 bg-white border border-[#D4CCC4] rounded-lg p-4">
-                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                    <div className="mb-3 bg-card border border-border rounded-lg p-4">
+                      <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
                         <FileText className="w-3.5 h-3.5" /> 주소증
                       </div>
-                      <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                      <div className="text-sm text-text whitespace-pre-wrap">
                         {result.chiefComplaintSummary || chiefComplaint}
                       </div>
                     </div>
@@ -1522,16 +1555,16 @@ ${historyLine}
                         const c2 = claudeResultCards[i];
                         return (
                           <div key={i} className="mb-3 last:mb-0">
-                            <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                            <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
                               <Icon className="w-3.5 h-3.5" /> {label}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <div className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative">
+                              <div className="bg-card border border-border rounded-lg p-4 relative">
                                 <button
                                   onClick={() =>
                                     navigator.clipboard.writeText(`${label}: ${value}`)
                                   }
-                                  className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
+                                  className="absolute top-3 right-3 bg-fill border border-border rounded-md px-2 py-1 text-xs text-subtext hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
                                 >
                                   <Clipboard className="w-3 h-3" /> 복사
                                 </button>
@@ -1539,12 +1572,12 @@ ${historyLine}
                                   <FolderOpen className="w-3 h-3" /> 결과 1
                                 </div>
                                 <div
-                                  className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}
+                                  className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-text"}`}
                                 >
                                   {value}
                                 </div>
                                 {sub && (
-                                  <div className="text-xs text-[#8A8480] mt-1">
+                                  <div className="text-xs text-subtext mt-1">
                                     {sub}
                                   </div>
                                 )}
@@ -1553,7 +1586,7 @@ ${historyLine}
                                     {tags.map((t, j) => (
                                       <span
                                         key={j}
-                                        className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
+                                        className="px-2 py-0.5 bg-fill border border-border rounded text-xs text-subtext"
                                       >
                                         {t}
                                       </span>
@@ -1561,25 +1594,25 @@ ${historyLine}
                                   </div>
                                 )}
                               </div>
-                              <div className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative">
+                              <div className="bg-card border border-border rounded-lg p-4 relative">
                                 <button
                                   onClick={() =>
                                     navigator.clipboard.writeText(`${label}: ${c2.value}`)
                                   }
-                                  className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
+                                  className="absolute top-3 right-3 bg-fill border border-border rounded-md px-2 py-1 text-xs text-subtext hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
                                 >
                                   <Clipboard className="w-3 h-3" /> 복사
                                 </button>
-                                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-subtext uppercase tracking-wide mb-1.5">
                                   <Sparkles className="w-3 h-3" /> 결과 2
                                 </div>
                                 <div
-                                  className={`text-sm font-semibold ${c2.tags ? "text-[#EF6600]" : "text-[#232323]"}`}
+                                  className={`text-sm font-semibold ${c2.tags ? "text-[#EF6600]" : "text-text"}`}
                                 >
                                   {c2.value}
                                 </div>
                                 {c2.sub && (
-                                  <div className="text-xs text-[#8A8480] mt-1">
+                                  <div className="text-xs text-subtext mt-1">
                                     {c2.sub}
                                   </div>
                                 )}
@@ -1588,7 +1621,7 @@ ${historyLine}
                                     {c2.tags.map((t, j) => (
                                       <span
                                         key={j}
-                                        className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
+                                        className="px-2 py-0.5 bg-fill border border-border rounded text-xs text-subtext"
                                       >
                                         {t}
                                       </span>
@@ -1605,26 +1638,26 @@ ${historyLine}
                         {resultCards.map(({ label, Icon, value, sub, tags }, i) => (
                           <div
                             key={i}
-                            className="bg-white border border-[#D4CCC4] rounded-lg p-4 relative"
+                            className="bg-card border border-border rounded-lg p-4 relative"
                           >
                             <button
                               onClick={() =>
                                 navigator.clipboard.writeText(`${label}: ${value}`)
                               }
-                              className="absolute top-3 right-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-2 py-1 text-xs text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
+                              className="absolute top-3 right-3 bg-fill border border-border rounded-md px-2 py-1 text-xs text-subtext hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
                             >
                               <Clipboard className="w-3 h-3" /> 복사
                             </button>
-                            <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                            <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
                               <Icon className="w-3.5 h-3.5" /> {label}
                             </div>
                             <div
-                              className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-[#232323]"}`}
+                              className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-text"}`}
                             >
                               {value}
                             </div>
                             {sub && (
-                              <div className="text-xs text-[#8A8480] mt-1">
+                              <div className="text-xs text-subtext mt-1">
                                 {sub}
                               </div>
                             )}
@@ -1633,7 +1666,7 @@ ${historyLine}
                                 {tags.map((t, j) => (
                                   <span
                                     key={j}
-                                    className="px-2 py-0.5 bg-[#EDE8E2] border border-[#D4CCC4] rounded text-xs text-[#585753]"
+                                    className="px-2 py-0.5 bg-fill border border-border rounded text-xs text-subtext"
                                   >
                                     {t}
                                   </span>
@@ -1645,40 +1678,40 @@ ${historyLine}
                       </div>
                     )}
                   {loadingResult2 && (
-                    <div className="flex items-center gap-2 text-xs text-[#8A8480] mt-2">
-                      <div className="w-3 h-3 border-2 border-[#D4CCC4] border-t-[#EF6600] rounded-full animate-spin" />
+                    <div className="flex items-center gap-2 text-xs text-subtext mt-2">
+                      <div className="w-3 h-3 border-2 border-border border-t-[#EF6600] rounded-full animate-spin" />
                       결과 2 (일반 한의학 기반) 분석 중...
                     </div>
                   )}
-                  <div className="mt-3 bg-white border border-[#D4CCC4] rounded-lg overflow-hidden">
+                  <div className="mt-3 bg-card border border-border rounded-lg overflow-hidden">
                     <button
                       onClick={() => setResultMemoOpen((p) => !p)}
                       className="w-full flex items-center justify-between px-4 py-3 text-left"
                     >
-                      <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide">
+                      <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide">
                         <FileText className="w-3.5 h-3.5" /> 메모 · 병력
                       </div>
                       {resultMemoOpen ? (
-                        <ChevronUp className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                        <ChevronUp className="w-3.5 h-3.5 text-muted" />
                       ) : (
-                        <ChevronDown className="w-3.5 h-3.5 text-[#B0AAA4]" />
+                        <ChevronDown className="w-3.5 h-3.5 text-muted" />
                       )}
                     </button>
                     {resultMemoOpen && (
-                      <div className="border-t border-[#D4CCC4] p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="border-t border-border p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
                             <FileText className="w-3.5 h-3.5" /> 메모
                           </div>
-                          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                          <div className="text-sm text-text whitespace-pre-wrap">
                             {memo.trim() || selectedPatient?.memo || "-"}
                           </div>
                         </div>
                         <div>
-                          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-2">
+                          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
                             <Clipboard className="w-3.5 h-3.5" /> 병력
                           </div>
-                          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                          <div className="text-sm text-text whitespace-pre-wrap">
                             {recordMedicalHistory.hasHistory &&
                             recordMedicalHistory.text.trim()
                               ? recordMedicalHistory.text.trim()
@@ -1761,7 +1794,7 @@ ${historyLine}
                       {buildResultText("both")}
                     </pre>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-[#B0AAA4] mt-3 p-3 bg-[#EDE8E2] border border-[#D4CCC4] rounded-lg">
+                  <div className="flex items-center gap-1.5 text-xs text-muted mt-3 p-3 bg-fill border border-border rounded-lg">
                     <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0" />본
                     결과는 AI 참고용이며 최종 진단 및 처방은 반드시 한의사가
                     직접 판단해야 합니다.
@@ -1784,7 +1817,7 @@ ${historyLine}
                     </button>
                     <button
                       onClick={handlePrint}
-                      className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all flex items-center justify-center gap-1.5"
+                      className="flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5"
                     >
                       <Printer className="w-3.5 h-3.5" /> 인쇄
                     </button>
@@ -1798,21 +1831,21 @@ ${historyLine}
                         setFeedbackRecordId(null);
                         setResultMemoOpen(false);
                       }}
-                      className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-xs text-[#8A8480] hover:border-[#232323] transition-all flex items-center justify-center gap-1.5"
+                      className="flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5"
                     >
                       <Plus className="w-3.5 h-3.5" /> 새 진료
                     </button>
                   </div>
                   {feedbackRecordId && (
-                    <div className="mt-3 bg-white border border-[#D4CCC4] rounded-lg p-4">
+                    <div className="mt-3 bg-card border border-border rounded-lg p-4">
                       {feedbackSubmitted ? (
-                        <div className="flex items-center justify-center gap-2 py-1 text-sm text-[#8A8480]">
+                        <div className="flex items-center justify-center gap-2 py-1 text-sm text-subtext">
                           <CircleCheck className="w-4 h-4 text-[#EF6600]" />
                           피드백 감사합니다
                         </div>
                       ) : (
                         <>
-                          <div className="text-xs text-[#8A8480] mb-3 text-center">
+                          <div className="text-xs text-subtext mb-3 text-center">
                             이 진단이 도움이 됐나요?
                           </div>
                           <div className="flex gap-2 justify-center mb-3">
@@ -1821,7 +1854,7 @@ ${historyLine}
                               className={`flex items-center gap-1.5 px-4 py-2 rounded-md border text-xs transition-all ${
                                 feedbackHelpful === true
                                   ? "bg-[#EF6600] text-white border-[#EF6600]"
-                                  : "border-[#D4CCC4] text-[#8A8480] hover:border-[#EF6600] hover:text-[#EF6600]"
+                                  : "border-border text-subtext hover:border-[#EF6600] hover:text-[#EF6600]"
                               }`}
                             >
                               <ThumbsUp className="w-3.5 h-3.5" /> 도움됨
@@ -1830,8 +1863,8 @@ ${historyLine}
                               onClick={() => setFeedbackHelpful(false)}
                               className={`flex items-center gap-1.5 px-4 py-2 rounded-md border text-xs transition-all ${
                                 feedbackHelpful === false
-                                  ? "bg-[#232323] text-white border-[#232323]"
-                                  : "border-[#D4CCC4] text-[#8A8480] hover:border-[#232323] hover:text-[#232323]"
+                                  ? "bg-[#232323] dark:bg-border-strong text-white border-text"
+                                  : "border-border text-subtext hover:border-text hover:text-text"
                               }`}
                             >
                               <ThumbsDown className="w-3.5 h-3.5" /> 도움 안 됨
@@ -1846,7 +1879,7 @@ ${historyLine}
                                 }
                                 placeholder="추가 의견이 있으시면 입력해주세요 (선택)"
                                 rows={2}
-                                className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-xs text-[#232323] outline-none focus:border-[#EF6600] resize-none mb-2 transition-colors"
+                                className="w-full bg-fill border border-border rounded-md px-3 py-2 text-xs text-text outline-none focus:border-[#EF6600] resize-none mb-2 transition-colors"
                               />
                               <button
                                 onClick={handleFeedback}
@@ -1869,11 +1902,11 @@ ${historyLine}
           {activeTab === "history" && selectedPatient && (
             <div className="overflow-y-auto">
               {recordsLoading ? (
-                <div className="text-sm text-[#B0AAA4] text-center py-12">
+                <div className="text-sm text-muted text-center py-12">
                   불러오는 중...
                 </div>
               ) : records.length === 0 ? (
-                <div className="text-sm text-[#B0AAA4] text-center py-12">
+                <div className="text-sm text-muted text-center py-12">
                   진료 이력이 없습니다
                 </div>
               ) : (
@@ -1912,7 +1945,7 @@ ${historyLine}
                       return (
                         <div
                           key={r.id}
-                          className="bg-white border border-[#D4CCC4] rounded-lg overflow-hidden"
+                          className="bg-card border border-border rounded-lg overflow-hidden"
                         >
                           <div className="flex items-stretch">
                             <button
@@ -1922,7 +1955,7 @@ ${historyLine}
                               className="flex-1 flex items-start justify-between px-4 py-3 text-left gap-2"
                             >
                               <div className="flex flex-col gap-0.5 min-w-0">
-                                <span className="text-sm font-medium text-[#232323]">
+                                <span className="text-sm font-medium text-text">
                                   {r.recorded_at
                                     ? new Date(r.recorded_at).toLocaleString(
                                         "ko-KR",
@@ -1937,7 +1970,7 @@ ${historyLine}
                                     : "날짜 미상"}
                                 </span>
                                 {(diagSummary || prescSummary) && (
-                                  <span className="text-xs text-[#8A8480] truncate">
+                                  <span className="text-xs text-subtext truncate">
                                     {[diagSummary, prescSummary]
                                       .filter(Boolean)
                                       .join(" · ")}
@@ -1945,21 +1978,21 @@ ${historyLine}
                                 )}
                               </div>
                               {isOpen ? (
-                                <ChevronUp className="w-4 h-4 text-[#8A8480] flex-shrink-0 mt-0.5" />
+                                <ChevronUp className="w-4 h-4 text-subtext flex-shrink-0 mt-0.5" />
                               ) : (
-                                <ChevronDown className="w-4 h-4 text-[#8A8480] flex-shrink-0 mt-0.5" />
+                                <ChevronDown className="w-4 h-4 text-subtext flex-shrink-0 mt-0.5" />
                               )}
                             </button>
                             <button
                               onClick={() => handleDeleteRecord(r.id)}
-                              className="px-3 border-l border-[#D4CCC4] text-[#B0AAA4] hover:text-red-500 hover:bg-red-50 transition-colors"
+                              className="px-3 border-l border-border text-muted hover:text-red-500 hover:bg-red-50 transition-colors"
                               title="삭제"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                           {isOpen && (
-                            <div className="border-t border-[#D4CCC4] p-4 flex flex-col gap-4">
+                            <div className="border-t border-border p-4 flex flex-col gap-4">
                               {ccText && (
                                 <div>
                                   <button
@@ -1972,7 +2005,7 @@ ${historyLine}
                                         return next;
                                       })
                                     }
-                                    className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5 w-full text-left"
+                                    className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5 w-full text-left"
                                   >
                                     <FileText className="w-3.5 h-3.5" /> 주소증
                                     {expandedCC.has(r.id) ? (
@@ -1982,7 +2015,7 @@ ${historyLine}
                                     )}
                                   </button>
                                   {expandedCC.has(r.id) && (
-                                    <div className="text-sm text-[#232323] whitespace-pre-wrap bg-[#F5F2EE] rounded p-2">
+                                    <div className="text-sm text-text whitespace-pre-wrap bg-bg rounded p-2">
                                       {ccText}
                                     </div>
                                   )}
@@ -2001,7 +2034,7 @@ ${historyLine}
                                       "r1-",
                                     ),
                                   )}
-                                  <div className="text-xs font-semibold text-[#8A8480] uppercase tracking-wide">
+                                  <div className="text-xs font-semibold text-subtext uppercase tracking-wide">
                                     ■ 결과 2
                                   </div>
                                   {historySections.map(({ key, Icon }) =>
@@ -2018,7 +2051,7 @@ ${historyLine}
                                   renderHistorySection(sections, key, Icon),
                                 )
                               ) : (
-                                <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                                <div className="text-sm text-text whitespace-pre-wrap">
                                   {r.chart_structured || "차트 내용 없음"}
                                 </div>
                               )}
@@ -2036,7 +2069,7 @@ ${historyLine}
                                         return next;
                                       })
                                     }
-                                    className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide w-full text-left"
+                                    className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide w-full text-left"
                                   >
                                     <FileText className="w-3.5 h-3.5" /> 메모 ·
                                     병력
@@ -2050,11 +2083,11 @@ ${historyLine}
                                     <div className="flex flex-col gap-3 mt-2">
                                       {sections?.["메모"] && (
                                         <div>
-                                          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5">
                                             <FileText className="w-3.5 h-3.5" />{" "}
                                             메모
                                           </div>
-                                          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                                          <div className="text-sm text-text whitespace-pre-wrap">
                                             {sections["메모"]}
                                           </div>
                                         </div>
@@ -2062,11 +2095,11 @@ ${historyLine}
                                       {(sections?.["병력"] ||
                                         r.medical_history) && (
                                         <div>
-                                          <div className="flex items-center gap-1.5 text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                                          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5">
                                             <Clipboard className="w-3.5 h-3.5" />{" "}
                                             병력
                                           </div>
-                                          <div className="text-sm text-[#232323] whitespace-pre-wrap">
+                                          <div className="text-sm text-text whitespace-pre-wrap">
                                             {sections?.["병력"] ||
                                               r.medical_history}
                                           </div>
@@ -2090,12 +2123,12 @@ ${historyLine}
             <div className="flex flex-col flex-1 min-h-0 gap-4">
               <div className="flex-1 flex flex-col gap-3 overflow-y-auto min-h-0">
                 {askHistory.length === 0 && (
-                  <div className="text-center py-16 text-[#B0AAA4]">
-                    <MessageCircle className="w-8 h-8 mx-auto mb-3 text-[#B0AAA4]" />
+                  <div className="text-center py-16 text-muted">
+                    <MessageCircle className="w-8 h-8 mx-auto mb-3 text-muted" />
                     <div className="text-sm">
                       한의학 관련 궁금한 점을 질문해보세요
                     </div>
-                    <div className="text-xs mt-2 text-[#C8BFB6]">
+                    <div className="text-xs mt-2 text-muted">
                       예) 소음인 소화불량에 어떤 처방이 좋나요?
                     </div>
                   </div>
@@ -2106,17 +2139,17 @@ ${historyLine}
                       {item.question}
                     </div>
                     {item.answer === "" ? (
-                      <div className="self-start bg-white border border-[#D4CCC4] rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
+                      <div className="self-start bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
                         {[0, 1, 2].map((j) => (
                           <div
                             key={j}
-                            className="w-1.5 h-1.5 bg-[#B0AAA4] rounded-full animate-bounce"
+                            className="w-1.5 h-1.5 bg-muted rounded-full animate-bounce"
                             style={{ animationDelay: `${j * 0.15}s` }}
                           />
                         ))}
                       </div>
                     ) : (
-                      <div className="self-start max-w-[75%] bg-white border border-[#D4CCC4] text-sm text-[#232323] rounded-2xl rounded-tl-sm px-4 py-2.5 leading-relaxed whitespace-pre-wrap">
+                      <div className="self-start max-w-[75%] bg-card border border-border text-sm text-text rounded-2xl rounded-tl-sm px-4 py-2.5 leading-relaxed whitespace-pre-wrap">
                         {item.answer}
                       </div>
                     )}
@@ -2124,7 +2157,7 @@ ${historyLine}
                       <button
                         type="button"
                         onClick={() => openAskSavePicker(i)}
-                        className="self-start flex items-center gap-1 text-xs text-[#8A8480] hover:text-[#EF6600] transition-colors px-1"
+                        className="self-start flex items-center gap-1 text-xs text-subtext hover:text-[#EF6600] transition-colors px-1"
                       >
                         <Save className="w-3 h-3" /> 진료 기록에 저장
                       </button>
@@ -2132,15 +2165,15 @@ ${historyLine}
                   </div>
                 ))}
               </div>
-              <div className="pt-2 border-t border-[#D4CCC4] flex flex-col gap-2">
-                <div className="flex gap-1 p-1 bg-[#EDE8E2] border border-[#D4CCC4] rounded-lg w-fit">
+              <div className="pt-2 border-t border-border flex flex-col gap-2">
+                <div className="flex gap-1 p-1 bg-fill border border-border rounded-lg w-fit">
                   <button
                     type="button"
                     onClick={() => setAskMode("ask")}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                       askMode === "ask"
-                        ? "bg-white text-[#232323] shadow-sm"
-                        : "text-[#8A8480] hover:text-[#232323]"
+                        ? "bg-card text-text shadow-sm"
+                        : "text-subtext hover:text-text"
                     }`}
                   >
                     <MessageCircle className="w-3.5 h-3.5" /> 질문하기
@@ -2150,8 +2183,8 @@ ${historyLine}
                     onClick={() => setAskMode("diagnose")}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                       askMode === "diagnose"
-                        ? "bg-white text-[#232323] shadow-sm"
-                        : "text-[#8A8480] hover:text-[#232323]"
+                        ? "bg-card text-text shadow-sm"
+                        : "text-subtext hover:text-text"
                     }`}
                   >
                     <Stethoscope className="w-3.5 h-3.5" /> 증상 분석
@@ -2166,7 +2199,7 @@ ${historyLine}
                         ? "증상을 입력하면 진단·처방을 분석합니다..."
                         : "한의학 관련 질문을 입력하세요..."
                     }
-                    className="flex-1 bg-[#EDE8E2] border border-[#D4CCC4] rounded-lg px-4 py-2.5 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                    className="flex-1 bg-fill border border-border rounded-lg px-4 py-2.5 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                     disabled={askHistory.at(-1)?.answer === ""}
                   />
                   <button
@@ -2192,14 +2225,14 @@ ${historyLine}
           onClick={() => setAskSavePicker(null)}
         >
           <div
-            className="bg-white rounded-xl w-full max-w-[420px] overflow-hidden"
+            className="bg-card rounded-xl w-full max-w-[420px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5">
-              <div className="text-sm font-medium text-[#232323] mb-1">
+              <div className="text-sm font-medium text-text mb-1">
                 진료 기록에 저장할 항목 선택
               </div>
-              <div className="text-xs text-[#8A8480] mb-4">
+              <div className="text-xs text-subtext mb-4">
                 {selectedPatient
                   ? `${selectedPatient.name} 환자에게 저장됩니다`
                   : "환자를 먼저 선택해주세요"}
@@ -2213,7 +2246,7 @@ ${historyLine}
                   if (!r) return null;
                   return (
                     <div key={prefix}>
-                      <div className="text-xs font-medium text-[#232323] mb-2">
+                      <div className="text-xs font-medium text-text mb-2">
                         {prefix === "r1"
                           ? "결과 1 (데이터셋 기반)"
                           : "결과 2 (AI 종합 소견)"}
@@ -2222,7 +2255,7 @@ ${historyLine}
                         {ASK_SAVE_FIELDS.map((f) => (
                           <label
                             key={f.key}
-                            className="flex items-center gap-2 text-xs text-[#232323]"
+                            className="flex items-center gap-2 text-xs text-text"
                           >
                             <input
                               type="checkbox"
@@ -2254,7 +2287,7 @@ ${historyLine}
                 </button>
                 <button
                   onClick={() => setAskSavePicker(null)}
-                  className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-sm text-[#8A8480] hover:border-[#232323] hover:text-[#232323] transition-all"
+                  className="flex-1 border border-border-strong rounded-md py-2.5 text-sm text-subtext hover:border-text hover:text-text transition-all"
                 >
                   취소
                 </button>
@@ -2271,11 +2304,11 @@ ${historyLine}
           onClick={() => setShowSaveModal(false)}
         >
           <div
-            className="bg-white rounded-xl w-full max-w-[400px] overflow-hidden"
+            className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
-              <div className="text-sm font-medium text-[#232323] mb-4">
+              <div className="text-sm font-medium text-text mb-4">
                 저장하시겠습니까?
               </div>
               {result?.claudeBased && (
@@ -2289,7 +2322,7 @@ ${historyLine}
                   ).map((opt) => (
                     <label
                       key={opt.value}
-                      className="flex items-center gap-2 text-xs text-[#232323]"
+                      className="flex items-center gap-2 text-xs text-text"
                     >
                       <input
                         type="radio"
@@ -2314,7 +2347,7 @@ ${historyLine}
                 </button>
                 <button
                   onClick={() => setShowSaveModal(false)}
-                  className="flex-1 border border-[#C8BFB6] rounded-md py-2.5 text-sm text-[#8A8480] hover:border-[#232323] hover:text-[#232323] transition-all"
+                  className="flex-1 border border-border-strong rounded-md py-2.5 text-sm text-subtext hover:border-text hover:text-text transition-all"
                 >
                   취소
                 </button>
@@ -2331,12 +2364,12 @@ ${historyLine}
           onClick={() => setShowSavedModal(false)}
         >
           <div
-            className="bg-white rounded-xl w-full max-w-[400px] overflow-hidden"
+            className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <CircleCheck className="w-10 h-10 text-[#EF6600] mx-auto mb-3" />
-              <div className="text-sm font-medium text-[#232323] mb-5">
+              <div className="text-sm font-medium text-text mb-5">
                 저장되었습니다
               </div>
               <button
@@ -2357,12 +2390,12 @@ ${historyLine}
           onClick={() => setErrorMessage(null)}
         >
           <div
-            className="bg-white rounded-xl w-full max-w-[400px] overflow-hidden"
+            className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
               <TriangleAlert className="w-10 h-10 text-[#EF6600] mx-auto mb-3" />
-              <div className="text-sm font-medium text-[#232323] mb-5">
+              <div className="text-sm font-medium text-text mb-5">
                 {errorMessage}
               </div>
               <button
@@ -2383,16 +2416,16 @@ ${historyLine}
           onClick={() => setShowAddModal(false)}
         >
           <div
-            className="bg-white rounded-xl w-full max-w-[400px] overflow-hidden"
+            className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#D4CCC4]">
-              <div className="text-sm font-medium text-[#232323]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="text-sm font-medium text-text">
                 신규 환자 등록
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-[#8A8480] hover:text-[#232323] transition-colors"
+                className="text-subtext hover:text-text transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2422,7 +2455,7 @@ ${historyLine}
                 },
               ].map((field) => (
                 <div key={field.key}>
-                  <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                  <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
                     {field.label}
                   </label>
                   <input
@@ -2438,13 +2471,13 @@ ${historyLine}
                             : e.target.value,
                       })
                     }
-                    className="w-full bg-[#F5F2EE] border border-[#D4CCC4] rounded-md px-4 py-2.5 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                    className="w-full bg-bg border border-border rounded-md px-4 py-2.5 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                     required={field.key === "name"}
                   />
                 </div>
               ))}
               <div>
-                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
                   성별
                 </label>
                 <div className="flex gap-2">
@@ -2458,7 +2491,7 @@ ${historyLine}
                       className={`flex-1 py-2.5 text-sm rounded-md border transition-all ${
                         newPatient.gender === g
                           ? "bg-[#EF6600] text-white border-[#EF6600]"
-                          : "bg-white text-[#8A8480] border-[#D4CCC4] hover:border-[#EF6600]"
+                          : "bg-card text-subtext border-border hover:border-[#EF6600]"
                       }`}
                     >
                       {g}
@@ -2478,67 +2511,21 @@ ${historyLine}
         </div>
       )}
 
-      {/* 동기화 에이전트 안내 모달 */}
-      {showSyncModal && (
-        <div
-          className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowSyncModal(false)}
-        >
-          <div
-            className="bg-white rounded-xl w-full max-w-[440px] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#D4CCC4]">
-              <div className="text-sm font-medium text-[#232323]">
-                환자 정보 자동 동기화 설정
-              </div>
-              <button
-                onClick={() => setShowSyncModal(false)}
-                className="text-[#8A8480] hover:text-[#232323] transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      {/* 엑셀 가져오기 결과 모달 */}
+      {importResult && (
+        <div className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
+            <div className="text-base font-semibold text-text mb-2">가져오기 완료</div>
+            <div className="text-sm text-subtext mb-4">
+              <span className="text-[#EF6600] font-medium">{importResult.inserted}명</span> 등록됨
+              {importResult.skipped > 0 && ` · ${importResult.skipped}건 건너뜀`}
             </div>
-            <div className="p-5 flex flex-col gap-4 text-sm text-[#232323]">
-              <p className="text-[#8A8480] text-xs leading-relaxed">
-                기존 차팅 프로그램의 환자 데이터를 Zinmac으로 자동으로
-                가져옵니다.
-                <br />
-                한의맥 또는 네오보감이 설치된 Windows 컴퓨터에서 아래 스크립트를
-                한 번만 실행하면 이후 1시간마다 자동 동기화됩니다.
-              </p>
-              <div className="flex flex-col gap-3">
-                {[
-                  {
-                    name: "한의맥",
-                    file: "hanimac_setup.bat",
-                    color: "bg-[#EEF4FF] border-[#C7D9F8] text-[#2563EB]",
-                  },
-                  {
-                    name: "네오보감",
-                    file: "neobogam_setup.bat",
-                    color: "bg-[#F0FDF4] border-[#BBF7D0] text-[#16A34A]",
-                  },
-                ].map(({ name, file, color }) => (
-                  <div key={name} className={`rounded-lg border p-4 ${color}`}>
-                    <div className="font-medium mb-2">{name}</div>
-                    <ol className="text-xs leading-relaxed list-decimal list-inside flex flex-col gap-1 text-[#232323]">
-                      <li>
-                        관리자에게{" "}
-                        <span className="font-mono font-semibold">{file}</span>{" "}
-                        파일 요청
-                      </li>
-                      <li>{name} Windows 컴퓨터에서 파일 실행</li>
-                      <li>Zinmac 면허번호 · 비밀번호 입력</li>
-                      <li>완료 — 이후 자동 동기화</li>
-                    </ol>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-[#B0AAA4]">
-                문의: 관리자에게 연락하세요.
-              </p>
-            </div>
+            <button
+              onClick={() => setImportResult(null)}
+              className="bg-[#EF6600] text-white rounded-md px-6 py-2 text-sm hover:opacity-90 transition-opacity"
+            >
+              확인
+            </button>
           </div>
         </div>
       )}
@@ -2550,23 +2537,23 @@ ${historyLine}
           onClick={() => setEditPatient(null)}
         >
           <div
-            className="bg-white rounded-xl w-full max-w-[360px] overflow-hidden"
+            className="bg-card rounded-xl w-full max-w-[360px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#D4CCC4]">
-              <div className="text-sm font-medium text-[#232323]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="text-sm font-medium text-text">
                 {editPatient.name} 정보 수정
               </div>
               <button
                 onClick={() => setEditPatient(null)}
-                className="text-[#8A8480] hover:text-[#232323]"
+                className="text-subtext hover:text-text"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="p-5 flex flex-col gap-3">
               <div>
-                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
                   전화번호
                 </label>
                 <input
@@ -2579,11 +2566,11 @@ ${historyLine}
                     }))
                   }
                   placeholder="010-0000-0000"
-                  className="w-full border border-[#C8BFB6] rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
+                  className="w-full border border-border-strong rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
                 />
               </div>
               <div>
-                <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">
+                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
                   메모
                 </label>
                 <textarea
@@ -2593,7 +2580,7 @@ ${historyLine}
                   }
                   placeholder="특이사항 등"
                   rows={3}
-                  className="w-full border border-[#C8BFB6] rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600] resize-none"
+                  className="w-full border border-border-strong rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600] resize-none"
                 />
               </div>
               <button

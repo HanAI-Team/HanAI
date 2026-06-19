@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.redis import add_token_blacklist
-from app.auth.datahub import verify_medical_license
+from app.auth.datahub import request_verification, confirm_verification
+from app.core.redis import set_verify_pending, get_verify_pending, del_verify_pending
 
 
 from app.core.deps import get_current_user
@@ -25,6 +26,8 @@ from app.auth.schema import (
     RegisterVerifyRequest,
     ResetPasswordResponse,
     StaffLoginRequest,
+    VerifyInitResponse,
+    VerifyConfirmRequest,
 )
 from app.core.config import settings
 from app.core.database import get_db
@@ -70,7 +73,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if not service.validate_license_format(data.license_number):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="면허번호는 8자리 숫자여야 합니다.",
+            detail="면허번호는 4자리 이상 숫자여야 합니다.",
         )
 
     doctor = await service.register_doctor(db, data)
@@ -83,20 +86,58 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
-# 의사 진짜 인증 하는거
-@router.post("/register/verify")
-async def register_verify(
-    data: RegisterVerifyRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    result = await verify_medical_license(
+# 의사 진짜 인증 하는거 - Step 1: 인증 요청 (네이버/PASS/SMS 등)
+@router.post("/register/verify", response_model=VerifyInitResponse, status_code=202)
+async def register_verify(data: RegisterVerifyRequest):
+    result = await request_verification(
         name=data.name,
         jumin=data.jumin,
         phone=data.phone,
         login_option=data.login_option,
+        telecom_gubun=data.telecom_gubun,
     )
+
+    # 즉시 성공(단계 없이 완료)은 드물지만 처리
+    if result.get("verified"):
+        raise HTTPException(
+            status_code=400,
+            detail="즉시 인증됨 — /register/verify/confirm 대신 이 응답을 직접 처리하세요.",
+        )
+
+    if result.get("error") and not result.get("needs_callback"):
+        raise HTTPException(status_code=401, detail=result["error"])
+
+    if not result.get("needs_callback"):
+        raise HTTPException(status_code=500, detail="알 수 없는 datahub 응답입니다.")
+
+    callback_id = result["callback_id"]
+    set_verify_pending(callback_id, data.model_dump())
+
+    return VerifyInitResponse(
+        callback_id=callback_id,
+        callback_type=result.get("callback_type", "SIMPLE"),
+    )
+
+
+# Step 2: 앱 인증 완료 후 콜백 결과 조회 + 회원가입
+@router.post("/register/verify/confirm", response_model=TokenResponse)
+async def register_verify_confirm(
+    data: VerifyConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await confirm_verification(
+        callback_id=data.callback_id,
+        callback_type=data.callback_type,
+        callback_response=data.callback_data,
+    )
+
+    if result.get("needs_callback"):
+        raise HTTPException(status_code=202, detail="아직 앱 인증이 완료되지 않았습니다.")
+
     if not result.get("verified"):
-        raise HTTPException(status_code=401, detail="면허 인증에 실패했습니다.")
+        raise HTTPException(
+            status_code=401, detail=result.get("error", "면허 인증에 실패했습니다.")
+        )
 
     if result.get("license_number") != data.license_number:
         raise HTTPException(status_code=400, detail="면허번호가 일치하지 않습니다.")
@@ -110,16 +151,14 @@ async def register_verify(
         clinic_phone=data.clinic_phone,
     )
     doctor = await service.register_doctor(db, register_data)
-    result = await service.approve_doctor(db, UUID(str(doctor.id)))
+    approved = await service.approve_doctor(db, UUID(str(doctor.id)))
 
     token = service.create_access_token(
-        UUID(str(result["doctor"].id)),
-        UUID(str(result["doctor"].hospital_id)),
-        str(result["doctor"].role),
+        UUID(str(approved["doctor"].id)),
+        UUID(str(approved["doctor"].hospital_id)),
+        str(approved["doctor"].role),
     )
-    return TokenResponse(
-        access_token=token, expires_in=settings.JWT_EXPIRE_MINUTES * 60
-    )
+    return TokenResponse(access_token=token, expires_in=settings.JWT_EXPIRE_MINUTES * 60)
 
 
 @router.post("/login", response_model=TokenResponse)
