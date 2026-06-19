@@ -16,6 +16,7 @@ import { DiagnosisStackParamList } from "../../navigation/types";
 import { Card } from "../../components/Card";
 import { Button } from "../../components/Button";
 import { Tag } from "../../components/Tag";
+import { BetaFeedbackBanner } from "../../components/BetaFeedbackBanner";
 import { saveRecord } from "../../api/patients";
 import { finalizeRecord } from "../../api/charting";
 import { submitFeedback } from "../../api/feedback";
@@ -129,6 +130,8 @@ export function ResultScreen({ route }: Props) {
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, gap: 12 }}>
+      <BetaFeedbackBanner />
+
       {rawTranscription && (
         <Card>
           <View className="flex-row items-center gap-1.5 mb-2">

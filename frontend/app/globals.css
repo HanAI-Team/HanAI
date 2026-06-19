@@ -1,9 +1,33 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Noto+Serif+KR:wght@300;400;500&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-bg: #F5F2EE;
+  --color-card: #FFFFFF;
+  --color-fill: #EDE8E2;
+  --color-border: #D4CCC4;
+  --color-border-strong: #C8BFB6;
+  --color-text: #232323;
+  --color-subtext: #8A8480;
+  --color-muted: #B0AAA4;
+}
+
+.dark {
+  --color-bg: #0B0F17;
+  --color-card: #141A2E;
+  --color-fill: #1B2236;
+  --color-border: #2A3349;
+  --color-border-strong: #3D4859;
+  --color-text: #E8EBF5;
+  --color-subtext: #9AA5C4;
+  --color-muted: #7A8AAE;
+}
+
 body {
-  background-color: #F5F2EE;
-  color: #232323;
+  background-color: var(--color-bg);
+  color: var(--color-text);
 }
 
 .font-serif {

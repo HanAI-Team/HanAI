@@ -73,7 +73,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if not service.validate_license_format(data.license_number):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="면허번호는 8자리 숫자여야 합니다.",
+            detail="면허번호는 4자리 이상 숫자여야 합니다.",
         )
 
     doctor = await service.register_doctor(db, data)
