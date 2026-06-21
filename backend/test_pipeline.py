@@ -87,7 +87,7 @@ async def test_diagnose(corrected: str):
     print("-" * 40)
     print("⏳ Claude API 호출 중...")
     try:
-        result = diagnose(corrected)
+        result = await diagnose(corrected)
         constitution = (result.get("sasang_constitution") or {}).get("type", "-")
         tkm = (result.get("tkm_diagnosis") or {}).get("diagnosis_name", "-")
         herb = (result.get("herbal_prescription") or {})
