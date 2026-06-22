@@ -1,3 +1,6 @@
+import pytest
+
+from app.auth import router as auth_router
 from app.core.config import settings
 
 REGISTER_DATA = {
@@ -6,6 +9,45 @@ REGISTER_DATA = {
     "password": "password1234",
     "clinic_name": "테스트의원",
 }
+
+
+class _FakeRedis:
+    """login 잠금 로직(get/incr/expire/set/delete)만 흉내내는 메모리 기반 가짜 redis."""
+
+    def __init__(self):
+        self._store = {}
+
+    def get(self, key):
+        return self._store.get(key)
+
+    def incr(self, key):
+        self._store[key] = int(self._store.get(key, 0)) + 1
+        return self._store[key]
+
+    def expire(self, key, seconds):
+        pass
+
+    def set(self, key, value, ex=None):
+        self._store[key] = value
+
+    def delete(self, key):
+        self._store.pop(key, None)
+
+
+@pytest.fixture
+def fake_redis(monkeypatch):
+    redis = _FakeRedis()
+    monkeypatch.setattr(auth_router, "_redis", redis)
+    return redis
+
+
+async def _register_and_approve(client) -> None:
+    reg = await client.post("/api/auth/register", json=REGISTER_DATA)
+    doctor_id = reg.json()["doctor_id"]
+    await client.post(
+        f"/api/auth/admin/approve/{doctor_id}",
+        headers={"X-Admin-Key": settings.ADMIN_API_KEY},
+    )
 
 
 async def test_register_success(client):
@@ -79,3 +121,62 @@ async def test_login_success(client):
     data = resp.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
+
+
+async def test_로그인_5회_실패시_잠금(client, fake_redis):
+    await _register_and_approve(client)
+
+    for _ in range(4):
+        resp = await client.post(
+            "/api/auth/login",
+            json={"license_number": "12345678", "password": "wrong-password"},
+        )
+        assert resp.status_code == 401
+
+    resp = await client.post(
+        "/api/auth/login",
+        json={"license_number": "12345678", "password": "wrong-password"},
+    )
+    assert resp.status_code == 403
+    assert "잠겼습니다" in resp.json()["detail"]
+
+
+async def test_잠긴_상태에서_재시도시_403(client, fake_redis):
+    await _register_and_approve(client)
+
+    for _ in range(5):
+        await client.post(
+            "/api/auth/login",
+            json={"license_number": "12345678", "password": "wrong-password"},
+        )
+
+    # 비밀번호가 맞아도 잠금 상태면 403
+    resp = await client.post(
+        "/api/auth/login",
+        json={"license_number": "12345678", "password": "password1234"},
+    )
+    assert resp.status_code == 403
+
+
+async def test_성공_로그인_후_실패카운터_초기화(client, fake_redis):
+    await _register_and_approve(client)
+
+    for _ in range(3):
+        await client.post(
+            "/api/auth/login",
+            json={"license_number": "12345678", "password": "wrong-password"},
+        )
+
+    resp = await client.post(
+        "/api/auth/login",
+        json={"license_number": "12345678", "password": "password1234"},
+    )
+    assert resp.status_code == 200
+
+    # 카운터가 초기화됐다면 다시 실패해도 남은 시도는 4회(=1회차)여야 함
+    resp = await client.post(
+        "/api/auth/login",
+        json={"license_number": "12345678", "password": "wrong-password"},
+    )
+    assert resp.status_code == 401
+    assert "남은 시도: 4회" in resp.json()["detail"]
