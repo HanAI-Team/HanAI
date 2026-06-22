@@ -1,0 +1,454 @@
+"""EDI 파일 생성기.
+
+HIRA 전산매체파일 수록사양 U1 (의치과 및 한방) 기준.
+LAY 파일 C2-00, C2-11, C2-02, C2-71, C2-08, C2-09 레이아웃 적용.
+
+자료구분 코드:
+  '0': 요양급여비용 심사청구서   (C2-00, 345 bytes)
+  '1': 명세서일반내역            (C2-11, 347 bytes)
+  '2': 명세서상병내역            (C2-02,  91 bytes)
+  '3': 명세서진료내역            (C2-71, 한방 전용)
+  '8': 명세서특정내역            (C2-08, 747 bytes)
+  '9': 마지막 정보파일(EOF)      (C2-09,  20 bytes)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional
+
+
+# ---------------------------------------------------------------------------
+# 기본 포맷팅 함수
+# ---------------------------------------------------------------------------
+
+def _fmt9(value: int | None, length: int) -> str:
+    """숫자 필드: 우측 정렬, 좌측 0 채움."""
+    v = 0 if value is None else int(value)
+    return str(v).zfill(length)[-length:]  # 자릿수 초과 시 우측 기준으로 자름
+
+
+def _fmt9v9(value: Decimal | None, int_digits: int, dec_digits: int) -> str:
+    """소수점 포함 숫자 필드 (V = 소수점 위치, 파일에는 소수점 문자 없이 기록).
+
+    예) 9V9(7): int_digits=4, dec_digits=3 → "1234567"
+    """
+    total = int_digits + dec_digits
+    if value is None:
+        return "0" * total
+    scaled = int(value * (10 ** dec_digits))
+    return str(scaled).zfill(total)[-total:]
+
+
+def _fmtx(value: str | None, length: int) -> str:
+    """문자 필드: 좌측 정렬, 우측 공백 채움."""
+    s = (value or "").encode("euc-kr", errors="replace").decode("euc-kr")
+    # EUC-KR 바이트 기준 길이 맞춤 (한글 1자 = 2바이트)
+    encoded = s.encode("euc-kr", errors="replace")
+    if len(encoded) >= length:
+        # 바이트 단위로 자르되 멀티바이트 경계 안전하게 처리
+        truncated = encoded[:length]
+        try:
+            truncated.decode("euc-kr")
+        except UnicodeDecodeError:
+            truncated = encoded[:length - 1] + b" "
+        return truncated.decode("euc-kr")
+    return s + " " * ((length - len(encoded)))
+
+
+def _build(parts: list[str], total: int) -> str:
+    """파트 목록을 합쳐 total 바이트 레코드 + CRLF 반환."""
+    record = "".join(parts)
+    encoded = record.encode("euc-kr", errors="replace")
+    # 길이 검증 (CRLF 제외)
+    if len(encoded) != total:
+        raise ValueError(
+            f"레코드 길이 불일치: 기대={total}, 실제={len(encoded)}\n"
+            f"레코드 내용: {record!r}"
+        )
+    return record + "\r\n"
+
+
+# ---------------------------------------------------------------------------
+# 공통 KEY 필드 (모든 레코드 앞부분)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RecordKey:
+    institution_code: str   # 요양기관기호 9(8)
+    serial_no: int          # 명세서일련번호 9(5)
+    ext_no: int = 0         # 확장번호 9(4)
+
+
+def _key_parts(key: RecordKey) -> list[str]:
+    return [
+        _fmt9(int(key.institution_code), 8),
+        _fmt9(key.serial_no, 5),
+        _fmt9(key.ext_no, 4),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# C2-00: 요양급여비용(의료급여비용)심사청구서 (345 bytes)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ClaimHeader:
+    key: RecordKey
+    billing_type: str       # 수록사양번호 XX: U1=의치과·한방
+    treatment_ym: str       # 진료년월 CCYYMM (예: "202506")
+    claim_date: str         # 청구일자 CCYYMMDD
+    claimer: str            # 청구인 X(12)
+    writer: str             # 작성자 X(12)
+    writer_rrn: str         # 작성자주민등록번호 9(13)
+    claim_count: int        # 청구건수
+    benefit_total_1: int    # 요양급여비용총액1
+    copayment: int          # 본인일부부담금
+    claim_amount: int       # 청구액
+    upper_limit_excess: int = 0
+    disability_medical_cost: int = 0
+    graduated_claim: int = 0
+    graduated_index: Decimal = Decimal("0")
+    treatment_days: Decimal = Decimal("0")
+    doctor_count: Decimal = Decimal("0")
+    approval_no: str = ""   # 검사승인번호 X(35)
+    benefit_total_2: int = 0
+    veterans_claim: int = 0
+    support_fund: int = 0
+    full_price_copay_total: int = 0
+    veterans_copay: int = 0
+    under_full_total: int = 0
+    under_full_copay: int = 0
+    under_full_claim: int = 0
+    under_full_veterans_claim: int = 0
+
+
+def build_claim_header(h: ClaimHeader) -> str:
+    """C2-00 심사청구서 레코드 생성 (345 bytes + CRLF).
+
+    레이아웃 (LAY C2-00 U1):
+      1-  17: KEY (요양기관기호8 + 일련번호5 + 확장번호4)
+     18-  19: 서식번호 '00'
+     20-  21: 수록사양번호 'U1'
+     22-  23: 진료분야구분
+     24-  41: 공란(18)
+     42-  47: 진료년월 CCYYMM
+     48-  55: 청구일자 CCYYMMDD
+     56-  67: 청구인(12)
+     68-  79: 작성자(12)
+     80-  92: 작성자주민등록번호(13)
+     93- 100: 공란(8)
+    101- 106: 청구건수(6)
+    107- 118: 요양급여비용총액1(12)
+    119- 130: 본인일부부담금(12)
+    131- 142: 청구액(12)
+    143- 154: 본인부담상한액초과금총액(12)
+    155- 166: 장애인의료비(의료급여)(12)
+    167- 176: 차등수가청구액(10)
+    177- 183: 차등지수 9V9(7)
+    184- 191: 진료일수 9999V99(8)
+    192- 195: 의사수 99V99(4)
+    196- 200: 대행청구단체(5)
+    201- 235: 검사승인번호(35)
+    236- 247: 요양급여비용총액2/진료비총액(12)
+    248- 259: 보훈청구액(12)
+    260- 271: 지원금(12)
+    272- 283: 건강보험(의료급여) 100분의100 본인부담금총액(12)
+    284- 295: 보훈 본인일부부담금(12)
+    296- 300: 공란(5)
+    301- 312: 100분의100미만 총액(12)
+    313- 324: 100분의100미만 본인일부부담금(12)
+    325- 336: 100분의100미만 청구액(12)
+    337- 345: 100분의100미만 보훈청구액(9)
+    """
+    parts = [
+        *_key_parts(h.key),                                          # 1-17
+        _fmt9(0, 2),                                                 # 18-19  서식번호
+        _fmtx(h.billing_type, 2),                                    # 20-21  수록사양번호
+        _fmt9(0, 2),                                                 # 22-23  진료분야구분
+        _fmtx("", 18),                                               # 24-41  공란
+        _fmt9(int(h.treatment_ym), 6),                               # 42-47  진료년월
+        _fmt9(int(h.claim_date), 8),                                 # 48-55  청구일자
+        _fmtx(h.claimer, 12),                                        # 56-67  청구인
+        _fmtx(h.writer, 12),                                         # 68-79  작성자
+        _fmt9(int(h.writer_rrn.replace("-", "")), 13),               # 80-92  작성자주민등록번호
+        _fmtx("", 8),                                                # 93-100 공란
+        _fmt9(h.claim_count, 6),                                     # 101-106 청구건수
+        _fmt9(h.benefit_total_1, 12),                                # 107-118 요양급여비용총액1
+        _fmt9(h.copayment, 12),                                      # 119-130 본인일부부담금
+        _fmt9(h.claim_amount, 12),                                   # 131-142 청구액
+        _fmt9(h.upper_limit_excess, 12),                             # 143-154 본인부담상한액초과금
+        _fmt9(h.disability_medical_cost, 12),                        # 155-166 장애인의료비
+        _fmt9(h.graduated_claim, 10),                                # 167-176 차등수가청구액
+        _fmt9v9(h.graduated_index, 4, 3),                            # 177-183 차등지수
+        _fmt9v9(h.treatment_days, 6, 2),                             # 184-191 진료일수
+        _fmt9v9(h.doctor_count, 2, 2),                               # 192-195 의사수
+        _fmtx("", 5),                                                # 196-200 대행청구단체
+        _fmtx(h.approval_no, 35),                                    # 201-235 검사승인번호
+        _fmt9(h.benefit_total_2, 12),                                # 236-247 요양급여비용총액2
+        _fmt9(h.veterans_claim, 12),                                 # 248-259 보훈청구액
+        _fmt9(h.support_fund, 12),                                   # 260-271 지원금
+        _fmt9(h.full_price_copay_total, 12),                         # 272-283 건강보험(의료급여) 100분의100 본인부담금총액
+        _fmt9(h.veterans_copay, 12),                                 # 284-295 보훈 본인일부부담금
+        _fmtx("", 5),                                                # 296-300 공란
+        _fmt9(h.under_full_total, 12),                               # 301-312 100분의100미만 총액
+        _fmt9(h.under_full_copay, 12),                               # 313-324 100분의100미만 본인일부부담금
+        _fmt9(h.under_full_claim, 12),                               # 325-336 100분의100미만 청구액
+        _fmt9(h.under_full_veterans_claim, 9),                       # 337-345 100분의100미만 보훈청구액
+    ]
+    return _build(parts, 345)
+
+
+# ---------------------------------------------------------------------------
+# C2-11: 명세서일반내역 (의치과 및 한방, 347 bytes)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PatientRecord:
+    key: RecordKey
+    insurance_type: str     # 보험자종별구분 (4/5/7)
+    employer_code: str      # 사업장기호(보장기관기호) X(11)
+    cert_no: str            # 증번호(보장기관승인번호) X(13)
+    subscriber_name: str    # 가입자성명(세대주성명) X(12)
+    patient_name: str       # 수진자성명 X(12)
+    patient_rrn: str        # 수진자주민등록번호 9(13)
+    inpatient_days: int     # 입내원일수
+    benefit_days: int       # 요양급여일수
+    benefit_total_1: int    # 요양급여비용총액1
+    copayment: int          # 본인일부부담금
+    claim_amount: int       # 청구액
+    upper_limit_excess: int = 0
+    medical_aid_ab: str = "  "  # 의료급여 A/B 구분 XX
+    deferred_or_disability: int = 0  # 대불금 또는 장애인의료비
+    receipt_no: int = 0     # 접수번호 9(7)
+    record_serial: int = 0  # 명일련 9(5)
+    reason_code: str = "  " # 사유 XX
+    first_admission_date: str = "00000000"  # 최초입원개시일 9(8)
+    benefit_total_2: int = 0
+    veterans_claim: int = 0
+    support_fund: int = 0
+    full_price_copay_total: int = 0
+    veterans_copay: int = 0
+
+
+def build_patient_record(p: PatientRecord) -> str:
+    """C2-11 명세서일반내역 레코드 생성 (347 bytes + CRLF).
+
+    레이아웃 (LAY C2-11 U1, 의치과 및 한방):
+      1-  17: KEY
+     18-  19: 서식번호 '01'
+     20-  30: 사업장기호(보장기관기호)(11)
+     31-  34: 증번호앞(4)
+     35-  43: 증번호뒤/공란(9)
+     44-  55: 가입자성명(세대주성명)(12)
+     56-  67: 수진자성명(12)
+     68-  80: 수진자주민등록번호(13)
+     81-  83: 입내원일수(3)
+     84-  86: 요양급여일수(3)
+     87    : 보험자종별구분(1)
+     88- 100: 공란(13)
+    101- 117: 공란(17)
+    118- 127: 요양급여비용총액1(10)
+    128- 137: 본인일부부담금(10)
+    138- 147: 청구액(10)
+    148- 157: 본인부담상한액초과금(10)
+    158- 200: 공란(43)
+    201    : 의료급여구분A(1)
+    202    : 의료급여구분B(1)
+    203- 212: 대불금/장애인의료비(10)
+    213- 219: 접수번호(7)
+    220- 224: 명일련(5)
+    225- 226: 사유(2)
+    227    : 공란(1)
+    228- 235: 최초입원개시일(8)
+    236- 245: 요양급여비용총액2/진료비총액(10)
+    246- 255: 보훈청구액(10)
+    256- 265: 지원금(10)
+    266- 275: 공란(10)
+    276- 285: 공란(10)
+    286- 295: 건강보험(의료급여) 100분의100 본인부담금총액(10)
+    296- 305: 보훈 본인일부부담금(10)
+    306- 347: 공란(42)
+
+    ※ 공란 위치는 LAY 파일 원본으로 검증 필요
+    """
+    parts = [
+        *_key_parts(p.key),                                      # 1-17
+        _fmt9(1, 2),                                             # 18-19   서식번호
+        _fmtx(p.employer_code, 11),                              # 20-30   사업장기호
+        _fmtx(p.cert_no[:4], 4),                                 # 31-34   증번호 앞
+        _fmtx(p.cert_no[4:] if len(p.cert_no) > 4 else "", 9),  # 35-43   증번호 뒤/공란
+        _fmtx(p.subscriber_name, 12),                            # 44-55   가입자성명
+        _fmtx(p.patient_name, 12),                               # 56-67   수진자성명
+        _fmt9(int(p.patient_rrn.replace("-", "")), 13),          # 68-80   주민등록번호
+        _fmt9(p.inpatient_days, 3),                              # 81-83   입내원일수
+        _fmt9(p.benefit_days, 3),                                # 84-86   요양급여일수
+        _fmtx(p.insurance_type, 1),                              # 87      보험자종별구분
+        _fmtx("", 13),                                           # 88-100  공란
+        _fmtx("", 17),                                           # 101-117 공란
+        _fmt9(p.benefit_total_1, 10),                            # 118-127 요양급여비용총액1
+        _fmt9(p.copayment, 10),                                  # 128-137 본인일부부담금
+        _fmt9(p.claim_amount, 10),                               # 138-147 청구액
+        _fmt9(p.upper_limit_excess, 10),                         # 148-157 본인부담상한액초과금
+        _fmtx("", 43),                                           # 158-200 공란
+        _fmtx(p.medical_aid_ab[0] if p.medical_aid_ab else " ", 1),  # 201 의료급여A
+        _fmtx(p.medical_aid_ab[1] if len(p.medical_aid_ab) > 1 else " ", 1),  # 202 의료급여B
+        _fmt9(p.deferred_or_disability, 10),                     # 203-212 대불금/장애인의료비
+        _fmt9(p.receipt_no, 7),                                  # 213-219 접수번호
+        _fmt9(p.record_serial, 5),                               # 220-224 명일련
+        _fmtx(p.reason_code, 2),                                 # 225-226 사유
+        _fmtx("", 1),                                            # 227     공란
+        _fmt9(int(p.first_admission_date), 8),                   # 228-235 최초입원개시일
+        _fmt9(p.benefit_total_2, 10),                            # 236-245 요양급여비용총액2
+        _fmt9(p.veterans_claim, 10),                             # 246-255 보훈청구액
+        _fmt9(p.support_fund, 10),                               # 256-265 지원금
+        _fmtx("", 10),                                           # 266-275 공란
+        _fmtx("", 10),                                           # 276-285 공란
+        _fmt9(p.full_price_copay_total, 10),                     # 286-295 건강보험(의료급여) 100분의100
+        _fmt9(p.veterans_copay, 10),                             # 296-305 보훈 본인일부부담금
+        _fmtx("", 42),                                           # 306-347 공란
+    ]
+    return _build(parts, 347)
+
+
+# ---------------------------------------------------------------------------
+# C2-02: 명세서상병내역 (91 bytes)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DiagnosisRecord:
+    key: RecordKey
+    kcd_code: str           # 상병분류기호 X(6)
+    onset_date: str         # 당월요양개시일 X(8)
+    treatment_dept: int     # 진료과목 99
+    inpatient_route: int    # 입원경로 99
+    prior_dept: int         # 세부전문과목 99
+    license_kind: str       # 면허종류 X(1)
+    license_no: str         # 면허번호 X(10)
+
+
+def build_diagnosis_record(d: DiagnosisRecord) -> str:
+    """C2-02 명세서상병내역 레코드 생성 (91 bytes + CRLF).
+
+    레이아웃 (LAY C2-02):
+      1-  17: KEY
+     18-  19: 서식번호 '02'
+     20-  22: 공란(3)
+     23-  28: 상병분류기호(6)
+     29-  36: 당월요양개시일(8)
+     37-  38: 진료과목(2)
+     39-  40: 입원경로(2)
+     41-  42: 세부전문과목(2)
+     43-  45: 공란(3)
+     46-  77: 치식사항(32, 치과용·한방은 공란)
+     78    : 면허종류(1)
+     79-  88: 면허번호(10)
+     89-  91: 공란(3)
+    """
+    parts = [
+        *_key_parts(d.key),              # 1-17
+        _fmt9(2, 2),                     # 18-19  서식번호
+        _fmtx("", 3),                    # 20-22  공란
+        _fmtx(d.kcd_code, 6),           # 23-28  상병분류기호
+        _fmtx(d.onset_date, 8),         # 29-36  당월요양개시일
+        _fmt9(d.treatment_dept, 2),      # 37-38  진료과목
+        _fmt9(d.inpatient_route, 2),     # 39-40  입원경로
+        _fmt9(d.prior_dept, 2),          # 41-42  세부전문과목
+        _fmtx("", 3),                    # 43-45  공란
+        _fmtx("", 32),                   # 46-77  치식사항 (치과용, 한방은 공란)
+        _fmtx(d.license_kind, 1),        # 78     면허종류
+        _fmtx(d.license_no, 10),         # 79-88  면허번호
+        _fmtx("", 3),                    # 89-91  공란
+    ]
+    return _build(parts, 91)
+
+
+# ---------------------------------------------------------------------------
+# C2-08: 명세서특정내역 (747 bytes)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SpecialRecord:
+    key: RecordKey
+    prescription_no: int    # 처방전교부번호 9(13)
+    record_ext_no: int      # 진료내역확장번호 9(4)
+    special_code: str       # 특정내역구분 X(5)
+    content: str            # 특정내역 X(700)
+
+
+def build_special_record(s: SpecialRecord) -> str:
+    """C2-08 명세서특정내역 레코드 생성 (747 bytes + CRLF).
+
+    레이아웃 (LAY C2-08):
+      1-  17: KEY
+     18-  19: 서식번호 '08'
+     20-  24: 공란(5)
+     25    : 공란(1)
+     26-  38: 처방전교부번호(13)
+     39-  42: 진료내역확장번호(4)
+     43-  47: 특정내역구분(5)
+     48- 747: 특정내역(700)
+    """
+    parts = [
+        *_key_parts(s.key),                    # 1-17
+        _fmt9(8, 2),                           # 18-19  서식번호
+        _fmtx("", 5),                          # 20-24  공란
+        _fmtx("", 1),                          # 25     공란
+        _fmt9(s.prescription_no, 13),          # 26-38  처방전교부번호
+        _fmt9(s.record_ext_no, 4),             # 39-42  진료내역확장번호
+        _fmtx(s.special_code, 5),              # 43-47  특정내역구분
+        _fmtx(s.content, 700),                 # 48-747 특정내역
+    ]
+    return _build(parts, 747)
+
+
+# ---------------------------------------------------------------------------
+# C2-09: 마지막 정보파일 EOF (20 bytes)
+# ---------------------------------------------------------------------------
+
+def build_eof_record(key: RecordKey) -> str:
+    """C2-09 EOF 레코드 생성 (20 bytes + CRLF)."""
+    parts = [
+        *_key_parts(key),   # 1-17
+        _fmtx("", 3),       # 공란
+    ]
+    return _build(parts, 20)
+
+
+# ---------------------------------------------------------------------------
+# EDI 파일 조립
+# ---------------------------------------------------------------------------
+
+@dataclass
+class EDIFile:
+    """완성된 EDI 파일을 구성하는 레코드 목록."""
+    header: ClaimHeader
+    patient_records: list[PatientRecord] = field(default_factory=list)
+    diagnosis_records: list[tuple[int, DiagnosisRecord]] = field(default_factory=list)
+    special_records: list[tuple[int, SpecialRecord]] = field(default_factory=list)
+
+
+def generate_edi(edi: EDIFile) -> bytes:
+    """EDI 파일 전체를 EUC-KR 바이트로 생성한다."""
+    lines: list[str] = []
+
+    lines.append(build_claim_header(edi.header))
+
+    for patient in edi.patient_records:
+        lines.append(build_patient_record(patient))
+
+        # 해당 환자의 상병내역
+        for serial, diag in edi.diagnosis_records:
+            if serial == patient.key.serial_no:
+                lines.append(build_diagnosis_record(diag))
+
+        # 해당 환자의 특정내역
+        for serial, special in edi.special_records:
+            if serial == patient.key.serial_no:
+                lines.append(build_special_record(special))
+
+    lines.append(build_eof_record(edi.header.key))
+
+    return "".join(lines).encode("euc-kr", errors="replace")
