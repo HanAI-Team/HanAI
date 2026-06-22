@@ -1,21 +1,21 @@
 import uuid
 
+from app.core.database import Base
 from sqlalchemy import (
     JSON,
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
-    Date,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
-from app.core.database import Base
 
 
 class Hospital(Base):
@@ -31,9 +31,7 @@ class Hospital(Base):
     staff_accounts = relationship("StaffAccount", back_populates="hospital")
     patients = relationship("Patient", back_populates="hospital")
     medical_records = relationship("MedicalRecord", back_populates="hospital")
-    subscription = relationship(
-        "Subscription", back_populates="hospital", uselist=False
-    )
+    subscription = relationship("Subscription", back_populates="hospital", uselist=False)
 
 
 class Doctor(Base):
@@ -76,9 +74,7 @@ class Subscription(Base):
     __tablename__ = "subscriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    hospital_id = Column(
-        UUID(as_uuid=True), ForeignKey("hospitals.id"), unique=True, nullable=False
-    )
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), unique=True, nullable=False)
     tier = Column(String, default="basic")
     status = Column(String, default="active")
     staff_limit = Column(Integer, default=2)
@@ -99,10 +95,33 @@ class Patient(Base):
     gender = Column(String)
     phone = Column(String)
     memo = Column(Text)
+    insurance_type = Column(String, default="health")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     hospital = relationship("Hospital", back_populates="patients")
     medical_records = relationship("MedicalRecord", back_populates="patient")
+
+
+class Claim(Base):
+    __tablename__ = "claims"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    claim_period_year = Column(Integer, nullable=False)
+    claim_period_month = Column(Integer, nullable=False)
+    claim_type = Column(String, nullable=True)
+    total_amount = Column(Integer, nullable=False, default=0)
+    patient_copay = Column(Integer, nullable=False, default=0)
+    claim_amount = Column(Integer, nullable=False, default=0)
+    differential_index = Column(Numeric(5, 2), default=1.0)
+    status = Column(String, nullable=False, default="draft")
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    medical_records = relationship("MedicalRecord", back_populates="claim")
 
 
 class MedicalRecord(Base):
@@ -112,6 +131,7 @@ class MedicalRecord(Base):
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=True)
     raw_transcription = Column(Text)
     chart_structured = Column(Text)
     audio_file_url = Column(String)
@@ -125,27 +145,17 @@ class MedicalRecord(Base):
     patient = relationship("Patient", back_populates="medical_records")
     doctor = relationship("Doctor", back_populates="medical_records")
     hospital = relationship("Hospital", back_populates="medical_records")
-    ai_result = relationship(
-        "AIResult",
-        back_populates="medical_record",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-    prescriptions = relationship(
-        "Prescription", back_populates="medical_record", cascade="all, delete-orphan"
-    )
+    claim = relationship("Claim", back_populates="medical_records")
+    ai_result = relationship("AIResult", back_populates="medical_record", uselist=False, cascade="all, delete-orphan")
+    prescriptions = relationship("Prescription", back_populates="medical_record", cascade="all, delete-orphan")
+    procedures = relationship("MedicalRecordProcedure", back_populates="medical_record", cascade="all, delete-orphan")
 
 
 class AIResult(Base):
     __tablename__ = "ai_results"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    medical_record_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("medical_records.id"),
-        unique=True,
-        nullable=False,
-    )
+    medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id"), unique=True, nullable=False)
     diagnosis_suggestion = Column(Text)
     constitution_result = Column(Text)
     prescription_suggestion = Column(Text)
@@ -161,20 +171,14 @@ class Feedback(Base):
     __tablename__ = "feedbacks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ai_result_id = Column(
-        UUID(as_uuid=True), ForeignKey("ai_results.id"), nullable=False
-    )
+    ai_result_id = Column(UUID(as_uuid=True), ForeignKey("ai_results.id"), nullable=False)
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
     category = Column(String)
     score = Column(Integer)
     comment = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    ai_result = relationship(
-        "AIResult",
-        back_populates="feedbacks",
-        uselist=False,
-    )
+    ai_result = relationship("AIResult", back_populates="feedbacks", uselist=False)
     doctor = relationship("Doctor", back_populates="feedbacks")
 
 
@@ -182,16 +186,40 @@ class Prescription(Base):
     __tablename__ = "prescriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    medical_record_id = Column(
-        UUID(as_uuid=True), ForeignKey("medical_records.id"), nullable=False
-    )
+    medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id"), nullable=False)
     prescription_name = Column(String)
     ingredients = Column(Text)
     dosage = Column(String)
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    prescription_type = Column(String, nullable=True)
+    adjustment_type = Column(String, nullable=True)
+    formula_code = Column(String, nullable=True)
+    unit_price = Column(Integer, default=0)
+    daily_dosage_ratio = Column(Numeric(4, 2), default=1.0)
+    total_dosage_days = Column(Integer, default=0)
+    total_dosage_price = Column(Integer, default=0)
+    species_count = Column(Integer, default=0)
+    total_weight_g = Column(Numeric(8, 2), default=0)
+    low_cost_substitute = Column(Boolean, default=False)
+    low_cost_surcharge = Column(Integer, default=0)
+    dispensing_fee = Column(Integer, default=0)
 
     medical_record = relationship("MedicalRecord", back_populates="prescriptions")
+
+
+class MedicalRecordProcedure(Base):
+    __tablename__ = "medical_record_procedures"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id", ondelete="CASCADE"), nullable=False)
+    procedure_type = Column(String, nullable=False)
+    procedure_code = Column(String, nullable=True)
+    details = Column(JSON, nullable=True)
+    amount = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    medical_record = relationship("MedicalRecord", back_populates="procedures")
 
 
 class AuditLog(Base):
@@ -200,10 +228,10 @@ class AuditLog(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     table_name = Column(String(50), nullable=False)
     record_id = Column(String(36), nullable=False)
-    action = Column(String(10), nullable=False)  # INSERT / UPDATE / DELETE
+    action = Column(String(10), nullable=False)
     actor_id = Column(UUID(as_uuid=True), nullable=True)
-    actor_type = Column(String(20), nullable=True)  # doctor / staff
-    changed_at = Column(String(14), nullable=False)  # CCYYMMDDHHMMSS
+    actor_type = Column(String(20), nullable=True)
+    changed_at = Column(String(14), nullable=False)
     detail = Column(Text, nullable=True)
 
 
@@ -215,8 +243,8 @@ class AcupuncturePoint(Base):
     korean_name = Column(String(50), nullable=False)
     meridian = Column(String(30), nullable=True)
     location = Column(Text, nullable=True)
-    # True면 해당 회차에 다른 단독침술과 동시 청구 불가
     is_standalone = Column(Boolean, default=False, nullable=False)
+    forbidden_with = Column(JSON, nullable=True)
 
 
 class KcdUCode(Base):

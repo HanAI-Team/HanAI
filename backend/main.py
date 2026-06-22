@@ -1,20 +1,24 @@
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 import logging
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from app.core.redis import check_rate_limit
-
+import sentry_sdk
+from app.acupuncture.router import router as acupuncture_router
 from app.auth.router import router as auth_router
+from app.billing.router import router as billing_router
+from app.charting.router import router as charting_router
+from app.core.config import settings
+from app.core.discord import notify_discord
+from app.core.redis import check_rate_limit
 from app.diagnosis.router import router as diagnosis_router
 from app.feedback.router import router as feedback_router
+from app.kcd.router import router as kcd_router
+from app.patients.router import router as patients_router
 from app.staff.router import router as staff_router
-
-from app.core.config import settings
+from app.subscription.router import router as subscription_router
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.discord import notify_discord
+from fastapi.responses import JSONResponse
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,12 +30,6 @@ if settings.SENTRY_DSN:
         environment="production" if not settings.DEBUG else "development",
     )
 
-from app.charting.router import router as charting_router
-from app.patients.router import router as patients_router
-from app.subscription.router import router as subscription_router
-from app.kcd.router import router as kcd_router
-from app.acupuncture.router import router as acupuncture_router
-from app.billing.router import router as billing_router
 
 # async def notify_discord(message: str):
 #     if not settings.DISCORD_WEBHOOK_URL:

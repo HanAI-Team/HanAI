@@ -58,7 +58,7 @@ def _special_rate(special_code: str) -> Decimal:
 
 @dataclass
 class BillingInput:
-    insurance_type: InsuranceType
+    insurance_type: InsuranceType 
     visit_type: VisitType
     benefit_total: int                              # 요양급여비용 총액1 (원)
     non_benefit_total: int = 0                      # 비급여(100분의100) 총액
