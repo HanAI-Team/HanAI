@@ -51,16 +51,10 @@ async def create_medical_record(db, doctor, patient_id: UUID) -> MedicalRecord:
     return medical_record
 
 
-async def update_record_status(db, record_id: UUID, new_status: str) -> MedicalRecord:
-    result = await db.execute(
-        select(MedicalRecord).where(MedicalRecord.id == record_id)
-    )
-    medical_record = result.scalar_one_or_none()
-    if not medical_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="존재하지않는 의료기록입니다..",
-        )
+async def update_record_status(
+    db: AsyncSession, doctor: Doctor, record_id: UUID, new_status: str
+) -> MedicalRecord:
+    medical_record = await get_medical_record(db, doctor, record_id)
     medical_record.status = new_status
     await db.commit()
     await db.refresh(medical_record)
@@ -103,16 +97,10 @@ async def get_records_by_patient(
     return list(medical_records)
 
 
-async def update_audio_url(db, record_id: UUID, audio_file_url: str) -> MedicalRecord:
-    result = await db.execute(
-        select(MedicalRecord).where(MedicalRecord.id == record_id)
-    )
-    medical_record = result.scalar_one_or_none()
-    if not medical_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="존재하지않는 의료기록입니다..",
-        )
+async def update_audio_url(
+    db: AsyncSession, doctor: Doctor, record_id: UUID, audio_file_url: str
+) -> MedicalRecord:
+    medical_record = await get_medical_record(db, doctor, record_id)
     medical_record.audio_file_url = audio_file_url
     await db.commit()
     await db.refresh(medical_record)
@@ -277,14 +265,9 @@ async def process_chart_stream(
 
 
 async def update_medical_history(
-    db: AsyncSession, record_id: UUID, medical_history: str | None
+    db: AsyncSession, doctor: Doctor, record_id: UUID, medical_history: str | None
 ) -> MedicalRecord:
-    result = await db.execute(
-        select(MedicalRecord).where(MedicalRecord.id == record_id)
-    )
-    medical_record = result.scalar_one_or_none()
-    if not medical_record:
-        raise HTTPException(status_code=404, detail="진료 기록을 찾을 수 없습니다.")
+    medical_record = await get_medical_record(db, doctor, record_id)
     medical_record.medical_history = medical_history  # type: ignore
     await write_audit(
         db,
@@ -300,16 +283,12 @@ async def update_medical_history(
 
 async def finalize_record(
     db: AsyncSession,
+    doctor: Doctor,
     record_id: UUID,
     chart_structured: str,
     selected_result: str | None = None,
 ) -> MedicalRecord:
-    result = await db.execute(
-        select(MedicalRecord).where(MedicalRecord.id == record_id)
-    )
-    medical_record = result.scalar_one_or_none()
-    if not medical_record:
-        raise HTTPException(status_code=404, detail="진료 기록을 찾을 수 없습니다.")
+    medical_record = await get_medical_record(db, doctor, record_id)
     medical_record.chart_structured = chart_structured  # type: ignore
     medical_record.recorded_at = datetime.now(timezone.utc)  # type: ignore
     medical_record.selected_result = selected_result  # type: ignore
