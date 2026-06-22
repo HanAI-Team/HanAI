@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 from typing import Optional
 from uuid import UUID
 
@@ -87,8 +88,17 @@ class PrescriptionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+
+
+class ProcedureType(str, Enum):
+    ACUPUNCTURE = "침술"
+    CHUNA = "추나"
+    CUPPING = "부항"
+    MOXIBUSTION = "뜸"
+    OTHER = "기타"
+
 class ProcedureCreateRequest(BaseModel):
-    procedure_type: str                           # 침술/추나/부항/뜸/기타
+    procedure_type: ProcedureType                           # 침술/추나/부항/뜸/기타
     procedure_code: Optional[str] = None          # 심평원 행위코드
     details: Optional[dict] = None                # {"points": ["LI4", "ST36"]}
     amount: Optional[int] = 0
