@@ -1,4 +1,5 @@
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -213,7 +214,8 @@ async def test_finalize_record_업데이트(db, monkeypatch):
     assert record_before.recorded_at is None
 
     chart_text = "■ 결과 1\n▶ 사상체질\n태음인"
-    updated = await finalize_record(db, record_id, chart_text)
+    doctor = SimpleNamespace(hospital_id=hospital_id)
+    updated = await finalize_record(db, doctor, record_id, chart_text)
 
     assert updated.chart_structured == chart_text
     assert updated.recorded_at is not None
@@ -241,7 +243,8 @@ async def test_finalize_record_selected_result_저장됨(db, monkeypatch):
     record_id = result["record_id"]
 
     chart_text = "■ 결과 1\n▶ 사상체질\n태음인"
-    updated = await finalize_record(db, record_id, chart_text, selected_result="result1")
+    doctor = SimpleNamespace(hospital_id=hospital_id)
+    updated = await finalize_record(db, doctor, record_id, chart_text, selected_result="result1")
 
     assert updated.selected_result == "result1"
 

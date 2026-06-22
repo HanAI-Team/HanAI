@@ -2,21 +2,25 @@ import json
 import logging
 import uuid
 from uuid import UUID
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.charting import service
+from app.charting import prescription_service, procedure_service, service
 from app.charting.schema import (
     FinalizeRecordRequest,
     MedicalRecordResponse,
+    PrescriptionCreateRequest,
+    PrescriptionResponse,
+    ProcedureCreateRequest,
+    ProcedureResponse,
     UpdateAudioUrlRequest,
-    UpdateStatusRequest,
     UpdateMedicalHistoryRequest,
+    UpdateStatusRequest,
 )
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.models import Doctor, StaffAccount
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["charting"])
 
@@ -85,7 +89,7 @@ async def update_status(
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await service.update_record_status(db, record_id, data.status)
+    return await service.update_record_status(db, current_doctor, record_id, data.status)
 
 
 @router.patch("/{record_id}/audio", response_model=MedicalRecordResponse)
@@ -95,7 +99,7 @@ async def update_audio(
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await service.update_audio_url(db, record_id, data.audio_file_url)
+    return await service.update_audio_url(db, current_doctor, record_id, data.audio_file_url)
 
 
 @router.patch("/{record_id}/medical-history", response_model=MedicalRecordResponse)
@@ -105,7 +109,9 @@ async def update_medical_history(
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await service.update_medical_history(db, record_id, data.medical_history)
+    return await service.update_medical_history(
+        db, current_doctor, record_id, data.medical_history
+    )
 
 
 @router.patch("/{record_id}/finalize", response_model=MedicalRecordResponse)
@@ -116,5 +122,62 @@ async def finalize_record(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.finalize_record(
-        db, record_id, data.chart_structured, data.selected_result
+        db, current_doctor, record_id, data.chart_structured, data.selected_result
     )
+
+
+
+@router.post("/{record_id}/prescriptions", response_model=PrescriptionResponse)
+async def add_prescription(
+    record_id: uuid.UUID,
+    data: PrescriptionCreateRequest,
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await prescription_service.add_prescription(db, current_doctor, record_id, data)
+
+
+@router.get("/{record_id}/prescriptions", response_model=list[PrescriptionResponse])
+async def get_prescriptions(
+    record_id: uuid.UUID,
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await prescription_service.get_prescriptions(db, current_doctor, record_id)
+
+
+@router.delete("/prescriptions/{prescription_id}", status_code=204)
+async def delete_prescription(
+    prescription_id: uuid.UUID,
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await prescription_service.delete_prescription(db, current_doctor, prescription_id)
+
+
+@router.post("/{record_id}/procedures", response_model=ProcedureResponse)
+async def add_procedure(
+    record_id: uuid.UUID,
+    data: ProcedureCreateRequest,
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await procedure_service.add_procedure(db, current_doctor, record_id, data)
+
+
+@router.get("/{record_id}/procedures", response_model=list[ProcedureResponse])
+async def get_procedures(
+    record_id: uuid.UUID,
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await procedure_service.get_procedures(db, current_doctor, record_id)
+
+
+@router.delete("/procedures/{procedure_id}", status_code=204)
+async def delete_procedure(
+    procedure_id: uuid.UUID,
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await procedure_service.delete_procedure(db, current_doctor, procedure_id)
