@@ -1,26 +1,26 @@
 import io
 import uuid
 from datetime import date, datetime, timezone
+from uuid import UUID
 
 import pandas as pd
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import insert as sa_insert
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Doctor, MedicalRecord, Patient, StaffAccount
+from app.core.models import AIResult, Doctor, MedicalRecord, Patient, StaffAccount
 from app.patients import service
-from app.core.models import AIResult
 from app.patients.schema import (
     PatientCreate,
-    PatientUpdate,
     PatientListResponse,
     PatientResponse,
+    PatientUpdate,
     RecentRecordSummary,
     RecordCreate,
 )
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, select
+from sqlalchemy import insert as sa_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["patients"])
 
@@ -299,6 +299,7 @@ async def create_record(
     doctor: Doctor = Depends(get_current_doctor),
 ):
     from datetime import datetime, timezone
+
     from app.core.models import MedicalRecord
 
     patient = await service.get_patient(db, doctor, patient_id)
@@ -337,7 +338,7 @@ async def delete_record(
     doctor: Doctor = Depends(get_current_doctor),
 ):
     from app.core.models import MedicalRecord
-    from sqlalchemy import select, delete
+    from sqlalchemy import select
 
     await service.get_patient(db, doctor, patient_id)
     result = await db.execute(
@@ -371,3 +372,73 @@ async def get_patient_records(
         "patient": PatientResponse.model_validate(patient),
         "records": [RecentRecordSummary.model_validate(r) for r in records],
     }
+
+
+
+@router.get("/export/csv")
+async def export_patients_csv(
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """환자 목록 CSV 다운로드 (헤딩 포함)"""
+    result = await db.execute(
+        select(Patient)
+        .where(Patient.hospital_id == current_doctor.hospital_id)
+        .order_by(Patient.created_at.desc())
+    )
+    patients = result.scalars().all()
+
+    df = pd.DataFrame([{
+        "환자ID": str(p.id),
+        "이름": p.name,
+        "생년월일": str(p.birth_date) if p.birth_date else "",
+        "성별": p.gender or "",
+        "전화번호": p.phone or "",
+        "보험종류": p.insurance_type or "",
+        "메모": p.memo or "",
+        "등록일": str(p.created_at),
+    } for p in patients])
+
+    output = io.StringIO()
+    df.to_csv(output, index=False, encoding="utf-8-sig")  # utf-8-sig: 엑셀 한글 깨짐 방지
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=patients.csv"}
+    )
+
+
+@router.get("/export/records/csv")
+async def export_records_csv(
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """진료 기록 CSV 다운로드 (헤딩 포함)"""
+    result = await db.execute(
+        select(MedicalRecord)
+        .where(MedicalRecord.hospital_id == current_doctor.hospital_id)
+        .order_by(MedicalRecord.created_at.desc())
+    )
+    records = result.scalars().all()
+
+    df = pd.DataFrame([{
+        "진료ID": str(r.id),
+        "환자ID": str(r.patient_id),
+        "의사ID": str(r.doctor_id),
+        "상태": r.status or "",
+        "차트": r.chart_structured or "",
+        "진료일시": str(r.recorded_at) if r.recorded_at else "",
+        "등록일": str(r.created_at),
+    } for r in records])
+
+    output = io.StringIO()
+    df.to_csv(output, index=False, encoding="utf-8-sig")
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=medical_records.csv"}
+    )
