@@ -208,7 +208,6 @@ def build_claim_header(h: ClaimHeader) -> str:
 @dataclass
 class PatientRecord:
     key: RecordKey
-    insurance_type: str     # 보험자종별구분 (4/5/7)
     employer_code: str      # 사업장기호(보장기관기호) X(11)
     cert_no: str            # 증번호(보장기관승인번호) X(13)
     subscriber_name: str    # 가입자성명(세대주성명) X(12)
@@ -220,7 +219,7 @@ class PatientRecord:
     copayment: int          # 본인일부부담금
     claim_amount: int       # 청구액
     upper_limit_excess: int = 0
-    medical_aid_ab: str = "  "  # 의료급여 A/B 구분 XX
+    medical_aid_type: str = " "   # 의료급여종별구분 A (1종=1, 2종=2, 공란=공란)
     deferred_or_disability: int = 0  # 대불금 또는 장애인의료비
     receipt_no: int = 0     # 접수번호 9(7)
     record_serial: int = 0  # 명일련 9(5)
@@ -229,52 +228,69 @@ class PatientRecord:
     benefit_total_2: int = 0
     veterans_claim: int = 0
     support_fund: int = 0
-    full_price_copay_total: int = 0
-    veterans_copay: int = 0
+    full_price_copay_total: int = 0  # 건강보험(의료급여) 100분의100 본인부담금총액
+    veterans_copay: int = 0          # 보훈 본인일부부담금
+    under_full_total: int = 0        # 100분의100미만 총액
+    under_full_copay: int = 0        # 100분의100미만 본인일부부담금
+    under_full_claim: int = 0        # 100분의100미만 청구액
+    under_full_veterans_claim: int = 0  # 100분의100미만 보훈청구액
 
 
 def build_patient_record(p: PatientRecord) -> str:
-    """C2-11 명세서일반내역 레코드 생성 (347 bytes + CRLF).
+    """C2-11 명세서일반내역 레코드 생성 (345 bytes data + CRLF = Max 347).
 
-    레이아웃 (LAY C2-11 U1, 의치과 및 한방):
+    LAY C2-11 U1 (의치과 및 한방) — Max 347 = data 345 + CRLF 2:
+
+    ROW 1 (1-100):
       1-  17: KEY
-     18-  19: 서식번호 '01'
-     20-  30: 사업장기호(보장기관기호)(11)
-     31-  34: 증번호앞(4)
-     35-  43: 증번호뒤/공란(9)
-     44-  55: 가입자성명(세대주성명)(12)
-     56-  67: 수진자성명(12)
-     68-  80: 수진자주민등록번호(13)
-     81-  83: 입내원일수(3)
-     84-  86: 요양급여일수(3)
-     87    : 보험자종별구분(1)
-     88- 100: 공란(13)
-    101- 117: 공란(17)
-    118- 127: 요양급여비용총액1(10)
-    128- 137: 본인일부부담금(10)
-    138- 147: 청구액(10)
-    148- 157: 본인부담상한액초과금(10)
-    158- 200: 공란(43)
-    201    : 의료급여구분A(1)
-    202    : 의료급여구분B(1)
-    203- 212: 대불금/장애인의료비(10)
-    213- 219: 접수번호(7)
-    220- 224: 명일련(5)
-    225- 226: 사유(2)
-    227    : 공란(1)
-    228- 235: 최초입원개시일(8)
-    236- 245: 요양급여비용총액2/진료비총액(10)
-    246- 255: 보훈청구액(10)
-    256- 265: 지원금(10)
-    266- 275: 공란(10)
-    276- 285: 공란(10)
-    286- 295: 건강보험(의료급여) 100분의100 본인부담금총액(10)
-    296- 305: 보훈 본인일부부담금(10)
-    306- 347: 공란(42)
+     18-  19: 서식번호 '01' (99형)
+     20-  30: 사업장기호(보장기관기호) X(11)
+     31-  34: 증번호앞 X(4)
+     35-  43: 증번호뒤/공란 X(9)
+     44-  55: 가입자성명(세대주성명) X(12)
+     56-  67: 수진자성명 X(12)
+     68-  80: 수진자주민등록번호 9(13)
+     81-  83: 입내원일수 9(3)
+     84-  86: 요양급여일수 9(3)
+     87    : 공란 X(1)
+     88- 100: 공란 X(13)
 
-    ※ 공란 위치는 LAY 파일 원본으로 검증 필요
+    ROW 2 (101-200):
+    101- 127: 공란 X(27)
+    128- 137: 요양급여비용총액1 9(10)
+    138- 147: 본인일부부담금 9(10)
+    148- 157: 청구액 9(10)
+    158- 167: 본인부담상한액초과금 9(10)
+    168- 188: 공란 X(21)
+    189- 200: 공란 X(12)
+
+    ROW 3 (201-300):
+    201    : 의료급여종별구분 A X(1)  ※ 1종=1, 2종=2, 해당없음=공란
+    202    : 공란 B X(1)
+    203- 212: 대불금/장애인의료비 9(10)
+    213- 219: 접수번호 9(7)
+    220- 224: 명일련 9(5)
+    225- 226: 사유 X(2)
+    227    : 공란 X(1)
+    228- 235: 최초입원개시일 9(8)
+    236- 245: 요양급여비용총액2/진료비총액 9(10)
+    246- 255: 보훈청구액 9(10)
+    256- 265: 지원금 9(10)
+    266- 275: 공란 9(10)
+    276- 285: 공란 9(10)
+    286- 295: 건강보험(의료급여) 100분의100 본인부담금총액 9(10)
+    296- 305: 보훈 본인일부부담금 9(10)  ← row 경계 걸침
+
+    ROW 4 (301-345 data, 346-347 CRLF):
+    [301-305: 보훈 본인일부부담금 tail — 위 field 연속]
+    306- 315: 100분의100미만 총액 9(10)
+    316- 325: 100분의100미만 본인일부부담금 9(10)
+    326- 335: 100분의100미만 청구액 9(10)
+    336- 345: 100분의100미만 보훈청구액 9(10)
+    346- 347: CRLF (Max 347에 포함)
     """
     parts = [
+        # ROW 1
         *_key_parts(p.key),                                      # 1-17
         _fmt9(1, 2),                                             # 18-19   서식번호
         _fmtx(p.employer_code, 11),                              # 20-30   사업장기호
@@ -285,16 +301,19 @@ def build_patient_record(p: PatientRecord) -> str:
         _fmt9(int(p.patient_rrn.replace("-", "")), 13),          # 68-80   주민등록번호
         _fmt9(p.inpatient_days, 3),                              # 81-83   입내원일수
         _fmt9(p.benefit_days, 3),                                # 84-86   요양급여일수
-        _fmtx(p.insurance_type, 1),                              # 87      보험자종별구분
+        _fmtx("", 1),                                            # 87      공란
         _fmtx("", 13),                                           # 88-100  공란
-        _fmtx("", 17),                                           # 101-117 공란
-        _fmt9(p.benefit_total_1, 10),                            # 118-127 요양급여비용총액1
-        _fmt9(p.copayment, 10),                                  # 128-137 본인일부부담금
-        _fmt9(p.claim_amount, 10),                               # 138-147 청구액
-        _fmt9(p.upper_limit_excess, 10),                         # 148-157 본인부담상한액초과금
-        _fmtx("", 43),                                           # 158-200 공란
-        _fmtx(p.medical_aid_ab[0] if p.medical_aid_ab else " ", 1),  # 201 의료급여A
-        _fmtx(p.medical_aid_ab[1] if len(p.medical_aid_ab) > 1 else " ", 1),  # 202 의료급여B
+        # ROW 2
+        _fmtx("", 27),                                           # 101-127 공란
+        _fmt9(p.benefit_total_1, 10),                            # 128-137 요양급여비용총액1
+        _fmt9(p.copayment, 10),                                  # 138-147 본인일부부담금
+        _fmt9(p.claim_amount, 10),                               # 148-157 청구액
+        _fmt9(p.upper_limit_excess, 10),                         # 158-167 본인부담상한액초과금
+        _fmtx("", 21),                                           # 168-188 공란
+        _fmtx("", 12),                                           # 189-200 공란
+        # ROW 3
+        _fmtx(p.medical_aid_type, 1),                            # 201     의료급여종별구분 A
+        _fmtx("", 1),                                            # 202     공란 B
         _fmt9(p.deferred_or_disability, 10),                     # 203-212 대불금/장애인의료비
         _fmt9(p.receipt_no, 7),                                  # 213-219 접수번호
         _fmt9(p.record_serial, 5),                               # 220-224 명일련
@@ -307,10 +326,15 @@ def build_patient_record(p: PatientRecord) -> str:
         _fmtx("", 10),                                           # 266-275 공란
         _fmtx("", 10),                                           # 276-285 공란
         _fmt9(p.full_price_copay_total, 10),                     # 286-295 건강보험(의료급여) 100분의100
+        # ROW 3→4 경계 걸치는 field
         _fmt9(p.veterans_copay, 10),                             # 296-305 보훈 본인일부부담금
-        _fmtx("", 42),                                           # 306-347 공란
+        # ROW 4
+        _fmt9(p.under_full_total, 10),                           # 306-315 100분의100미만 총액
+        _fmt9(p.under_full_copay, 10),                           # 316-325 100분의100미만 본인일부부담금
+        _fmt9(p.under_full_claim, 10),                           # 326-335 100분의100미만 청구액
+        _fmt9(p.under_full_veterans_claim, 10),                  # 336-345 100분의100미만 보훈청구액
     ]
-    return _build(parts, 347)
+    return _build(parts, 345)
 
 
 # ---------------------------------------------------------------------------
