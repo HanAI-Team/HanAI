@@ -257,3 +257,21 @@ class KcdUCode(Base):
     category = Column(String(100))
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)
+
+
+class FeeMaster(Base):
+    """한방 행위코드 수가 마스터 (HIRA 요양급여비용 목록표 기준)."""
+
+    __tablename__ = "fee_master"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(20), unique=True, nullable=False, index=True)   # 행위코드
+    name = Column(String(100), nullable=False)                            # 행위명
+    category = Column(String(20), nullable=False)                         # 침술/뜸/부항/추나
+    insured_health      = Column(Boolean, nullable=False, server_default="true")   # 건강보험(4) 적용 여부
+    insured_medical_aid = Column(Boolean, nullable=False, server_default="true")   # 의료급여(5) 적용 여부
+    insured_veterans    = Column(Boolean, nullable=False, server_default="false")  # 보훈(7) 적용 여부
+    unit_price = Column(Integer, nullable=False)                          # 수가 (원, 건강보험 기준)
+    is_insured = Column(Boolean, default=True, nullable=False)            # 급여 여부
+    effective_date = Column(Date, nullable=True)
+    expired_date = Column(Date, nullable=True)

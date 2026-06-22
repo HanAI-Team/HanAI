@@ -60,6 +60,29 @@ class BillingCalcRequest(BaseModel):
     graduated_fee_index: Decimal = Field(Decimal("0"), description="차등지수")
 
 
+INSURANCE_TYPE_CHOICES = [
+    {"value": "4", "label": "건강보험"},
+    {"value": "5", "label": "의료급여"},
+    {"value": "7", "label": "보훈"},
+]
+
+MEDICAL_AID_GRADE_CHOICES = [
+    {"value": "1", "label": "의료급여 1종"},
+    {"value": "2", "label": "의료급여 2종"},
+]
+
+
+class FeeItem(BaseModel):
+    code: str
+    name: str
+    category: str
+    insurance_types: str
+    unit_price: int
+    is_insured: bool
+    effective_date: Optional[date]
+    expired_date: Optional[date]
+
+
 class BillingCalcResponse(BaseModel):
     # 요양급여비용 총액
     benefit_total_1: int
