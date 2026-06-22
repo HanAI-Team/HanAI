@@ -1,17 +1,16 @@
-from typing import List, Optional
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, or_
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.database import get_db
-from app.core.deps import get_current_doctor
-from app.core.models import AcupuncturePoint
 from app.acupuncture.schema import (
     AcupuncturePointResponse,
     ConcurrentCheckRequest,
     ConcurrentCheckResponse,
 )
+from app.core.database import get_db
+from app.core.deps import get_current_doctor
+from app.core.models import AcupuncturePoint
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["acupuncture"])
 
