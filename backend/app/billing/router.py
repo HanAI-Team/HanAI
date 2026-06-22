@@ -2,11 +2,20 @@ from fastapi import APIRouter, Depends
 
 from app.core.deps import get_current_doctor
 from app.billing.schema import (
+    BillingCalcRequest,
+    BillingCalcResponse,
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
     ViolationItem,
 )
 from app.billing.pediatric_dosage import get_max_allowed_ratio
+from app.billing.copayment import (
+    BillingInput,
+    InsuranceType,
+    MedicalAidGrade,
+    VisitType,
+    calculate_billing,
+)
 
 router = APIRouter(tags=["billing"])
 
@@ -113,3 +122,32 @@ async def check_prescription(
                 ))
 
     return PrescriptionCheckResponse(valid=len(violations) == 0, violations=violations)
+
+
+@router.post("/calculate", response_model=BillingCalcResponse)
+async def calculate_copayment(
+    body: BillingCalcRequest,
+    current_doctor=Depends(get_current_doctor),
+):
+    """본인부담금 및 청구액 산정 (심사청구서 C2-00 금액 필드 30개).
+
+    보험자종별구분에 따라 해당하는 본인부담금 항목만 값이 채워지고
+    나머지 항목은 0으로 반환된다.
+    """
+    inp = BillingInput(
+        insurance_type=InsuranceType(body.insurance_type),
+        visit_type=VisitType(body.visit_type),
+        benefit_total=body.benefit_total,
+        non_benefit_total=body.non_benefit_total,
+        special_code=body.special_code,
+        medical_aid_grade=MedicalAidGrade(body.medical_aid_grade) if body.medical_aid_grade else None,
+        birth_date=body.birth_date,
+        treatment_date=body.treatment_date,
+        work_injury=body.work_injury,
+        disability_medical_cost=body.disability_medical_cost,
+        support_fund=body.support_fund,
+        treatment_days=body.treatment_days,
+        graduated_fee_index=body.graduated_fee_index,
+    )
+    result = calculate_billing(inp)
+    return BillingCalcResponse(**result.__dict__)
