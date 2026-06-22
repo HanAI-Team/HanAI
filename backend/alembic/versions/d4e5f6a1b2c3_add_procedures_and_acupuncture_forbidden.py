@@ -8,7 +8,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 
 revision: str = 'd4e5f6a1b2c3'
 down_revision: Union[str, None] = 'c3d4e5f6a1b2'
@@ -23,7 +23,7 @@ def upgrade() -> None:
         sa.Column('medical_record_id', UUID(as_uuid=True), sa.ForeignKey('medical_records.id', ondelete='CASCADE'), nullable=False),
         sa.Column('procedure_type', sa.String(), nullable=False),
         sa.Column('procedure_code', sa.String(), nullable=True),
-        sa.Column('details', JSONB, nullable=True),
+        sa.Column('details', sa.JSON, nullable=True),
         sa.Column('amount', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
@@ -32,7 +32,7 @@ def upgrade() -> None:
 
     op.add_column(
         'acupuncture_points',
-        sa.Column('forbidden_with', JSONB, nullable=True)
+        sa.Column('forbidden_with', sa.JSON, nullable=True)
     )
 
 

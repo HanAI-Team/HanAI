@@ -13,7 +13,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -215,7 +215,7 @@ class MedicalRecordProcedure(Base):
     medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id", ondelete="CASCADE"), nullable=False)
     procedure_type = Column(String, nullable=False)
     procedure_code = Column(String, nullable=True)
-    details = Column(JSONB, nullable=True)
+    details = Column(JSON, nullable=True)
     amount = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -244,7 +244,7 @@ class AcupuncturePoint(Base):
     meridian = Column(String(30), nullable=True)
     location = Column(Text, nullable=True)
     is_standalone = Column(Boolean, default=False, nullable=False)
-    forbidden_with = Column(JSONB, nullable=True)
+    forbidden_with = Column(JSON, nullable=True)
 
 
 class KcdUCode(Base):
