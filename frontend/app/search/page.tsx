@@ -39,7 +39,7 @@ export default function PublicSearchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#EDE8E2] flex flex-col">
+    <div className="min-h-screen bg-bg flex flex-col">
       <div className="h-[52px] bg-[#232323] flex items-center px-6 flex-shrink-0">
         <div className="font-serif text-[19px] text-white">Zinmac 한의학 검색</div>
       </div>
@@ -51,8 +51,8 @@ export default function PublicSearchPage() {
       <div className="flex-1 flex flex-col max-w-2xl w-full mx-auto p-5 gap-4 min-h-0">
         <div className="flex-1 flex flex-col gap-3 overflow-y-auto min-h-0">
           {history.length === 0 && (
-            <div className="text-center py-16 text-[#B0AAA4]">
-              <MessageCircle className="w-8 h-8 mx-auto mb-3 text-[#B0AAA4]" />
+            <div className="text-center py-16 text-muted">
+              <MessageCircle className="w-8 h-8 mx-auto mb-3 text-muted" />
               <div className="text-sm">한의학 관련 궁금한 점을 질문해보세요</div>
               <div className="text-xs mt-2 text-[#C8BFB6]">
                 예) 소음인 소화불량에 어떤 처방이 좋나요?
@@ -65,7 +65,7 @@ export default function PublicSearchPage() {
                 {item.question}
               </div>
               {item.answer === "" ? (
-                <div className="self-start bg-white border border-[#D4CCC4] rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
+                <div className="self-start bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
                   {[0, 1, 2].map((j) => (
                     <div
                       key={j}
@@ -75,7 +75,7 @@ export default function PublicSearchPage() {
                   ))}
                 </div>
               ) : (
-                <div className="self-start max-w-[75%] bg-white border border-[#D4CCC4] text-sm text-[#232323] rounded-2xl rounded-tl-sm px-4 py-2.5 leading-relaxed whitespace-pre-wrap">
+                <div className="self-start max-w-[75%] bg-card border border-border text-sm text-text rounded-2xl rounded-tl-sm px-4 py-2.5 leading-relaxed whitespace-pre-wrap">
                   {item.answer}
                 </div>
               )}
@@ -83,12 +83,12 @@ export default function PublicSearchPage() {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="pt-2 border-t border-[#D4CCC4] flex gap-2">
+        <form onSubmit={handleSubmit} className="pt-2 border-t border-border flex gap-2">
           <input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="한의학 관련 질문을 입력하세요..."
-            className="flex-1 bg-white border border-[#D4CCC4] rounded-lg px-4 py-2.5 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+            className="flex-1 bg-card border border-border rounded-lg px-4 py-2.5 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
             disabled={isStreaming}
           />
           <button

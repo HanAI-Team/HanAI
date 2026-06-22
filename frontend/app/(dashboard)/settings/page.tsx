@@ -4,7 +4,9 @@ import { useRouter } from 'next/navigation'
 import { jwtDecode } from 'jwt-decode'
 import { getStaffList, createStaff, deactivateStaff, activateStaff } from '@/lib/api/staff'
 import { Staff } from '@/types'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, MessageSquare } from 'lucide-react'
+
+const BETA_FEEDBACK_FORM_URL = 'https://forms.gle/6HANKvSxdvfwKXFP9'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -141,12 +143,12 @@ export default function SettingsPage() {
   return (
     <div className="p-6 md:p-8 max-w-[480px]">
       <div className="mb-6">
-        <h1 className="font-serif text-2xl text-[#232323]">설정</h1>
-        <p className="text-xs text-[#8A8480] mt-1">계정 및 환경 설정</p>
+        <h1 className="font-serif text-2xl text-text">설정</h1>
+        <p className="text-xs text-subtext mt-1">계정 및 환경 설정</p>
       </div>
 
       {isOwner && (
-        <div className="flex bg-[#EDE8E2] border border-[#D4CCC4] rounded-md p-1 mb-6">
+        <div className="flex bg-fill border border-border rounded-md p-1 mb-6">
           {[
             { value: 'general', label: '일반' },
             { value: 'staff', label: '하위 계정 관리' },
@@ -155,7 +157,7 @@ export default function SettingsPage() {
               key={t.value}
               onClick={() => setTab(t.value as 'general' | 'staff')}
               className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                tab === t.value ? 'bg-white text-[#232323] shadow-sm' : 'text-[#8A8480]'
+                tab === t.value ? 'bg-card text-text shadow-sm' : 'text-subtext'
               }`}
             >
               {t.label}
@@ -166,8 +168,8 @@ export default function SettingsPage() {
 
       {tab === 'general' && (
         <div className="flex flex-col gap-4">
-          <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
-            <div className="text-xs font-medium text-[#232323] uppercase tracking-wide mb-4">비밀번호 변경</div>
+          <div className="bg-card border border-border rounded-lg p-5">
+            <div className="text-xs font-medium text-text uppercase tracking-wide mb-4">비밀번호 변경</div>
             <form onSubmit={(e) => { e.preventDefault(); handleChangePassword() }} className="flex flex-col gap-3">
               {[
                 { label: '현재 비밀번호', key: 'current_password' },
@@ -175,13 +177,13 @@ export default function SettingsPage() {
                 { label: '새 비밀번호 확인', key: 'confirm' },
               ].map((field) => (
                 <div key={field.key}>
-                  <label className="block text-xs text-[#8A8480] uppercase tracking-wide mb-1.5">{field.label}</label>
+                  <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">{field.label}</label>
                   <input
                     type="password"
                     value={pwForm[field.key as keyof typeof pwForm]}
                     onChange={(e) => setPwForm((f) => ({ ...f, [field.key]: e.target.value }))}
                     required
-                    className="w-full bg-[#F5F2EE] border border-[#D4CCC4] rounded-md px-4 py-2.5 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                    className="w-full bg-bg border border-border rounded-md px-4 py-2.5 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                   />
                 </div>
               ))}
@@ -201,45 +203,54 @@ export default function SettingsPage() {
               </button>
             </form>
           </div>
-          <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
-            <div className="text-xs font-medium text-[#232323] uppercase tracking-wide mb-4">계정</div>
+          <div className="bg-card border border-border rounded-lg p-5">
+            <div className="text-xs font-medium text-text uppercase tracking-wide mb-4">계정</div>
             <button
               onClick={handleLogout}
-              className="w-full border border-[#C8BFB6] rounded-md py-2.5 text-sm text-[#8A8480] hover:border-[#232323] hover:text-[#232323] transition-all"
+              className="w-full border border-border-strong rounded-md py-2.5 text-sm text-subtext hover:border-text hover:text-text transition-all"
             >
               로그아웃
             </button>
           </div>
+          <a
+            href={BETA_FEEDBACK_FORM_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-card border border-border rounded-lg p-5 flex items-center justify-between hover:border-[#EF6600] transition-all"
+          >
+            <span className="text-sm text-text">베타 피드백 남기기</span>
+            <MessageSquare className="w-4 h-4 text-subtext" />
+          </a>
         </div>
       )}
 
       {tab === 'staff' && isOwner && (
         <div className="flex flex-col gap-4">
-          <div className="bg-white border border-[#D4CCC4] rounded-lg p-5">
+          <div className="bg-card border border-border rounded-lg p-5">
             <div className="flex items-center justify-between mb-4">
-              <div className="text-xs font-medium text-[#232323] uppercase tracking-wide">하위 계정</div>
+              <div className="text-xs font-medium text-text uppercase tracking-wide">하위 계정</div>
               {staffLimit !== null && (
-                <div className="text-xs text-[#8A8480]">
+                <div className="text-xs text-subtext">
                   {staffList.length} / {staffLimit}명
                 </div>
               )}
             </div>
 
             {staffLoading ? (
-              <div className="text-sm text-[#B0AAA4] text-center py-8">불러오는 중...</div>
+              <div className="text-sm text-muted text-center py-8">불러오는 중...</div>
             ) : staffList.length === 0 ? (
-              <div className="text-sm text-[#B0AAA4] text-center py-8">등록된 하위 계정이 없습니다</div>
+              <div className="text-sm text-muted text-center py-8">등록된 하위 계정이 없습니다</div>
             ) : (
               <div className="flex flex-col gap-2">
                 {staffList.map((staff) => (
                   <div
                     key={staff.id}
-                    className="flex items-center justify-between border border-[#EDE8E2] rounded-md px-3 py-2.5"
+                    className="flex items-center justify-between border border-border rounded-md px-3 py-2.5"
                   >
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-[#232323] flex items-center gap-2">
+                      <div className="text-sm font-medium text-text flex items-center gap-2">
                         {staff.name}
-                        <span className="text-[10px] text-[#8A8480] border border-[#D4CCC4] rounded px-1.5 py-0.5">
+                        <span className="text-[10px] text-subtext border border-border rounded px-1.5 py-0.5">
                           {STAFF_ROLE_LABEL[staff.role] || staff.role}
                         </span>
                         {!staff.is_active && (
@@ -248,13 +259,13 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-[#8A8480] mt-0.5 truncate">{staff.email}</div>
+                      <div className="text-xs text-subtext mt-0.5 truncate">{staff.email}</div>
                     </div>
                     <button
                       onClick={() => handleToggleActive(staff)}
                       className={`flex-shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                         staff.is_active
-                          ? 'border border-[#C8BFB6] text-[#8A8480] hover:border-[#232323] hover:text-[#232323]'
+                          ? 'border border-border-strong text-subtext hover:border-text hover:text-text'
                           : 'bg-[#EF6600] text-white hover:opacity-90'
                       }`}
                     >
@@ -279,48 +290,48 @@ export default function SettingsPage() {
       {/* 하위 계정 추가 모달 */}
       {showAddStaffModal && (
         <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-sm shadow-xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#D4CCC4]">
-              <div className="text-sm font-medium text-[#232323]">하위 계정 추가</div>
+          <div className="bg-card rounded-xl w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="text-sm font-medium text-text">하위 계정 추가</div>
               <button
                 onClick={() => setShowAddStaffModal(false)}
-                className="text-[#8A8480] hover:text-[#232323] transition-colors"
+                className="text-subtext hover:text-text transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleCreateStaff} className="p-5 flex flex-col gap-3">
               <div>
-                <label className="text-xs text-[#8A8480] mb-1 block">이름 *</label>
+                <label className="text-xs text-subtext mb-1 block">이름 *</label>
                 <input
                   value={newStaff.name}
                   onChange={(e) => setNewStaff((s) => ({ ...s, name: e.target.value }))}
                   required
-                  className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
               <div>
-                <label className="text-xs text-[#8A8480] mb-1 block">이메일 *</label>
+                <label className="text-xs text-subtext mb-1 block">이메일 *</label>
                 <input
                   type="email"
                   value={newStaff.email}
                   onChange={(e) => setNewStaff((s) => ({ ...s, email: e.target.value }))}
                   required
-                  className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
               <div>
-                <label className="text-xs text-[#8A8480] mb-1 block">비밀번호 *</label>
+                <label className="text-xs text-subtext mb-1 block">비밀번호 *</label>
                 <input
                   type="password"
                   value={newStaff.password}
                   onChange={(e) => setNewStaff((s) => ({ ...s, password: e.target.value }))}
                   required
-                  className="w-full bg-[#EDE8E2] border border-[#D4CCC4] rounded-md px-3 py-2 text-sm text-[#232323] outline-none focus:border-[#EF6600] transition-colors"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
               <div>
-                <label className="text-xs text-[#8A8480] mb-1 block">역할</label>
+                <label className="text-xs text-subtext mb-1 block">역할</label>
                 <div className="flex gap-4">
                   {[
                     { value: 'nurse', label: '간호사' },
@@ -335,7 +346,7 @@ export default function SettingsPage() {
                         onChange={() => setNewStaff((s) => ({ ...s, role: opt.value }))}
                         className="accent-[#EF6600]"
                       />
-                      <span className="text-sm text-[#232323]">{opt.label}</span>
+                      <span className="text-sm text-text">{opt.label}</span>
                     </label>
                   ))}
                 </div>
@@ -355,8 +366,8 @@ export default function SettingsPage() {
       {/* 에러 모달 */}
       {staffErrorMessage && (
         <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
-            <div className="text-sm text-[#232323] mb-4">{staffErrorMessage}</div>
+          <div className="bg-card rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
+            <div className="text-sm text-text mb-4">{staffErrorMessage}</div>
             <button
               onClick={() => setStaffErrorMessage(null)}
               className="bg-[#EF6600] text-white rounded-md px-6 py-2 text-sm hover:opacity-90 transition-opacity"
