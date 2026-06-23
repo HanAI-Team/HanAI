@@ -1,7 +1,7 @@
 """add_edi_columns_to_procedures
 
 Revision ID: f1a2b3c4d5e6
-Revises: a1b2c3d4e5f6
+Revises: b3c4d5e6f7a8
 Create Date: 2026-06-23 00:00:00.000000
 
 EDI 명세서진료내역 생성에 필요한 컬럼 추가.
@@ -14,7 +14,7 @@ from alembic import op
 
 
 revision: str = 'f1a2b3c4d5e6'
-down_revision: Union[str, None] = 'a1b2c3d4e5f6'
+down_revision: Union[str, None] = 'b3c4d5e6f7a8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
