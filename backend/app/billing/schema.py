@@ -38,6 +38,32 @@ class PrescriptionCheckResponse(BaseModel):
     violations: list[ViolationItem]
 
 
+class ProcedureItem(BaseModel):
+    """진료내역 한 줄 — EDI 명세서진료내역 레코드와 1:1 대응."""
+    hang: Literal["01", "02", "03", "04", "05", "L"] = Field(
+        "04", description="항번호. 04=시술및처치료"
+    )
+    mok: Literal["01", "02", "03", "04", "99"] = Field(
+        description="목번호. 01=침술 02=구술 03=부항술 04=처치료 99=기타"
+    )
+    code_gubun: Literal["A", "B", "C", "H"] = Field(
+        "A", description="코드구분. A=수가 B=전용수가 C=약가 H=치료재료"
+    )
+    code: str = Field(..., max_length=9, description="행위코드 (예: AA159)")
+    unit_price: Decimal = Field(..., ge=0, description="단가 (원)")
+    qty: Decimal = Field(..., gt=0, description="1일투여량/실시횟수")
+    days: int = Field(..., ge=1, description="총투여일수/실시횟수")
+    amount: int = Field(..., ge=0, description="금액 = 단가 × qty × days (원)")
+    license_type: Literal["3", "6", "7"] = Field(
+        "3", description="면허종류. 3=한의사 6=간호사 7=사회복지사"
+    )
+    license_no: str = Field("", max_length=10, description="면허번호")
+    hyeolmyeong_names: list[str] = Field(
+        default_factory=list,
+        description="혈명 목록. 침술(hang=04, mok=01)일 때 JS011 특정내역으로 변환됨",
+    )
+
+
 class BillingCalcRequest(BaseModel):
     insurance_type: Literal["4", "5", "7"] = Field(
         description="보험자종별구분. 4=건강보험, 5=의료급여, 7=보훈"
@@ -58,9 +84,41 @@ class BillingCalcRequest(BaseModel):
     support_fund: int = Field(0, ge=0, description="지원금 (원)")
     treatment_days: Decimal = Field(Decimal("0"), description="진료(조제)일수")
     graduated_fee_index: Decimal = Field(Decimal("0"), description="차등지수")
+    procedures: list[ProcedureItem] = Field(
+        default_factory=list,
+        description="진료내역 목록. EDI 명세서진료내역 + 특정내역 생성에 사용",
+    )
+
+
+INSURANCE_TYPE_CHOICES = [
+    {"value": "4", "label": "건강보험"},
+    {"value": "5", "label": "의료급여"},
+    {"value": "7", "label": "보훈"},
+]
+
+MEDICAL_AID_GRADE_CHOICES = [
+    {"value": "1", "label": "의료급여 1종"},
+    {"value": "2", "label": "의료급여 2종"},
+]
+
+
+class FeeItem(BaseModel):
+    code: str
+    name: str
+    category: str
+    insured_health: bool
+    insured_medical_aid: bool
+    insured_veterans: bool
+    unit_price: int
+    is_insured: bool
+    effective_date: Optional[date]
+    expired_date: Optional[date]
 
 
 class BillingCalcResponse(BaseModel):
+    # 입력 에코 (EDI 생성 시 재사용)
+    special_code: Optional[str] = None
+
     # 요양급여비용 총액
     benefit_total_1: int
     benefit_total_2: int
