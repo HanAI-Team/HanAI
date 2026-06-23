@@ -431,6 +431,77 @@ def build_special_record(s: SpecialRecord) -> str:
 # C2-09: 마지막 정보파일 EOF (20 bytes)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# C2-71: 명세서진료내역 (의치과·한방 전용, 232 bytes)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ProcedureDetail:
+    key: RecordKey
+    hang: str           # 항번호 XX (예: "04" = 시술및처치료)
+    mok: str            # 목번호 99 (예: "01" = 침술)
+    code_gubun: str     # 코드구분 X(1) (A=수가 B=전용 C=약가 H=치료재료)
+    code: str           # 행위코드 X(8)
+    unit_price: Decimal # 단가 9(9)V9
+    qty: Decimal        # 1일투여량/실시횟수 9(4)V9999
+    days: int           # 총투여일수/실시횟수 9(3)
+    amount: int         # 금액 9(10)
+    license_type: str   # 면허종류 X(1) (3=한의사 6=간호사 7=사회복지사)
+    license_no: str     # 면허번호 (X(100) 공간에 실 번호만 기록, 나머지 공백)
+    change_date: str = ""  # 변경일 X(8) (미입력 시 공백)
+
+
+def build_procedure_record(p: ProcedureDetail) -> str:
+    """C2-71 명세서진료내역 레코드 생성 (data 230 bytes + CRLF = Max 232).
+
+    의치과·한방 전용 (수록사양 U1). C2-72 레이아웃 기반으로 구성하며,
+    코드 영역 X(9)를 코드구분 X(1) + 코드 X(8)로 분할 사용.
+
+    레이아웃:
+      1-  17: KEY
+     18-  21: 공란 X(4)
+     22-  23: 항번호 XX
+     24-  25: 목번호 99
+     26      : 코드구분 X(1)
+     27-  34: 코드 X(8)
+     35-  40: 공란 X(6)
+     41-  50: 단가 9(9)V9 (10 chars)
+     51-  58: 1회투약량/실시횟수 9(4)V9999 (8 chars)
+     59-  64: 일투 9(4)V99 — qty 기준 1일 횟수 (6 chars)
+     65-  67: 총투여일수/실시횟수 9(3)
+     68-  77: 금액 9(10)
+     78-  85: 변경일 X(8)
+     86- 100: 공란 X(15)
+    101- 110: 공란 X(10)
+    111- 120: 공란 X(10)
+    121- 129: 공란 X(9)
+    130      : 면허종류 A X(1)
+    131- 230: 면허번호 X(100)
+    """
+    parts = [
+        *_key_parts(p.key),                         # 1-17
+        _fmtx("", 4),                               # 18-21  공란
+        _fmtx(p.hang, 2),                           # 22-23  항번호
+        _fmtx(p.mok, 2),                            # 24-25  목번호
+        _fmtx(p.code_gubun, 1),                     # 26     코드구분
+        _fmtx(p.code, 8),                           # 27-34  코드
+        _fmtx("", 6),                               # 35-40  공란
+        _fmt9v9(p.unit_price, 9, 1),                # 41-50  단가
+        _fmt9v9(p.qty, 4, 4),                       # 51-58  1회투약량
+        _fmt9v9(p.qty, 4, 2),                       # 59-64  일투 (qty 재사용)
+        _fmt9(p.days, 3),                           # 65-67  총투여일수
+        _fmt9(p.amount, 10),                        # 68-77  금액
+        _fmtx(p.change_date, 8),                    # 78-85  변경일
+        _fmtx("", 15),                              # 86-100 공란
+        _fmtx("", 10),                              # 101-110 공란
+        _fmtx("", 10),                              # 111-120 공란
+        _fmtx("", 9),                               # 121-129 공란
+        _fmtx(p.license_type, 1),                   # 130    면허종류
+        _fmtx(p.license_no, 100),                   # 131-230 면허번호
+    ]
+    return _build(parts, 230)
+
+
 def build_eof_record(key: RecordKey) -> str:
     """C2-09 EOF 레코드 생성 (20 bytes + CRLF)."""
     parts = [
@@ -450,6 +521,7 @@ class EDIFile:
     header: ClaimHeader
     patient_records: list[PatientRecord] = field(default_factory=list)
     diagnosis_records: list[tuple[int, DiagnosisRecord]] = field(default_factory=list)
+    procedure_records: list[tuple[int, ProcedureDetail]] = field(default_factory=list)
     special_records: list[tuple[int, SpecialRecord]] = field(default_factory=list)
 
 
@@ -462,12 +534,14 @@ def generate_edi(edi: EDIFile) -> bytes:
     for patient in edi.patient_records:
         lines.append(build_patient_record(patient))
 
-        # 해당 환자의 상병내역
         for serial, diag in edi.diagnosis_records:
             if serial == patient.key.serial_no:
                 lines.append(build_diagnosis_record(diag))
 
-        # 해당 환자의 특정내역
+        for serial, proc in edi.procedure_records:
+            if serial == patient.key.serial_no:
+                lines.append(build_procedure_record(proc))
+
         for serial, special in edi.special_records:
             if serial == patient.key.serial_no:
                 lines.append(build_special_record(special))
