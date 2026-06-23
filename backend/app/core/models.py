@@ -214,11 +214,10 @@ class MedicalRecordProcedure(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id", ondelete="CASCADE"), nullable=False)
     procedure_type = Column(String, nullable=False)
-    procedure_code = Column(String, nullable=True)
     details = Column(JSON, nullable=True)
     amount = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    fee_master = relationship("FeeMaster")
     medical_record = relationship("MedicalRecord", back_populates="procedures")
 
 
@@ -257,3 +256,16 @@ class KcdUCode(Base):
     category = Column(String(100))
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)
+
+
+
+class FeeMaster(Base):
+    __tablename__ = "fee_master"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), unique=True, nullable=False, index=True)
+    name = Column(String(50), nullable=False)
+    category = Column(String(20), nullable=False)
+    fee = Column(Integer, nullable=False)
+    insurance_types = Column(String(10), nullable=False)  # "4,5,7"
+    is_active = Column(Boolean, default=True, nullable=False)
