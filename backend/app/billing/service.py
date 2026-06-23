@@ -125,7 +125,6 @@ async def generate_claim_edi(
                 amount=proc.amount or 0,
                 license_type=proc.license_type or "3",
                 license_no=doctor.license_number if doctor else "",
-                adjustment_type=proc.adjustment_type or "",
             )))
 
             if proc.special_detail:
