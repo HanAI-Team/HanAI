@@ -15,6 +15,7 @@ from app.billing.edi_writer import (
 from app.core.models import (
     Claim,
     Doctor,
+    Hospital,
     MedicalRecord,
     MedicalRecordProcedure,
     Patient,
@@ -57,8 +58,11 @@ async def generate_claim_edi(
     r6 = await db.execute(select(Doctor).where(Doctor.id == claim.doctor_id))
     doctor = r6.scalar_one_or_none()
 
+    r7 = await db.execute(select(Hospital).where(Hospital.id == hospital_id))
+    hospital = r7.scalar_one_or_none()
+
     # 2. ClaimHeader 조립
-    inst_code = str(claim.hospital_id).replace("-", "")[:8]
+    inst_code = (hospital.institution_code if hospital and hospital.institution_code else "00000000")
     key = RecordKey(institution_code=inst_code, serial_no=1, ext_no=0)
 
     header = ClaimHeader(
@@ -91,7 +95,7 @@ async def generate_claim_edi(
             cert_no="",
             subscriber_name=patient.name if patient else "",
             patient_name=patient.name if patient else "",
-            patient_rrn="0000000000000",
+            patient_rrn=patient.rrn if patient and patient.rrn else "0000000000000",
             inpatient_days=1,
             benefit_days=1,
             benefit_total_1=claim.total_amount,
