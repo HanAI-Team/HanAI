@@ -76,7 +76,9 @@ class FeeItem(BaseModel):
     code: str
     name: str
     category: str
-    insurance_types: str
+    insured_health: bool
+    insured_medical_aid: bool
+    insured_veterans: bool
     unit_price: int
     is_insured: bool
     effective_date: Optional[date]
