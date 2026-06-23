@@ -1,5 +1,6 @@
 import uuid
 
+from app.core.crypto import EncryptedString
 from app.core.database import Base
 from sqlalchemy import (
     JSON,
@@ -25,6 +26,7 @@ class Hospital(Base):
     name = Column(String, nullable=False)
     address = Column(String)
     phone = Column(String)
+    institution_code = Column(String(8), nullable=True)  # 심평원 요양기관기호
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     doctors = relationship("Doctor", back_populates="hospital")
@@ -96,6 +98,7 @@ class Patient(Base):
     phone = Column(String)
     memo = Column(Text)
     insurance_type = Column(String, default="health")
+    rrn = Column(EncryptedString(100), nullable=True)  # 주민등록번호 (AES-256-GCM 암호화)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     hospital = relationship("Hospital", back_populates="patients")
@@ -136,6 +139,7 @@ class MedicalRecord(Base):
     chart_structured = Column(Text)
     audio_file_url = Column(String)
     status = Column(String, default="recording")
+    kcd_code = Column(String(10), nullable=True)  # KCD 상병코드 (EDI C2-02)
     recorded_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
