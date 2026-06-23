@@ -267,6 +267,29 @@ class TestS04_의료급여1종_외래:
 # 항목: 17(의료급여 외래), 19(장애인의료비)
 # ──────────────────────────────────────────────────────────────────────────────
 
+class TestS04b_의료급여1종_입원:
+    def setup_method(self):
+        self.r = _calc("5", "입원", benefit_total=30000, medical_aid_grade="1")
+
+    def test_항목18_의료급여1종_입원_본인부담은_0(self):
+        assert self.r.medical_aid_inpatient_copay == 0
+
+    def test_항목17_의료급여_외래는_0(self):
+        assert self.r.medical_aid_outpatient_copay == 0
+
+
+class TestS04c_의료급여2종_입원:
+    def setup_method(self):
+        self.r = _calc("5", "입원", benefit_total=30000, medical_aid_grade="2")
+
+    def test_항목18_의료급여2종_입원_본인부담(self):
+        # 10% → ceil(30000*0.10) = 3000
+        assert self.r.medical_aid_inpatient_copay == 3000
+
+    def test_항목17_의료급여_외래는_0(self):
+        assert self.r.medical_aid_outpatient_copay == 0
+
+
 class TestS05_의료급여2종_외래_장애인:
     def setup_method(self):
         self.r = _calc("5", "외래", benefit_total=10000, medical_aid_grade="2",
