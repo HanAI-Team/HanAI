@@ -219,6 +219,17 @@ class MedicalRecordProcedure(Base):
     amount = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # EDI 명세서진료내역 필수 필드
+    hang          = Column(String(2),  nullable=True)               # 항번호 (04=시술및처치료)
+    mok           = Column(String(2),  nullable=True)               # 목번호 (01=침술 02=구술 03=부항 04=처치 99=기타)
+    code_gubun    = Column(String(1),  nullable=True, default="A")  # 코드구분 (A=수가 B=전용 C=약가 H=치료재료)
+    unit_price    = Column(Numeric(12, 2), nullable=True)           # 단가
+    qty           = Column(Numeric(7, 2),  nullable=True)           # 1일투여량/실시횟수
+    days          = Column(Integer,    nullable=True)               # 총투여일수/실시횟수
+    license_type  = Column(String(1),  nullable=True, default="3") # 면허종류 (3=한의사)
+    license_no    = Column(String(10), nullable=True)              # 면허번호
+    special_detail = Column(String(700), nullable=True)            # 특정내역 (JS011 혈명코드 등)
+
     medical_record = relationship("MedicalRecord", back_populates="procedures")
 
 
