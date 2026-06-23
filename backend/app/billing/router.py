@@ -1,21 +1,5 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from uuid import UUID
 
-from app.core.deps import get_current_doctor
-from app.core.database import get_db
-from app.core.models import FeeMaster
-from app.billing.schema import (
-    BillingCalcRequest,
-    BillingCalcResponse,
-    FeeItem,
-    INSURANCE_TYPE_CHOICES,
-    MEDICAL_AID_GRADE_CHOICES,
-    PrescriptionCheckRequest,
-    PrescriptionCheckResponse,
-    ViolationItem,
-)
-from app.billing.pediatric_dosage import get_max_allowed_ratio
 from app.billing.copayment import (
     BillingInput,
     InsuranceType,
@@ -23,6 +7,24 @@ from app.billing.copayment import (
     VisitType,
     calculate_billing,
 )
+from app.billing.pediatric_dosage import get_max_allowed_ratio
+from app.billing.schema import (
+    INSURANCE_TYPE_CHOICES,
+    MEDICAL_AID_GRADE_CHOICES,
+    BillingCalcRequest,
+    BillingCalcResponse,
+    FeeItem,
+    PrescriptionCheckRequest,
+    PrescriptionCheckResponse,
+    ViolationItem,
+)
+from app.billing.service import generate_claim_edi
+from app.core.database import get_db
+from app.core.deps import get_current_doctor, get_current_user
+from app.core.models import FeeMaster
+from fastapi import APIRouter, Depends, Response
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["billing"])
 
@@ -200,3 +202,17 @@ async def list_fees(
         )
         for r in rows
     ]
+
+@router.get("/claims/{claim_id}/edi")
+async def download_claim_edi(
+    claim_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    edi_bytes = await generate_claim_edi(db, current_user.hospital_id, claim_id)
+    
+    return Response(
+        content=edi_bytes,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename=claim_{claim_id}.edi"},
+    )
