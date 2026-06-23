@@ -157,7 +157,7 @@ async def calculate_copayment(
         graduated_fee_index=body.graduated_fee_index,
     )
     result = calculate_billing(inp)
-    return BillingCalcResponse(**result.__dict__)
+    return BillingCalcResponse(special_code=body.special_code, **result.__dict__)
 
 
 @router.get("/insurance-types")
