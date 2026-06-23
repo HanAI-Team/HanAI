@@ -234,6 +234,13 @@ class MedicalRecordProcedure(Base):
     special_detail = Column(String(700), nullable=True)            # 특정내역 (JS011 혈명코드 등)
     fee_master_code = Column(String(20), ForeignKey("fee_master.code"), nullable=True)
 
+    # C2-13 명세서진료내역(의치과및한방) 필드
+    prescription_days = Column(Integer, default=0, nullable=True)           # 처방일수
+    copay_rate_code = Column(String(2), default="D", nullable=True)         # 본인부담률구분코드
+    prescription_issue_date = Column(String(8), nullable=True)              # 처방전발급일자
+    prescription_serial = Column(Integer, default=0, nullable=True)         # 처방전일련번호
+    adjustment_type = Column(String(10), nullable=True)                     # 가감등구분
+
     medical_record = relationship("MedicalRecord", back_populates="procedures")
     fee_master = relationship("FeeMaster", foreign_keys="[MedicalRecordProcedure.fee_master_code]")
 
