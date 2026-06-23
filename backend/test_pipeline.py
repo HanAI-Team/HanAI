@@ -3,6 +3,8 @@ import asyncio
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.charting.stt.client import clova_client
@@ -10,6 +12,7 @@ from app.pipeline.deidentifier import deidentifier
 from app.pipeline.postprocessor import postprocessor
 
 AUDIO_DIR = Path("tests/audio")
+pytestmark = pytest.mark.skip(reason="실제 Clova API 필요 - 수동 실행 전용")
 
 
 def get_audio_files(target: str = None) -> list[Path]:
