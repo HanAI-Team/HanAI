@@ -8,9 +8,65 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import KcdUCode
-from app.kcd.schema import KcdUCodeResponse
+from app.kcd.schema import KcdUCodeResponse, KcdValidateRequest, KcdValidateResponse, KcdValidateResult
 
 router = APIRouter(tags=["kcd"])
+
+
+@router.post("/validate", response_model=KcdValidateResponse)
+async def validate_kcd_codes(
+    body: KcdValidateRequest,
+    current_doctor=Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
+):
+    """상병코드 완전코드 여부 검증.
+
+    입력된 코드 목록 각각에 대해 KCD 마스터에 존재하는지,
+    유효기간 내인지 확인하여 결과를 반환한다.
+    """
+    ref_date = body.as_of or date.today()
+    results = []
+
+    for raw_code in body.codes:
+        code = raw_code.strip().upper()
+
+        result = await db.execute(
+            select(KcdUCode).where(
+                KcdUCode.code == code,
+                or_(KcdUCode.effective_date.is_(None), KcdUCode.effective_date <= ref_date),
+                or_(KcdUCode.expired_date.is_(None), KcdUCode.expired_date >= ref_date),
+            )
+        )
+        item = result.scalar_one_or_none()
+
+        if item:
+            results.append(KcdValidateResult(
+                code=code,
+                is_valid=True,
+                korean_name=item.korean_name,
+            ))
+        else:
+            # 코드 자체가 마스터에 없는지, 유효기간 만료인지 구분
+            result_any = await db.execute(
+                select(KcdUCode).where(KcdUCode.code == code)
+            )
+            exists = result_any.scalar_one_or_none()
+
+            if exists:
+                error_msg = f"'{code}'는 유효기간이 만료된 상병코드입니다."
+            else:
+                error_msg = f"'{code}'는 존재하지 않는 상병코드입니다."
+
+            results.append(KcdValidateResult(
+                code=code,
+                is_valid=False,
+                error=error_msg,
+            ))
+
+    return KcdValidateResponse(
+        results=results,
+        has_error=any(not r.is_valid for r in results),
+    )
 
 
 @router.get("/search", response_model=List[KcdUCodeResponse])
@@ -32,7 +88,6 @@ async def search_kcd_codes(
     )
     if category:
         stmt = stmt.where(KcdUCode.category == category)
-    # effective_date가 있으면 ref_date 이전이어야 함, expired_date가 있으면 ref_date 이후여야 함
     stmt = stmt.where(
         and_(
             or_(KcdUCode.effective_date.is_(None), KcdUCode.effective_date <= ref_date),
@@ -40,7 +95,6 @@ async def search_kcd_codes(
         )
     )
     stmt = stmt.order_by(KcdUCode.code).limit(limit)
-
     result = await db.execute(stmt)
     return result.scalars().all()
 
