@@ -98,9 +98,9 @@ class ProcedureType(str, Enum):
     OTHER = "기타"
 
 class ProcedureCreateRequest(BaseModel):
-    procedure_type: ProcedureType                           # 침술/추나/부항/뜸/기타
-    procedure_code: Optional[str] = None          # 심평원 행위코드
-    details: Optional[dict] = None                # {"points": ["LI4", "ST36"]}
+    procedure_type: ProcedureType
+    fee_master_code: Optional[str] = None  # 심평원 행위코드 (fee_master.code FK)
+    details: Optional[dict] = None         # {"points": ["LI4", "ST36"]}
     amount: Optional[int] = 0
 
 
@@ -108,7 +108,8 @@ class ProcedureResponse(BaseModel):
     id: UUID
     medical_record_id: UUID
     procedure_type: str
-    procedure_code: Optional[str] = None
+    fee_master_code: Optional[str] = None
+    unit_price: Optional[float] = None
     details: Optional[dict] = None
     amount: Optional[int] = None
     created_at: Optional[datetime] = None

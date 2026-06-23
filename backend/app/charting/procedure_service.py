@@ -2,7 +2,7 @@ from uuid import UUID
 
 from app.charting.service import get_medical_record
 from app.core.audit import write_audit
-from app.core.models import AcupuncturePoint, Doctor, MedicalRecordProcedure
+from app.core.models import AcupuncturePoint, Doctor, FeeMaster, MedicalRecordProcedure
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,10 +53,20 @@ async def add_procedure(
                             detail=f"{point_code}는 {conflicts}와 동시 시술 불가합니다."
                         )
 
+    unit_price = None
+    if data.fee_master_code:
+        fm_result = await db.execute(
+            select(FeeMaster).where(FeeMaster.code == data.fee_master_code)
+        )
+        fm = fm_result.scalar_one_or_none()
+        if fm:
+            unit_price = fm.unit_price
+
     procedure = MedicalRecordProcedure(
         medical_record_id=record_id,
         procedure_type=data.procedure_type,
-        procedure_code=data.procedure_code,
+        fee_master_code=data.fee_master_code,
+        unit_price=unit_price,
         details=data.details,
         amount=data.amount,
     )
