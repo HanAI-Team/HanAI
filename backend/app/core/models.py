@@ -228,8 +228,10 @@ class MedicalRecordProcedure(Base):
     license_type  = Column(String(1),  nullable=True, default="3") # 면허종류 (3=한의사)
     license_no    = Column(String(10), nullable=True)              # 면허번호
     special_detail = Column(String(700), nullable=True)            # 특정내역 (JS011 혈명코드 등)
+    fee_master_code = Column(String(20), ForeignKey("fee_master.code"), nullable=True)
 
     medical_record = relationship("MedicalRecord", back_populates="procedures")
+    fee_master = relationship("FeeMaster", foreign_keys="[MedicalRecordProcedure.fee_master_code]")
 
 
 class AuditLog(Base):
