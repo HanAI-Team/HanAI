@@ -15,10 +15,7 @@ LAY 파일 C2-00, C2-11, C2-02, C2-71, C2-08, C2-09 레이아웃 적용.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # 기본 포맷팅 함수
