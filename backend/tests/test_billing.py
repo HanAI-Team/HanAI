@@ -1,5 +1,6 @@
 from datetime import date
 
+from app.billing.calculator import calculate_prescription_price
 from app.billing.pediatric_dosage import (
     calculate_age_in_months,
     get_pediatric_dosage_ratio,
@@ -67,6 +68,21 @@ def test_만나이_개월수_계산_생일_지남():
 def test_만나이_개월수_계산_생일_안지남():
     # 2026-06-19 기준 2020-06-25생 -> 아직 6월 생일 안 지남 -> 71개월
     assert calculate_age_in_months(date(2020, 6, 25), date(2026, 6, 19)) == 71
+
+
+# ── calculator 단위 테스트 ────────────────────────────────────
+
+def test_처방가_기본_계산():
+    assert calculate_prescription_price(1800, 1.0, 7) == 12600
+
+
+def test_소아_비율_적용시_가격_계산():
+    assert calculate_prescription_price(1800, 0.5, 7) == 6300
+
+
+def test_올림_처리_확인():
+    # 7 * 0.5 * 3 = 10.5 -> ROUND_UP으로 11
+    assert calculate_prescription_price(7, 0.5, 3) == 11
 
 
 # ── /prescription/check 라우터 테스트 ──────────────────────────

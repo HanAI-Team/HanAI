@@ -214,7 +214,6 @@ class MedicalRecordProcedure(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id", ondelete="CASCADE"), nullable=False)
     procedure_type = Column(String, nullable=False)
-    procedure_code = Column(String, nullable=True)
     details = Column(JSON, nullable=True)
     amount = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
