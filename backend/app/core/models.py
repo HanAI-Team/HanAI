@@ -217,7 +217,7 @@ class MedicalRecordProcedure(Base):
     details = Column(JSON, nullable=True)
     amount = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    fee_master = relationship("FeeMaster")
+    fee_master = relationship("FeeMaster", foreign_keys="[MedicalRecordProcedure.fee_master_code]")
     medical_record = relationship("MedicalRecord", back_populates="procedures")
 
 
