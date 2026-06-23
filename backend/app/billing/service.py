@@ -104,10 +104,10 @@ async def generate_claim_edi(
         ))
 
         # DiagnosisRecord
-        if record.chart_structured:
+        if record.chart_structured and record.kcd_code:
             diagnosis_records.append((serial, DiagnosisRecord(
                 key=rec_key,
-                kcd_code="U999",  # 실제 KCD 코드 필드 추가 필요
+                kcd_code=record.kcd_code,
                 onset_date=record.recorded_at.strftime("%Y%m%d") if record.recorded_at else "00000000",
                 treatment_dept=51,  # 한방 진료과목 코드
                 inpatient_route=0,
