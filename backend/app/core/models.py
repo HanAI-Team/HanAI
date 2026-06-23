@@ -214,10 +214,20 @@ class MedicalRecordProcedure(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id", ondelete="CASCADE"), nullable=False)
     procedure_type = Column(String, nullable=False)
-    procedure_code = Column(String, nullable=True)
     details = Column(JSON, nullable=True)
     amount = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # EDI 명세서진료내역 필수 필드
+    hang          = Column(String(2),  nullable=True)               # 항번호 (04=시술및처치료)
+    mok           = Column(String(2),  nullable=True)               # 목번호 (01=침술 02=구술 03=부항 04=처치 99=기타)
+    code_gubun    = Column(String(1),  nullable=True, default="A")  # 코드구분 (A=수가 B=전용 C=약가 H=치료재료)
+    unit_price    = Column(Numeric(12, 2), nullable=True)           # 단가
+    qty           = Column(Numeric(7, 2),  nullable=True)           # 1일투여량/실시횟수
+    days          = Column(Integer,    nullable=True)               # 총투여일수/실시횟수
+    license_type  = Column(String(1),  nullable=True, default="3") # 면허종류 (3=한의사)
+    license_no    = Column(String(10), nullable=True)              # 면허번호
+    special_detail = Column(String(700), nullable=True)            # 특정내역 (JS011 혈명코드 등)
 
     medical_record = relationship("MedicalRecord", back_populates="procedures")
 
@@ -255,5 +265,23 @@ class KcdUCode(Base):
     korean_name = Column(String(100), nullable=False)
     hanja = Column(String(100))
     category = Column(String(100))
+    effective_date = Column(Date, nullable=True)
+    expired_date = Column(Date, nullable=True)
+
+
+class FeeMaster(Base):
+    """한방 행위코드 수가 마스터 (HIRA 요양급여비용 목록표 기준)."""
+
+    __tablename__ = "fee_master"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(20), unique=True, nullable=False, index=True)   # 행위코드
+    name = Column(String(100), nullable=False)                            # 행위명
+    category = Column(String(20), nullable=False)                         # 침술/뜸/부항/추나
+    insured_health      = Column(Boolean, nullable=False, server_default="true")   # 건강보험(4) 적용 여부
+    insured_medical_aid = Column(Boolean, nullable=False, server_default="true")   # 의료급여(5) 적용 여부
+    insured_veterans    = Column(Boolean, nullable=False, server_default="false")  # 보훈(7) 적용 여부
+    unit_price = Column(Integer, nullable=False)                          # 수가 (원, 건강보험 기준)
+    is_insured = Column(Boolean, default=True, nullable=False)            # 급여 여부
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)

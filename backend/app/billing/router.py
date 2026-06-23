@@ -1,9 +1,16 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.deps import get_current_doctor
+from app.core.database import get_db
+from app.core.models import FeeMaster
 from app.billing.schema import (
     BillingCalcRequest,
     BillingCalcResponse,
+    FeeItem,
+    INSURANCE_TYPE_CHOICES,
+    MEDICAL_AID_GRADE_CHOICES,
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
     ViolationItem,
@@ -150,4 +157,46 @@ async def calculate_copayment(
         graduated_fee_index=body.graduated_fee_index,
     )
     result = calculate_billing(inp)
-    return BillingCalcResponse(**result.__dict__)
+    return BillingCalcResponse(special_code=body.special_code, **result.__dict__)
+
+
+@router.get("/insurance-types")
+async def list_insurance_types(current_doctor=Depends(get_current_doctor)):
+    """보험자종별구분 선택지 목록."""
+    return {
+        "insurance_types": INSURANCE_TYPE_CHOICES,
+        "medical_aid_grades": MEDICAL_AID_GRADE_CHOICES,
+    }
+
+
+@router.get("/fees", response_model=list[FeeItem])
+async def list_fees(
+    category: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_doctor=Depends(get_current_doctor),
+):
+    """행위코드 수가 목록 조회.
+
+    category 파라미터로 필터: 침술 / 뜸 / 부항 / 추나
+    """
+    stmt = select(FeeMaster).where(FeeMaster.expired_date == None)  # noqa: E711
+    if category:
+        stmt = stmt.where(FeeMaster.category == category)
+    stmt = stmt.order_by(FeeMaster.category, FeeMaster.code)
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        FeeItem(
+            code=r.code,
+            name=r.name,
+            category=r.category,
+            insured_health=r.insured_health,
+            insured_medical_aid=r.insured_medical_aid,
+            insured_veterans=r.insured_veterans,
+            unit_price=r.unit_price,
+            is_insured=r.is_insured,
+            effective_date=r.effective_date,
+            expired_date=r.expired_date,
+        )
+        for r in rows
+    ]
