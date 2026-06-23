@@ -139,6 +139,7 @@ class MedicalRecord(Base):
     chart_structured = Column(Text)
     audio_file_url = Column(String)
     status = Column(String, default="recording")
+    kcd_code = Column(String(10), nullable=True)  # KCD 상병코드 (EDI C2-02)
     recorded_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
