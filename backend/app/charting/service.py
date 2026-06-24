@@ -281,6 +281,23 @@ async def update_medical_history(
     return medical_record
 
 
+async def update_kcd_code(
+    db: AsyncSession, doctor: Doctor, record_id: UUID, kcd_code: str | None
+) -> MedicalRecord:
+    medical_record = await get_medical_record(db, doctor, record_id)
+    medical_record.kcd_code = kcd_code  # type: ignore
+    await write_audit(
+        db,
+        table_name="medical_records",
+        record_id=str(record_id),
+        action="UPDATE",
+        detail="kcd_code",
+    )
+    await db.commit()
+    await db.refresh(medical_record)
+    return medical_record
+
+
 async def finalize_record(
     db: AsyncSession,
     doctor: Doctor,

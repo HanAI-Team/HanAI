@@ -17,6 +17,10 @@ class UpdateMedicalHistoryRequest(BaseModel):
     medical_history: Optional[str] = None
 
 
+class UpdateKcdCodeRequest(BaseModel):
+    kcd_code: Optional[str] = None
+
+
 class FinalizeRecordRequest(BaseModel):
     chart_structured: str
     selected_result: Optional[str] = None
@@ -31,6 +35,7 @@ class MedicalRecordResponse(BaseModel):
     chart_structured: Optional[str] = None
     audio_file_url: Optional[str] = None
     status: str
+    kcd_code: Optional[str] = None
     recorded_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 
