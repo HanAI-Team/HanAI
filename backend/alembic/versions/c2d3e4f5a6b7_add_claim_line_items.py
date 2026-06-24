@@ -1,7 +1,7 @@
 """add_claim_line_items
 
 Revision ID: c2d3e4f5a6b7
-Revises: b1c2d3e4f5a6
+Revises: ee60a1729508
 Create Date: 2026-06-24 00:00:00.000000
 
 차트 화면에서 항목 클릭 시 생성되는 ClaimLineItem 테이블 추가.
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = 'c2d3e4f5a6b7'
-down_revision: Union[str, None] = 'b1c2d3e4f5a6'
+down_revision: Union[str, None] = 'ee60a1729508'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
