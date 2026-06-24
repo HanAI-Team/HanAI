@@ -12,7 +12,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.auth.service import create_access_token
 from app.core.database import Base, get_db
-from app.core.models import Doctor, Hospital, Subscription
+from app.core.models import Doctor, Hospital, Subscription, KcdUCode
+from datetime import date
 from main import app
 
 TEST_ENGINE = create_async_engine(
@@ -80,3 +81,15 @@ async def approved_doctor(db, client):
         UUID(str(doctor.id)), UUID(str(doctor.hospital_id)), str(doctor.role)
     )
     return doctor, {"Authorization": f"Bearer {token}"}
+
+@pytest_asyncio.fixture
+async def kcd_codes(db):
+    """테스트용 KCD 코드 픽스처."""
+    codes = [
+        KcdUCode(code="A001", korean_name="콜레라", effective_date=date(2000, 1, 1), expired_date=None),
+        KcdUCode(code="B001", korean_name="장티푸스", effective_date=date(2000, 1, 1), expired_date=None),
+        KcdUCode(code="Z999", korean_name="만료된코드", effective_date=date(2000, 1, 1), expired_date=date(2020, 12, 31)),
+    ]
+    db.add_all(codes)
+    await db.commit()
+    return codes
