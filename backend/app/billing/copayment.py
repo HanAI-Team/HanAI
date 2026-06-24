@@ -71,7 +71,7 @@ class BillingInput:
     support_fund: int = 0                          # 지원금
     treatment_days: Decimal = field(default_factory=lambda: Decimal("0"))
     graduated_fee_index: Decimal = field(default_factory=lambda: Decimal("0"))
-
+    chuna_total : int = 0
 
 @dataclass
 class BillingResult:
@@ -83,7 +83,7 @@ class BillingResult:
     copayment: int = 0              # 본인일부부담금
     claim_amount: int = 0           # 청구액
     upper_limit_excess: int = 0     # 본인부담 상한액 초과금 (별도 계산 필요)
-
+    chuna_copay: int = 0
     # 유형별 본인일부부담금 (해당하는 항목만 값, 나머지 0)
     health_outpatient_copay: int = 0        # 건강보험 외래
     health_inpatient_copay: int = 0         # 건강보험 입원
@@ -188,7 +188,10 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
         else:
             # 건강보험 일반
             if inp.visit_type == VisitType.OUTPATIENT:
-                copay = _ceil_won(Decimal(total1) * Decimal("0.30"))
+                normal_total = max(total1 - inp.chuna_total, 0)
+                normal_copay = _ceil_won(Decimal(normal_total) * Decimal("0.30"))
+                chuna_copay  = _ceil_won(Decimal(inp.chuna_total) * Decimal("0.50"))
+                copay = normal_copay + chuna_copay
                 result.health_outpatient_copay = copay
             else:
                 if _is_under_15(inp.birth_date, ref_date):
