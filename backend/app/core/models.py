@@ -126,6 +126,33 @@ class Claim(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     medical_records = relationship("MedicalRecord", back_populates="claim")
+    line_items = relationship("ClaimLineItem", back_populates="claim", cascade="all, delete-orphan")
+
+
+class ClaimLineItem(Base):
+    """차트 화면에서 항목 클릭 시 생성되는 청구 라인. EDI C2-71과 1:1 대응."""
+
+    __tablename__ = "claim_line_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=False)
+    medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id"), nullable=False)
+
+    hang = Column(String(2), nullable=False)
+    mok = Column(String(2), nullable=False)
+    code = Column(String(9), nullable=False)
+    name = Column(String(50), nullable=False)
+
+    unit_price = Column(Numeric(10, 2), nullable=False, default=0)
+    qty = Column(Numeric(5, 2), nullable=False, default=1)
+    days = Column(Integer, nullable=False, default=1)
+    amount = Column(Integer, nullable=False, default=0)
+
+    hyeolmyeong_names = Column(JSON, nullable=True)  # 침술일 때 경혈명 목록
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    claim = relationship("Claim", back_populates="line_items")
 
 
 class MedicalRecord(Base):

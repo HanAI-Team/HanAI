@@ -1,3 +1,6 @@
+import { apiCall } from "./client";
+import type { BillableItem, ClaimSummary, SelectedBillableItem } from "@/types/billing";
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function getHeaders() {
@@ -71,4 +74,38 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function statusLabel(status: string): string {
   return STATUS_LABEL[status] ?? status;
+}
+
+export async function getBillableCatalog(): Promise<BillableItem[]> {
+  return apiCall("/api/billing/catalog");
+}
+
+export async function submitLineItems(
+  medicalRecordId: string,
+  items: SelectedBillableItem[]
+): Promise<ClaimSummary> {
+  const raw = await apiCall(`/api/billing/medical-records/${medicalRecordId}/line-items`, {
+    method: "POST",
+    body: JSON.stringify({
+      medical_record_id: medicalRecordId,
+      items: items.map((i) => ({
+        item_id: i.itemId,
+        hyeolmyeong_names: i.hyeolmyeongNames,
+      })),
+    }),
+  });
+  return {
+    id: raw.id,
+    patientId: raw.patient_id,
+    billingMonth: raw.billing_month,
+    status: raw.status,
+    totalAmount: raw.total_amount,
+    lineItems: (raw.line_items ?? []).map((li: any) => ({
+      id: li.id,
+      name: li.name,
+      code: li.code,
+      amount: li.amount,
+      hyeolmyeongNames: li.hyeolmyeong_names ?? undefined,
+    })),
+  };
 }

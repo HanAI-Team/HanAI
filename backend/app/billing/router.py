@@ -8,11 +8,18 @@ from app.billing.copayment import (
     calculate_billing,
 )
 from app.billing.pediatric_dosage import get_max_allowed_ratio
+from decimal import Decimal
+
+from app.billing.catalog import BILLABLE_CATALOG, get_catalog_item
 from app.billing.schema import (
     INSURANCE_TYPE_CHOICES,
     MEDICAL_AID_GRADE_CHOICES,
+    AddLineItemsRequest,
+    BillableItemResponse,
     BillingCalcRequest,
     BillingCalcResponse,
+    ClaimLineItemResponse,
+    ClaimSummaryResponse,
     FeeItem,
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
@@ -21,8 +28,8 @@ from app.billing.schema import (
 from app.billing.service import create_claim, generate_claim_edi
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Claim, FeeMaster, Patient
-from fastapi import APIRouter, Depends, Query, Response
+from app.core.models import Claim, ClaimLineItem, FeeMaster, MedicalRecord, Patient
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -332,4 +339,107 @@ async def download_claim_edi(
         content=edi_bytes,
         media_type="application/octet-stream",
         headers={"Content-Disposition": f"attachment; filename=claim_{claim_id}.edi"},
+    )
+
+@router.get("/catalog", response_model=list[BillableItemResponse])
+async def get_billable_catalog(current_user=Depends(get_current_user)):
+    return [
+        BillableItemResponse(
+            id=item.id,
+            name=item.name,
+            sub=item.sub,
+            requiresHyeolmyeong=item.requires_hyeolmyeong,
+        )
+        for item in BILLABLE_CATALOG
+    ]
+
+
+@router.post("/medical-records/{record_id}/line-items", response_model=ClaimSummaryResponse)
+async def add_line_items(
+    record_id: UUID,
+    payload: AddLineItemsRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    record = await db.get(MedicalRecord, record_id)
+    if not record or record.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="진료기록을 찾을 수 없습니다.")
+
+    recorded = record.recorded_at or record.created_at
+    year, month = recorded.year, recorded.month
+
+    # 이번 달 draft Claim 찾거나 새로 생성
+    existing = await db.execute(
+        select(Claim).where(
+            Claim.patient_id == record.patient_id,
+            Claim.hospital_id == current_user.hospital_id,
+            Claim.claim_period_year == year,
+            Claim.claim_period_month == month,
+            Claim.status == "draft",
+        )
+    )
+    claim = existing.scalar_one_or_none()
+    if claim is None:
+        import uuid as _uuid
+        claim = Claim(
+            id=_uuid.uuid4(),
+            patient_id=record.patient_id,
+            doctor_id=current_user.id,
+            hospital_id=current_user.hospital_id,
+            claim_period_year=year,
+            claim_period_month=month,
+            total_amount=0,
+            patient_copay=0,
+            claim_amount=0,
+            status="draft",
+        )
+        db.add(claim)
+        await db.flush()
+
+    added_amount = 0
+    for line in payload.items:
+        catalog_item = get_catalog_item(line.item_id)
+        amount = int(Decimal(str(catalog_item.unit_price)))
+
+        line_item = ClaimLineItem(
+            claim_id=claim.id,
+            medical_record_id=record.id,
+            hang=catalog_item.hang,
+            mok=catalog_item.mok,
+            code=catalog_item.code,
+            name=catalog_item.name,
+            unit_price=catalog_item.unit_price,
+            qty=1,
+            days=1,
+            amount=amount,
+            hyeolmyeong_names=line.hyeolmyeong_names or None,
+        )
+        db.add(line_item)
+        added_amount += amount
+
+    claim.total_amount = (claim.total_amount or 0) + added_amount
+    await db.commit()
+    await db.refresh(claim)
+
+    items_result = await db.execute(
+        select(ClaimLineItem).where(ClaimLineItem.claim_id == claim.id)
+    )
+    all_items = items_result.scalars().all()
+
+    return ClaimSummaryResponse(
+        id=str(claim.id),
+        patient_id=str(claim.patient_id),
+        billing_month=f"{year}-{month:02d}",
+        status=claim.status,
+        total_amount=claim.total_amount,
+        line_items=[
+            ClaimLineItemResponse(
+                id=str(i.id),
+                name=i.name,
+                code=i.code,
+                amount=i.amount,
+                hyeolmyeong_names=i.hyeolmyeong_names,
+            )
+            for i in all_items
+        ],
     )
