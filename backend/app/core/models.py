@@ -273,8 +273,8 @@ class KcdUCode(Base):
     category = Column(String(100))
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)
-
-
+    sex_restriction = Column(String(1), nullable=True)  # M=남성, F=여성, None=제한없음
+    is_notifiable = Column(Boolean, default=False)       # 법정감염병 여부
 class FeeMaster(Base):
     """한방 행위코드 수가 마스터 (HIRA 요양급여비용 목록표 기준)."""
 
