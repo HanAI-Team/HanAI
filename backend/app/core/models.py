@@ -34,7 +34,7 @@ class Hospital(Base):
     patients = relationship("Patient", back_populates="hospital")
     medical_records = relationship("MedicalRecord", back_populates="hospital")
     subscription = relationship("Subscription", back_populates="hospital", uselist=False)
-
+    
 
 class Doctor(Base):
     __tablename__ = "doctors"
@@ -98,11 +98,12 @@ class Patient(Base):
     phone = Column(String)
     memo = Column(Text)
     insurance_type = Column(String, default="health")
-    rrn = Column(EncryptedString(100), nullable=True)  # 주민등록번호 (AES-256-GCM 암호화)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     hospital = relationship("Hospital", back_populates="patients")
     medical_records = relationship("MedicalRecord", back_populates="patient")
+    rrn = Column(EncryptedString(500), nullable=True)
 
 
 class Claim(Base):

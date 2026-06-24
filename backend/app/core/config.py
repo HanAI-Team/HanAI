@@ -1,4 +1,5 @@
 from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
     ADMIN_API_KEY: str = ""
     SENTRY_DSN: str = ""
     DISCORD_WEBHOOK_URL: Optional[str] = None
+    RRN_ENCRYPTION_KEY:str = ""
 
 
 settings = Settings()
