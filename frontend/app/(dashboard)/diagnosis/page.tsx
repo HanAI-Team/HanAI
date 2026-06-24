@@ -22,6 +22,7 @@ import {
 import { searchKcd, KcdSearchResult } from "@/lib/api/kcd";
 import { Patient, DiagnosisResult } from "@/types";
 import BetaFeedbackBanner from "@/components/BetaFeedbackBanner";
+import { BillableItemPicker } from "@/components/billing/BillableItemPicker";
 import {
   Search,
   Mic,
@@ -68,7 +69,7 @@ export default function DiagnosisPage() {
   const [page, setPage] = useState(1);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "record" | "result" | "history" | "ask"
+    "record" | "result" | "history" | "ask" | "billing"
   >("record");
   const [isRecording, setIsRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -1321,7 +1322,7 @@ ${historyLine}
           )}
         </div>
         <div className="flex border-b border-border bg-card flex-shrink-0">
-          {(["record", "result", "history", "ask"] as const).map((tab, i) => (
+          {(["record", "result", "history", "ask", "billing"] as const).map((tab, i) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1331,7 +1332,7 @@ ${historyLine}
                   : "text-subtext border-transparent hover:text-text"
               }`}
             >
-              {["진료 기록", "진단 결과", "진료 이력", "한의학 검색"][i]}
+              {["진료 기록", "진단 결과", "진료 이력", "한의학 검색", "청구"][i]}
             </button>
           ))}
         </div>
@@ -1339,10 +1340,21 @@ ${historyLine}
         <div
           className={`flex-1 p-5 ${activeTab === "ask" ? "overflow-hidden flex flex-col" : "overflow-y-auto"}`}
         >
-          {!selectedPatient && activeTab !== "ask" && (
+          {!selectedPatient && activeTab !== "ask" && activeTab !== "billing" && (
             <div className="text-sm text-muted text-center py-16">
               왼쪽에서 환자를 선택해주세요
             </div>
+          )}
+
+          {/* 청구 탭 */}
+          {activeTab === "billing" && (
+            currentRecordId ? (
+              <BillableItemPicker medicalRecordId={currentRecordId} />
+            ) : (
+              <div className="text-sm text-muted text-center py-16">
+                먼저 진료 기록을 저장해주세요
+              </div>
+            )
           )}
 
           {/* 진료 녹음 탭 */}
