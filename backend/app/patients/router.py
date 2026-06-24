@@ -291,6 +291,22 @@ async def update_patient(
     return patient
 
 
+@router.patch("/{patient_id}", response_model=PatientResponse)
+async def patch_patient(
+    patient_id: UUID,
+    data: PatientUpdate,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
+):
+    patient = await service.update_patient(db, doctor, patient_id, data)
+
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="등록되지 않은 회원입니다."
+        )
+    return patient
+
+
 @router.post("/{patient_id}/records", status_code=201)
 async def create_record(
     patient_id: UUID,
