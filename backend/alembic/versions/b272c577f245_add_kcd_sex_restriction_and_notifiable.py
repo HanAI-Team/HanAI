@@ -1,7 +1,7 @@
 """add_kcd_sex_restriction_and_notifiable
 
 Revision ID: b272c577f245
-Revises: c6d1280e4caa
+Revises: c2d3e4f5a6b7
 Create Date: 2026-06-24 10:16:12.543617
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'b272c577f245'
-down_revision: Union[str, None] = 'c6d1280e4caa'
+down_revision: Union[str, None] = 'c2d3e4f5a6b7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

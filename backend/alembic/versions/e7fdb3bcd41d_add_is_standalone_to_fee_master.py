@@ -1,7 +1,7 @@
 """add_is_standalone_to_fee_master
 
 Revision ID: e7fdb3bcd41d
-Revises: 74f41eb1009d
+Revises: b272c577f245
 Create Date: 2026-06-24 11:07:10.150455
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'e7fdb3bcd41d'
-down_revision: Union[str, None] = '74f41eb1009d'
+down_revision: Union[str, None] = 'b272c577f245'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
