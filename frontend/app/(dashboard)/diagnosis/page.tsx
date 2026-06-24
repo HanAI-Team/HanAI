@@ -16,8 +16,10 @@ import {
   askDiagnosisStream,
   diagnoseText,
   finalizeRecord,
+  updateKcdCode,
   ChartingEvent,
 } from "@/lib/api/diagnosis";
+import { searchKcd, KcdSearchResult } from "@/lib/api/kcd";
 import { Patient, DiagnosisResult } from "@/types";
 import BetaFeedbackBanner from "@/components/BetaFeedbackBanner";
 import {
@@ -83,6 +85,7 @@ export default function DiagnosisPage() {
     birth_date: "",
     gender: "",
     phone: "",
+    rrn: "",
   });
   const [addLoading, setAddLoading] = useState(false);
   const [askQuestion, setAskQuestion] = useState("");
@@ -101,6 +104,10 @@ export default function DiagnosisPage() {
   );
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null);
   const [chiefComplaint, setChiefComplaint] = useState("");
+  const [kcdQuery, setKcdQuery] = useState("");
+  const [kcdResults, setKcdResults] = useState<KcdSearchResult[]>([]);
+  const [kcdCode, setKcdCode] = useState<KcdSearchResult | null>(null);
+  const [kcdDropdownOpen, setKcdDropdownOpen] = useState(false);
   const [saveSelection, setSaveSelection] = useState<
     "both" | "result1" | "result2"
   >("both");
@@ -140,7 +147,7 @@ export default function DiagnosisPage() {
   const [showSavedModal, setShowSavedModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editPatient, setEditPatient] = useState<Patient | null>(null);
-  const [editForm, setEditForm] = useState({ phone: "", memo: "" });
+  const [editForm, setEditForm] = useState({ phone: "", memo: "", rrn: "" });
   const [editLoading, setEditLoading] = useState(false);
   const [feedbackAvailable, setFeedbackAvailable] = useState(false);
   const [feedbackHelpful, setFeedbackHelpful] = useState<boolean | null>(null);
@@ -229,6 +236,26 @@ export default function DiagnosisPage() {
       })
       .catch(console.error);
   }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    setKcdQuery("");
+    setKcdResults([]);
+    setKcdCode(null);
+    setKcdDropdownOpen(false);
+  }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (!kcdQuery.trim()) {
+      setKcdResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      searchKcd(kcdQuery)
+        .then(setKcdResults)
+        .catch(() => setKcdResults([]));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [kcdQuery]);
 
   useEffect(() => {
     if (activeTab !== "history" || !selectedPatient) return;
@@ -529,12 +556,16 @@ ${r.acupuncture?.join(", ")}`;
     e.preventDefault();
     setAddLoading(true);
     try {
-      await createPatient(newPatient);
+      const { rrn, ...basicFields } = newPatient;
+      const created = await createPatient(basicFields);
+      if (rrn.trim()) {
+        await updatePatient(created.id, { rrn: rrn.trim() });
+      }
       setPatientsLoading(true);
       const updated = await getPatients();
       setPatients(updated);
       setShowAddModal(false);
-      setNewPatient({ name: "", birth_date: "", gender: "", phone: "" });
+      setNewPatient({ name: "", birth_date: "", gender: "", phone: "", rrn: "" });
     } catch (e: any) {
       setErrorMessage(
         e.response?.data?.detail || e.message || "환자 등록에 실패했습니다.",
@@ -683,9 +714,10 @@ ${blocks.join("\n\n")}
     if (!editPatient) return;
     setEditLoading(true);
     try {
-      await updatePatient(editPatient.id, editForm);
+      const { rrn, ...rest } = editForm;
+      await updatePatient(editPatient.id, rrn.trim() ? { ...rest, rrn: rrn.trim() } : rest);
       setPatients((prev) =>
-        prev.map((p) => (p.id === editPatient.id ? { ...p, ...editForm } : p)),
+        prev.map((p) => (p.id === editPatient.id ? { ...p, ...rest } : p)),
       );
       setEditPatient(null);
     } catch {
@@ -807,6 +839,11 @@ ${historyLine}
               : null,
             saveSelection,
           );
+      if (kcdCode && response?.id) {
+        await updateKcdCode(response.id, kcdCode.code).catch(() => {
+          setErrorMessage("상병코드 저장에 실패했습니다.");
+        });
+      }
       setSavedSymptomText(undefined);
       setFeedbackRecordId(response?.id ?? null);
       setFeedbackHelpful(null);
@@ -915,6 +952,12 @@ ${historyLine}
     if (digits.length <= 3) return digits;
     if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
     return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+
+  function formatRrn(value: string): string {
+    const digits = value.replace(/\D/g, "").slice(0, 13);
+    if (digits.length <= 6) return digits;
+    return `${digits.slice(0, 6)}-${digits.slice(6)}`;
   }
 
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -1134,6 +1177,7 @@ ${historyLine}
                     setEditForm({
                       phone: patient.phone || "",
                       memo: patient.memo || "",
+                      rrn: "",
                     });
                   }}
                   className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-border transition-all flex-shrink-0"
@@ -1540,6 +1584,72 @@ ${historyLine}
               ) : (
                 <>
                   <BetaFeedbackBanner />
+                  <div className="mb-3 bg-card border border-border rounded-lg p-4">
+                    <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
+                      <Search className="w-3.5 h-3.5" /> 상병코드 (KCD)
+                    </div>
+                    {kcdCode ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm text-text">
+                          <span className="font-medium text-[#EF6600]">
+                            {kcdCode.code}
+                          </span>{" "}
+                          {kcdCode.korean_name}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setKcdCode(null);
+                            setKcdQuery("");
+                          }}
+                          className="text-subtext hover:text-text transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          value={kcdQuery}
+                          onChange={(e) => {
+                            setKcdQuery(e.target.value);
+                            setKcdDropdownOpen(true);
+                          }}
+                          onFocus={() => setKcdDropdownOpen(true)}
+                          onBlur={() =>
+                            setTimeout(() => setKcdDropdownOpen(false), 150)
+                          }
+                          placeholder="코드 또는 진단명 검색 (예: U234, 두통)"
+                          className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                        />
+                        {kcdDropdownOpen && kcdResults.length > 0 && (
+                          <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto z-10">
+                            {kcdResults.map((item) => (
+                              <button
+                                key={item.code}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setKcdCode(item);
+                                  setKcdQuery("");
+                                  setKcdResults([]);
+                                  setKcdDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors border-b border-border last:border-b-0"
+                              >
+                                <span className="font-medium text-[#EF6600]">
+                                  {item.code}
+                                </span>{" "}
+                                <span className="text-text">
+                                  {item.korean_name}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {(result.chiefComplaintSummary || chiefComplaint) && (
                     <div className="mb-3 bg-card border border-border rounded-lg p-4">
                       <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
@@ -2453,6 +2563,12 @@ ${historyLine}
                   type: "tel",
                   placeholder: "010-0000-0000",
                 },
+                {
+                  label: "주민번호",
+                  key: "rrn",
+                  type: "text",
+                  placeholder: "000000-0000000",
+                },
               ].map((field) => (
                 <div key={field.key}>
                   <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
@@ -2468,7 +2584,9 @@ ${historyLine}
                         [field.key]:
                           field.key === "phone"
                             ? formatPhone(e.target.value)
-                            : e.target.value,
+                            : field.key === "rrn"
+                              ? formatRrn(e.target.value)
+                              : e.target.value,
                       })
                     }
                     className="w-full bg-bg border border-border rounded-md px-4 py-2.5 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
@@ -2568,6 +2686,26 @@ ${historyLine}
                   placeholder="010-0000-0000"
                   className="w-full border border-border-strong rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
                 />
+              </div>
+              <div>
+                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
+                  주민번호
+                </label>
+                <input
+                  type="text"
+                  value={editForm.rrn}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      rrn: formatRrn(e.target.value),
+                    }))
+                  }
+                  placeholder="000000-0000000"
+                  className="w-full border border-border-strong rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
+                />
+                <p className="text-[11px] text-muted mt-1">
+                  비워두면 기존 값이 유지됩니다.
+                </p>
               </div>
               <div>
                 <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
