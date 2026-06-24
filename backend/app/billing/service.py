@@ -1,7 +1,9 @@
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
+from app.billing.copayment import BillingInput, InsuranceType, VisitType, calculate_billing
 from app.billing.edi_writer import (
     ClaimHeader,
     DiagnosisRecord,
@@ -24,6 +26,88 @@ from app.core.models import (
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Patient.insurance_type 문자열 → InsuranceType 매핑
+_INSURANCE_MAP = {
+    "health": InsuranceType.HEALTH,
+    "medical_aid": InsuranceType.MEDICAL_AID,
+    "veterans": InsuranceType.VETERANS,
+    "4": InsuranceType.HEALTH,
+    "5": InsuranceType.MEDICAL_AID,
+    "7": InsuranceType.VETERANS,
+}
+
+
+async def create_claim(
+    db: AsyncSession,
+    hospital_id: UUID,
+    doctor_id: UUID,
+    patient_id: UUID,
+    medical_record_ids: list[UUID],
+    claim_period_year: int,
+    claim_period_month: int,
+    visit_type: str = "outpatient",
+) -> Claim:
+    # 환자 조회 및 권한 확인
+    r_patient = await db.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.hospital_id == hospital_id)
+    )
+    patient = r_patient.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(status_code=404, detail="환자를 찾을 수 없습니다.")
+
+    # 진료기록 조회
+    r_records = await db.execute(
+        select(MedicalRecord).where(
+            MedicalRecord.id.in_(medical_record_ids),
+            MedicalRecord.hospital_id == hospital_id,
+            MedicalRecord.patient_id == patient_id,
+        )
+    )
+    records = r_records.scalars().all()
+    if not records:
+        raise HTTPException(status_code=404, detail="진료기록을 찾을 수 없습니다.")
+
+    # 시술 금액 합산
+    r_procs = await db.execute(
+        select(MedicalRecordProcedure).where(
+            MedicalRecordProcedure.medical_record_id.in_([r.id for r in records])
+        )
+    )
+    procedures = r_procs.scalars().all()
+    benefit_total = sum(p.amount or 0 for p in procedures)
+
+    # 본인부담금 계산
+    insurance_type = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
+    billing_result = calculate_billing(BillingInput(
+        insurance_type=insurance_type,
+        visit_type=VisitType(visit_type),
+        benefit_total=benefit_total,
+        treatment_days=Decimal(len(records)),
+    ))
+
+    # Claim 생성
+    claim = Claim(
+        id=uuid.uuid4(),
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        hospital_id=hospital_id,
+        claim_period_year=claim_period_year,
+        claim_period_month=claim_period_month,
+        total_amount=billing_result.benefit_total_1,
+        patient_copay=billing_result.copayment,
+        claim_amount=billing_result.claim_amount,
+        status="draft",
+    )
+    db.add(claim)
+
+    # 진료기록에 claim_id 연결
+    for record in records:
+        record.claim_id = claim.id
+
+    await db.commit()
+    await db.refresh(claim)
+    return claim
 
 
 async def generate_claim_edi(
