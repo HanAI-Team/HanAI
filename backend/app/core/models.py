@@ -292,3 +292,4 @@ class FeeMaster(Base):
     is_insured = Column(Boolean, default=True, nullable=False)            # 급여 여부
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)
+    is_standalone = Column(Boolean, default=False, nullable=False, server_default="false")
