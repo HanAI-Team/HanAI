@@ -21,12 +21,87 @@ from app.billing.schema import (
 from app.billing.service import generate_claim_edi
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import FeeMaster
-from fastapi import APIRouter, Depends, Response
+from app.core.models import Claim, FeeMaster, Patient
+from fastapi import APIRouter, Depends, Query, Response
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["billing"])
+
+
+class ClaimListItem(BaseModel):
+    id: str
+    patient_name: str
+    claim_period: str
+    status: str
+    total_amount: int
+    patient_copay: int
+    claim_amount: int
+    created_at: str
+
+
+class BulkEdiRequest(BaseModel):
+    ids: list[str]
+
+
+@router.get("/claims", response_model=list[ClaimListItem])
+async def list_claims(
+    month: str | None = Query(None, description="YYYY-MM 형식, 예: 2026-06"),
+    status: str | None = Query(None, description="draft / submitted / approved / rejected"),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(Claim, Patient)
+        .join(Patient, Claim.patient_id == Patient.id)
+        .where(Claim.hospital_id == current_user.hospital_id)
+    )
+    if month:
+        year, mon = int(month[:4]), int(month[5:7])
+        stmt = stmt.where(Claim.claim_period_year == year, Claim.claim_period_month == mon)
+    if status:
+        stmt = stmt.where(Claim.status == status)
+    stmt = stmt.order_by(Claim.created_at.desc())
+
+    rows = await db.execute(stmt)
+    results = rows.all()
+    return [
+        ClaimListItem(
+            id=str(claim.id),
+            patient_name=patient.name,
+            claim_period=f"{claim.claim_period_year}-{claim.claim_period_month:02d}",
+            status=claim.status,
+            total_amount=claim.total_amount,
+            patient_copay=claim.patient_copay,
+            claim_amount=claim.claim_amount,
+            created_at=claim.created_at.strftime("%Y-%m-%d") if claim.created_at else "",
+        )
+        for claim, patient in results
+    ]
+
+
+@router.post("/claims/bulk-edi")
+async def bulk_download_edi(
+    body: BulkEdiRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for claim_id_str in body.ids:
+            edi_bytes = await generate_claim_edi(db, current_user.hospital_id, UUID(claim_id_str))
+            zf.writestr(f"claim_{claim_id_str}.edi", edi_bytes)
+    buf.seek(0)
+
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=claims_edi.zip"},
+    )
 
 # 심평원 기준 상수 (성인 기준)
 _GAMI_MAX_TYPES = 5       # 가미제 추가 약재 최대 종수
