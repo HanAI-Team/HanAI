@@ -158,3 +158,49 @@ class BillingCalcResponse(BaseModel):
     treatment_days: Decimal
     graduated_claim: int
     graduated_index: Decimal
+
+
+# ---------- 카탈로그 조회 응답 ----------
+
+class BillableItemResponse(BaseModel):
+    id: str
+    name: str
+    sub: str
+    requiresHyeolmyeong: bool
+
+
+# ---------- 라인아이템 추가 요청 ----------
+
+class LineItemInput(BaseModel):
+    item_id: str
+    hyeolmyeong_names: list[str] = Field(default_factory=list)
+
+
+class AddLineItemsRequest(BaseModel):
+    medical_record_id: str
+    items: list[LineItemInput] = Field(..., min_length=1)
+
+
+# ---------- 응답 ----------
+
+class ClaimLineItemResponse(BaseModel):
+    id: str
+    name: str
+    code: str
+    amount: int
+    hyeolmyeong_names: list[str] | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ClaimSummaryResponse(BaseModel):
+    id: str
+    patient_id: str
+    billing_month: str
+    status: str
+    total_amount: int
+    line_items: list[ClaimLineItemResponse]
+
+    class Config:
+        from_attributes = True

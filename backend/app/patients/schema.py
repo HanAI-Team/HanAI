@@ -21,8 +21,13 @@ class PatientCreate(BaseModel):
 
 
 class PatientUpdate(BaseModel):
+    name: Optional[str] = None
+    birth_date: Optional[date] = None
+    gender: Optional[str] = None
     phone: Optional[str] = None
     memo: Optional[str] = None
+    insurance_type: Optional[str] = None
+    rrn: Optional[str] = None
 
 
 class PatientResponse(BaseModel):

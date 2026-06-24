@@ -12,6 +12,7 @@ from app.charting.schema import (
     ProcedureCreateRequest,
     ProcedureResponse,
     UpdateAudioUrlRequest,
+    UpdateKcdCodeRequest,
     UpdateMedicalHistoryRequest,
     UpdateStatusRequest,
 )
@@ -112,6 +113,16 @@ async def update_medical_history(
     return await service.update_medical_history(
         db, current_doctor, record_id, data.medical_history
     )
+
+
+@router.patch("/{record_id}/kcd-code", response_model=MedicalRecordResponse)
+async def update_kcd_code(
+    record_id: uuid.UUID,
+    data: UpdateKcdCodeRequest,
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.update_kcd_code(db, current_doctor, record_id, data.kcd_code)
 
 
 @router.patch("/{record_id}/finalize", response_model=MedicalRecordResponse)
