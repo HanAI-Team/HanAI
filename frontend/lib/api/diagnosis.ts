@@ -67,6 +67,13 @@ export async function finalizeRecord(
   })
 }
 
+export async function updateKcdCode(recordId: string, kcdCode: string | null) {
+  return apiCall(`/api/charting/${recordId}/kcd-code`, {
+    method: 'PATCH',
+    body: JSON.stringify({ kcd_code: kcdCode }),
+  })
+}
+
 export async function askDiagnosis(question: string): Promise<{ answer: string }> {
   return apiCall('/api/diagnosis/ask', {
     method: 'POST',

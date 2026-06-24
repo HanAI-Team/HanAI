@@ -7,7 +7,7 @@ LAY 파일 C2-00, C2-11, C2-02, C2-71, C2-08, C2-09 레이아웃 적용.
   '0': 요양급여비용 심사청구서   (C2-00, 345 bytes)
   '1': 명세서일반내역            (C2-11, 347 bytes)
   '2': 명세서상병내역            (C2-02,  91 bytes)
-  '3': 명세서진료내역            (C2-71, 한방 전용)
+  '3': 명세서진료내역(의치과및한방) (C2-13)
   '8': 명세서특정내역            (C2-08, 747 bytes)
   '9': 마지막 정보파일(EOF)      (C2-09,  20 bytes)
 """
@@ -429,7 +429,7 @@ def build_special_record(s: SpecialRecord) -> str:
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# C2-71: 명세서진료내역 (의치과·한방 전용, 232 bytes)
+# C2-13: 명세서진료내역(의치과및한방) (291 bytes)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -445,14 +445,18 @@ class ProcedureDetail:
     amount: int         # 금액 9(10)
     license_type: str   # 면허종류 X(1) (3=한의사 6=간호사 7=사회복지사)
     license_no: str     # 면허번호 (X(100) 공간에 실 번호만 기록, 나머지 공백)
-    change_date: str = ""  # 변경일 X(8) (미입력 시 공백)
+    change_date: str = ""              # 변경일 X(8) (미입력 시 공백)
+    prescription_days: int = 0         # 처방일수 9(3)
+    copay_rate_code: str = "D"         # 본인부담률구분코드 X(2)
+    prescription_issue_date: str = ""  # 처방전발급일자 9(8) (미입력 시 0)
+    prescription_serial: int = 0       # 처방전일련번호 9(5)
+    adjustment_type: str = ""          # 가감등구분 X(10)
 
 
 def build_procedure_record(p: ProcedureDetail) -> str:
-    """C2-71 명세서진료내역 레코드 생성 (data 230 bytes + CRLF = Max 232).
+    """C2-13 명세서진료내역(의치과및한방) 레코드 생성 (data 291 bytes + CRLF = Max 293).
 
-    의치과·한방 전용 (수록사양 U1). C2-72 레이아웃 기반으로 구성하며,
-    코드 영역 X(9)를 코드구분 X(1) + 코드 X(8)로 분할 사용.
+    의치과·한방 전용 (수록사양 U1). 코드 영역 X(9)를 코드구분 X(1) + 코드 X(8)로 분할 사용.
 
     레이아웃:
       1-  17: KEY
@@ -468,35 +472,49 @@ def build_procedure_record(p: ProcedureDetail) -> str:
      65-  67: 총투여일수/실시횟수 9(3)
      68-  77: 금액 9(10)
      78-  85: 변경일 X(8)
-     86- 100: 공란 X(15)
-    101- 110: 공란 X(10)
-    111- 120: 공란 X(10)
-    121- 129: 공란 X(9)
-    130      : 면허종류 A X(1)
-    131- 230: 면허번호 X(100)
+     86-  98: 공란 X(13)
+     99- 101: 처방일수 9(3)
+    102- 103: 본인부담률구분코드 X(2)
+    104- 111: 처방전발급일자 9(8)
+    112- 116: 처방전일련번호 9(5)
+    117- 148: 치식사항 4×X(8)=32 (한방은 공란)
+    149- 158: 가감등구분 X(10)
+    159- 168: 공란 X(10)
+    169- 178: 공란 X(10)
+    179- 187: 공란 X(9)
+    188      : 면허종류 X(1)
+    189- 288: 면허번호 X(100)
+    289- 291: 공란 X(3)
     """
     parts = [
-        *_key_parts(p.key),                         # 1-17
-        _fmtx("", 4),                               # 18-21  공란
-        _fmtx(p.hang, 2),                           # 22-23  항번호
-        _fmtx(p.mok, 2),                            # 24-25  목번호
-        _fmtx(p.code_gubun, 1),                     # 26     코드구분
-        _fmtx(p.code, 8),                           # 27-34  코드
-        _fmtx("", 6),                               # 35-40  공란
-        _fmt9v9(p.unit_price, 9, 1),                # 41-50  단가
-        _fmt9v9(p.qty, 4, 4),                       # 51-58  1회투약량
-        _fmt9v9(p.qty, 4, 2),                       # 59-64  일투 (qty 재사용)
-        _fmt9(p.days, 3),                           # 65-67  총투여일수
-        _fmt9(p.amount, 10),                        # 68-77  금액
-        _fmtx(p.change_date, 8),                    # 78-85  변경일
-        _fmtx("", 15),                              # 86-100 공란
-        _fmtx("", 10),                              # 101-110 공란
-        _fmtx("", 10),                              # 111-120 공란
-        _fmtx("", 9),                               # 121-129 공란
-        _fmtx(p.license_type, 1),                   # 130    면허종류
-        _fmtx(p.license_no, 100),                   # 131-230 면허번호
+        *_key_parts(p.key),                                                   # 1-17
+        _fmtx("", 4),                                                         # 18-21  공란
+        _fmtx(p.hang, 2),                                                     # 22-23  항번호
+        _fmtx(p.mok, 2),                                                      # 24-25  목번호
+        _fmtx(p.code_gubun, 1),                                               # 26     코드구분
+        _fmtx(p.code, 8),                                                     # 27-34  코드
+        _fmtx("", 6),                                                         # 35-40  공란
+        _fmt9v9(p.unit_price, 9, 1),                                          # 41-50  단가
+        _fmt9v9(p.qty, 4, 4),                                                 # 51-58  1회투약량
+        _fmt9v9(p.qty, 4, 2),                                                 # 59-64  일투 (qty 재사용)
+        _fmt9(p.days, 3),                                                     # 65-67  총투여일수
+        _fmt9(p.amount, 10),                                                  # 68-77  금액
+        _fmtx(p.change_date, 8),                                              # 78-85  변경일
+        _fmtx("", 13),                                                        # 86-98  공란
+        _fmt9(p.prescription_days, 3),                                        # 99-101 처방일수
+        _fmtx(p.copay_rate_code, 2),                                          # 102-103 본인부담률구분코드
+        _fmt9(int(p.prescription_issue_date) if p.prescription_issue_date else 0, 8),  # 104-111 처방전발급일자
+        _fmt9(p.prescription_serial, 5),                                      # 112-116 처방전일련번호
+        _fmtx("", 32),                                                        # 117-148 치식사항 (한방은 공란)
+        _fmtx(p.adjustment_type, 10),                                         # 149-158 가감등구분
+        _fmtx("", 10),                                                        # 159-168 공란
+        _fmtx("", 10),                                                        # 169-178 공란
+        _fmtx("", 9),                                                         # 179-187 공란
+        _fmtx(p.license_type, 1),                                             # 188    면허종류
+        _fmtx(p.license_no, 100),                                             # 189-288 면허번호
+        _fmtx("", 3),                                                         # 289-291 공란
     ]
-    return _build(parts, 230)
+    return _build(parts, 291)
 
 
 def build_eof_record(key: RecordKey) -> str:

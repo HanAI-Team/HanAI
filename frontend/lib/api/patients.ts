@@ -93,10 +93,18 @@ export async function importPatientsFromCsv(file: File) {
 
 export async function updatePatient(
   id: string,
-  data: { phone?: string; memo?: string },
+  data: {
+    name?: string;
+    birth_date?: string;
+    gender?: string;
+    phone?: string;
+    memo?: string;
+    insurance_type?: string;
+    rrn?: string;
+  },
 ) {
   const res = await fetch(`${BASE_URL}/api/patients/${id}`, {
-    method: "PUT",
+    method: "PATCH",
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
