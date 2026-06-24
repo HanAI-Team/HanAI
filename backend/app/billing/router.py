@@ -18,7 +18,7 @@ from app.billing.schema import (
     PrescriptionCheckResponse,
     ViolationItem,
 )
-from app.billing.service import generate_claim_edi
+from app.billing.service import create_claim, generate_claim_edi
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import Claim, FeeMaster, Patient
@@ -41,8 +41,50 @@ class ClaimListItem(BaseModel):
     created_at: str
 
 
+class ClaimCreateRequest(BaseModel):
+    patient_id: str
+    medical_record_ids: list[str]
+    claim_period_year: int
+    claim_period_month: int
+    visit_type: str = "outpatient"
+
+
+class ClaimCreateResponse(BaseModel):
+    id: str
+    status: str
+    total_amount: int
+    patient_copay: int
+    claim_amount: int
+
+
 class BulkEdiRequest(BaseModel):
     ids: list[str]
+
+
+@router.post("/claims", response_model=ClaimCreateResponse, status_code=201)
+async def create_new_claim(
+    body: ClaimCreateRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from uuid import UUID as _UUID
+    claim = await create_claim(
+        db=db,
+        hospital_id=current_user.hospital_id,
+        doctor_id=current_user.id,
+        patient_id=_UUID(body.patient_id),
+        medical_record_ids=[_UUID(rid) for rid in body.medical_record_ids],
+        claim_period_year=body.claim_period_year,
+        claim_period_month=body.claim_period_month,
+        visit_type=body.visit_type,
+    )
+    return ClaimCreateResponse(
+        id=str(claim.id),
+        status=claim.status,
+        total_amount=claim.total_amount,
+        patient_copay=claim.patient_copay,
+        claim_amount=claim.claim_amount,
+    )
 
 
 @router.get("/claims", response_model=list[ClaimListItem])
