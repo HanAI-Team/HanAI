@@ -53,14 +53,53 @@ async def add_procedure(
                             detail=f"{point_code}는 {conflicts}와 동시 시술 불가합니다."
                         )
 
-    unit_price = None
+    # unit_price = None
+    # if data.fee_master_code:
+    #     fm_result = await db.execute(
+    #         select(FeeMaster).where(FeeMaster.code == data.fee_master_code)
+    #     )
+    #     fm = fm_result.scalar_one_or_none()
+    #     if fm:
+    #         unit_price = fm.unit_price
+    # is_standalone 체크 (분구침술 동시 청구 방지)
     if data.fee_master_code:
         fm_result = await db.execute(
             select(FeeMaster).where(FeeMaster.code == data.fee_master_code)
         )
         fm = fm_result.scalar_one_or_none()
+
         if fm:
-            unit_price = fm.unit_price
+            # 오늘 같은 진료기록에 이미 추가된 시술 목록 조회
+            existing_result = await db.execute(
+                select(MedicalRecordProcedure).where(
+                    MedicalRecordProcedure.medical_record_id == record_id
+                )
+            )
+            existing_procedures = existing_result.scalars().all()
+
+            if fm.is_standalone:
+                # 케이스 1: 추가하려는 게 분구침술 → 이미 다른 침술 있으면 차단
+                if existing_procedures:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="분구침술은 다른 침술과 동시 청구할 수 없습니다."
+                    )
+            else:
+                # 케이스 2: 추가하려는 게 일반침술 → 이미 분구침술 있으면 차단
+                existing_codes = [p.fee_master_code for p in existing_procedures if p.fee_master_code]
+                if existing_codes:
+                    fm_existing_result = await db.execute(
+                                select(FeeMaster).where(
+                FeeMaster.code.in_(existing_codes),
+                FeeMaster.is_standalone,
+            ))
+                    standalone_existing = fm_existing_result.scalars().all()
+                    if standalone_existing:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="분구침술이 이미 있어 다른 침술을 추가할 수 없습니다."
+                        )
+    unit_price = fm.unit_price if data.fee_master_code and fm else None
 
     procedure = MedicalRecordProcedure(
         medical_record_id=record_id,
