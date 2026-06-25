@@ -8,25 +8,149 @@ from app.billing.copayment import (
     calculate_billing,
 )
 from app.billing.pediatric_dosage import get_max_allowed_ratio
+from decimal import Decimal
+
+from app.billing.catalog import BILLABLE_CATALOG, get_catalog_item
 from app.billing.schema import (
     INSURANCE_TYPE_CHOICES,
     MEDICAL_AID_GRADE_CHOICES,
+    AddLineItemsRequest,
+    BillableItemResponse,
     BillingCalcRequest,
     BillingCalcResponse,
+    ClaimLineItemResponse,
+    ClaimSummaryResponse,
     FeeItem,
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
     ViolationItem,
 )
-from app.billing.service import generate_claim_edi
+from app.billing.service import create_claim, generate_claim_edi
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import FeeMaster
-from fastapi import APIRouter, Depends, Response
+from app.core.models import Claim, ClaimLineItem, FeeMaster, MedicalRecord, Patient
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["billing"])
+
+
+class ClaimListItem(BaseModel):
+    id: str
+    patient_name: str
+    claim_period: str
+    status: str
+    total_amount: int
+    patient_copay: int
+    claim_amount: int
+    created_at: str
+
+
+class ClaimCreateRequest(BaseModel):
+    patient_id: str
+    medical_record_ids: list[str]
+    claim_period_year: int
+    claim_period_month: int
+    visit_type: str = "outpatient"
+
+
+class ClaimCreateResponse(BaseModel):
+    id: str
+    status: str
+    total_amount: int
+    patient_copay: int
+    claim_amount: int
+
+
+class BulkEdiRequest(BaseModel):
+    ids: list[str]
+
+
+@router.post("/claims", response_model=ClaimCreateResponse, status_code=201)
+async def create_new_claim(
+    body: ClaimCreateRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from uuid import UUID as _UUID
+    claim = await create_claim(
+        db=db,
+        hospital_id=current_user.hospital_id,
+        doctor_id=current_user.id,
+        patient_id=_UUID(body.patient_id),
+        medical_record_ids=[_UUID(rid) for rid in body.medical_record_ids],
+        claim_period_year=body.claim_period_year,
+        claim_period_month=body.claim_period_month,
+        visit_type=body.visit_type,
+    )
+    return ClaimCreateResponse(
+        id=str(claim.id),
+        status=claim.status,
+        total_amount=claim.total_amount,
+        patient_copay=claim.patient_copay,
+        claim_amount=claim.claim_amount,
+    )
+
+
+@router.get("/claims", response_model=list[ClaimListItem])
+async def list_claims(
+    month: str | None = Query(None, description="YYYY-MM 형식, 예: 2026-06"),
+    status: str | None = Query(None, description="draft / submitted / approved / rejected"),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(Claim, Patient)
+        .join(Patient, Claim.patient_id == Patient.id)
+        .where(Claim.hospital_id == current_user.hospital_id)
+    )
+    if month:
+        year, mon = int(month[:4]), int(month[5:7])
+        stmt = stmt.where(Claim.claim_period_year == year, Claim.claim_period_month == mon)
+    if status:
+        stmt = stmt.where(Claim.status == status)
+    stmt = stmt.order_by(Claim.created_at.desc())
+
+    rows = await db.execute(stmt)
+    results = rows.all()
+    return [
+        ClaimListItem(
+            id=str(claim.id),
+            patient_name=patient.name,
+            claim_period=f"{claim.claim_period_year}-{claim.claim_period_month:02d}",
+            status=claim.status,
+            total_amount=claim.total_amount,
+            patient_copay=claim.patient_copay,
+            claim_amount=claim.claim_amount,
+            created_at=claim.created_at.strftime("%Y-%m-%d") if claim.created_at else "",
+        )
+        for claim, patient in results
+    ]
+
+
+@router.post("/claims/bulk-edi")
+async def bulk_download_edi(
+    body: BulkEdiRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for claim_id_str in body.ids:
+            edi_bytes = await generate_claim_edi(db, current_user.hospital_id, UUID(claim_id_str))
+            zf.writestr(f"claim_{claim_id_str}.edi", edi_bytes)
+    buf.seek(0)
+
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=claims_edi.zip"},
+    )
 
 # 심평원 기준 상수 (성인 기준)
 _GAMI_MAX_TYPES = 5       # 가미제 추가 약재 최대 종수
@@ -215,4 +339,107 @@ async def download_claim_edi(
         content=edi_bytes,
         media_type="application/octet-stream",
         headers={"Content-Disposition": f"attachment; filename=claim_{claim_id}.edi"},
+    )
+
+@router.get("/catalog", response_model=list[BillableItemResponse])
+async def get_billable_catalog(current_user=Depends(get_current_user)):
+    return [
+        BillableItemResponse(
+            id=item.id,
+            name=item.name,
+            sub=item.sub,
+            requiresHyeolmyeong=item.requires_hyeolmyeong,
+        )
+        for item in BILLABLE_CATALOG
+    ]
+
+
+@router.post("/medical-records/{record_id}/line-items", response_model=ClaimSummaryResponse)
+async def add_line_items(
+    record_id: UUID,
+    payload: AddLineItemsRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    record = await db.get(MedicalRecord, record_id)
+    if not record or record.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="진료기록을 찾을 수 없습니다.")
+
+    recorded = record.recorded_at or record.created_at
+    year, month = recorded.year, recorded.month
+
+    # 이번 달 draft Claim 찾거나 새로 생성
+    existing = await db.execute(
+        select(Claim).where(
+            Claim.patient_id == record.patient_id,
+            Claim.hospital_id == current_user.hospital_id,
+            Claim.claim_period_year == year,
+            Claim.claim_period_month == month,
+            Claim.status == "draft",
+        )
+    )
+    claim = existing.scalar_one_or_none()
+    if claim is None:
+        import uuid as _uuid
+        claim = Claim(
+            id=_uuid.uuid4(),
+            patient_id=record.patient_id,
+            doctor_id=current_user.id,
+            hospital_id=current_user.hospital_id,
+            claim_period_year=year,
+            claim_period_month=month,
+            total_amount=0,
+            patient_copay=0,
+            claim_amount=0,
+            status="draft",
+        )
+        db.add(claim)
+        await db.flush()
+
+    added_amount = 0
+    for line in payload.items:
+        catalog_item = get_catalog_item(line.item_id)
+        amount = int(Decimal(str(catalog_item.unit_price)))
+
+        line_item = ClaimLineItem(
+            claim_id=claim.id,
+            medical_record_id=record.id,
+            hang=catalog_item.hang,
+            mok=catalog_item.mok,
+            code=catalog_item.code,
+            name=catalog_item.name,
+            unit_price=catalog_item.unit_price,
+            qty=1,
+            days=1,
+            amount=amount,
+            hyeolmyeong_names=line.hyeolmyeong_names or None,
+        )
+        db.add(line_item)
+        added_amount += amount
+
+    claim.total_amount = (claim.total_amount or 0) + added_amount
+    await db.commit()
+    await db.refresh(claim)
+
+    items_result = await db.execute(
+        select(ClaimLineItem).where(ClaimLineItem.claim_id == claim.id)
+    )
+    all_items = items_result.scalars().all()
+
+    return ClaimSummaryResponse(
+        id=str(claim.id),
+        patient_id=str(claim.patient_id),
+        billing_month=f"{year}-{month:02d}",
+        status=claim.status,
+        total_amount=claim.total_amount,
+        line_items=[
+            ClaimLineItemResponse(
+                id=str(i.id),
+                name=i.name,
+                code=i.code,
+                amount=i.amount,
+                hyeolmyeong_names=i.hyeolmyeong_names,
+            )
+            for i in all_items
+        ],
     )

@@ -34,7 +34,7 @@ class Hospital(Base):
     patients = relationship("Patient", back_populates="hospital")
     medical_records = relationship("MedicalRecord", back_populates="hospital")
     subscription = relationship("Subscription", back_populates="hospital", uselist=False)
-
+    
 
 class Doctor(Base):
     __tablename__ = "doctors"
@@ -98,11 +98,12 @@ class Patient(Base):
     phone = Column(String)
     memo = Column(Text)
     insurance_type = Column(String, default="health")
-    rrn = Column(EncryptedString(100), nullable=True)  # 주민등록번호 (AES-256-GCM 암호화)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     hospital = relationship("Hospital", back_populates="patients")
     medical_records = relationship("MedicalRecord", back_populates="patient")
+    rrn = Column(EncryptedString(500), nullable=True)
 
 
 class Claim(Base):
@@ -125,6 +126,33 @@ class Claim(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     medical_records = relationship("MedicalRecord", back_populates="claim")
+    line_items = relationship("ClaimLineItem", back_populates="claim", cascade="all, delete-orphan")
+
+
+class ClaimLineItem(Base):
+    """차트 화면에서 항목 클릭 시 생성되는 청구 라인. EDI C2-71과 1:1 대응."""
+
+    __tablename__ = "claim_line_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=False)
+    medical_record_id = Column(UUID(as_uuid=True), ForeignKey("medical_records.id"), nullable=False)
+
+    hang = Column(String(2), nullable=False)
+    mok = Column(String(2), nullable=False)
+    code = Column(String(9), nullable=False)
+    name = Column(String(50), nullable=False)
+
+    unit_price = Column(Numeric(10, 2), nullable=False, default=0)
+    qty = Column(Numeric(5, 2), nullable=False, default=1)
+    days = Column(Integer, nullable=False, default=1)
+    amount = Column(Integer, nullable=False, default=0)
+
+    hyeolmyeong_names = Column(JSON, nullable=True)  # 침술일 때 경혈명 목록
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    claim = relationship("Claim", back_populates="line_items")
 
 
 class MedicalRecord(Base):
@@ -234,6 +262,13 @@ class MedicalRecordProcedure(Base):
     special_detail = Column(String(700), nullable=True)            # 특정내역 (JS011 혈명코드 등)
     fee_master_code = Column(String(20), ForeignKey("fee_master.code"), nullable=True)
 
+    # C2-13 명세서진료내역(의치과및한방) 필드
+    prescription_days = Column(Integer, default=0, nullable=True)           # 처방일수
+    copay_rate_code = Column(String(2), default="D", nullable=True)         # 본인부담률구분코드
+    prescription_issue_date = Column(String(8), nullable=True)              # 처방전발급일자
+    prescription_serial = Column(Integer, default=0, nullable=True)         # 처방전일련번호
+    adjustment_type = Column(String(10), nullable=True)                     # 가감등구분
+
     medical_record = relationship("MedicalRecord", back_populates="procedures")
     fee_master = relationship("FeeMaster", foreign_keys="[MedicalRecordProcedure.fee_master_code]")
 
@@ -293,3 +328,4 @@ class FeeMaster(Base):
     is_insured = Column(Boolean, default=True, nullable=False)            # 급여 여부
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)
+    is_standalone = Column(Boolean, default=False, nullable=False, server_default="false")

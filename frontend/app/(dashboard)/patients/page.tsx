@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getPatients, createPatient, importPatientsFromExcel } from "@/lib/api/patients";
+import { getPatients, createPatient, updatePatient, importPatientsFromExcel } from "@/lib/api/patients";
 import { Patient } from "@/types";
 import { Search, Plus, ChevronRight, X } from "lucide-react";
 
@@ -19,6 +19,7 @@ export default function PatientsPage() {
     birth_date: "",
     gender: "",
     phone: "",
+    rrn: "",
   });
   const [addLoading, setAddLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -78,15 +79,25 @@ export default function PatientsPage() {
     }
   }
 
+  function formatRrn(value: string): string {
+    const digits = value.replace(/\D/g, "").slice(0, 13);
+    if (digits.length <= 6) return digits;
+    return `${digits.slice(0, 6)}-${digits.slice(6)}`;
+  }
+
   async function handleAddPatient(e: React.FormEvent) {
     e.preventDefault();
     setAddLoading(true);
     try {
-      const created: Patient = await createPatient(newPatient);
+      const { rrn, ...basicFields } = newPatient;
+      const created: Patient = await createPatient(basicFields);
+      if (rrn.trim()) {
+        await updatePatient(created.id, { rrn: rrn.trim() });
+      }
       const updated = await getPatients();
       setPatients(updated);
       setShowAddModal(false);
-      setNewPatient({ name: "", birth_date: "", gender: "", phone: "" });
+      setNewPatient({ name: "", birth_date: "", gender: "", phone: "", rrn: "" });
       router.push(`/diagnosis?patientId=${created.id}`);
     } catch (e: any) {
       setErrorMessage(e.message || "환자 등록에 실패했습니다.");
@@ -257,6 +268,19 @@ export default function PatientsPage() {
                     setNewPatient((p) => ({ ...p, phone: e.target.value }))
                   }
                   placeholder="010-0000-0000"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">
+                  주민번호
+                </label>
+                <input
+                  value={newPatient.rrn}
+                  onChange={(e) =>
+                    setNewPatient((p) => ({ ...p, rrn: formatRrn(e.target.value) }))
+                  }
+                  placeholder="000000-0000000"
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>

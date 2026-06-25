@@ -30,4 +30,6 @@ jobs:
           CLOVA_CLIENT_SECRET: ${{ secrets.CLOVA_CLIENT_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          RRN_ENCRYPTION_KEY: ${{ secrets.RRN_ENCRYPTION_KEY }}
+
         run: cd backend && source .venv/bin/activate && pytest tests/ -v

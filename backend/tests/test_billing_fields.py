@@ -30,8 +30,8 @@
   25 진료(조제)일수
   26 차등수가청구액
   27 차등지수
-  28 면허종류 및 번호 (C2-71 진료내역 레코드)
-  29 진료내역        (C2-71)
+  28 면허종류 및 번호 (C2-13 진료내역 레코드)
+  29 진료내역        (C2-13)
   30 특정기호
   31 특정내역        (C2-08 특정내역 레코드)
 """
@@ -509,11 +509,11 @@ class TestS_자릿수_레코드길이:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 항목 28·29: C2-71 진료내역 — 면허종류/번호, 행위코드 (LAY C2-72 기준)
+# 항목 28·29: C2-13 명세서진료내역(의치과및한방) — 면허종류/번호, 행위코드
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestC2_71_진료내역:
-    """C2-71 레코드 바이트 위치 검증 (항목 28·29).
+class TestC2_13_진료내역:
+    """C2-13 레코드 바이트 위치 검증 (항목 28·29).
 
     레이아웃 0-indexed:
       17-20: 공란 X(4)
@@ -526,8 +526,8 @@ class TestC2_71_진료내역:
       58-63: 일투            → [58:64]
       64-66: 총투            → [64:67]
       67-76: 금액 9(10)     → [67:77]
-      129  : 면허종류 X(1)  → [129:130]
-      130-229: 면허번호 X(100) → [130:230]
+      187  : 면허종류 X(1)  → [187:188]
+      188-287: 면허번호 X(100) → [188:288]
     """
 
     def _make_proc(self, code="AA159", license_type="3", license_no="1234567890") -> ProcedureDetail:
@@ -545,9 +545,9 @@ class TestC2_71_진료내역:
             license_no=license_no,
         )
 
-    def test_항목29_레코드_길이_230_plus_CRLF(self):
+    def test_항목29_레코드_길이_291_plus_CRLF(self):
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert len(raw) == 232
+        assert len(raw) == 293
 
     def test_항목29_항번호_바이트21_22(self):
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
@@ -576,18 +576,18 @@ class TestC2_71_진료내역:
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
         assert raw[67:77].decode("euc-kr") == "0000006260"
 
-    def test_항목28_면허종류_바이트129(self):
+    def test_항목28_면허종류_바이트187(self):
         raw = build_procedure_record(self._make_proc(license_type="3")).encode("euc-kr")
-        assert raw[129:130].decode("euc-kr") == "3"
+        assert raw[187:188].decode("euc-kr") == "3"
 
-    def test_항목28_면허번호_바이트130_139(self):
+    def test_항목28_면허번호_바이트188_197(self):
         # "1234567890" → 좌측정렬 X(100) 중 처음 10자리
         raw = build_procedure_record(self._make_proc(license_no="1234567890")).encode("euc-kr")
-        assert raw[130:140].decode("euc-kr") == "1234567890"
+        assert raw[188:198].decode("euc-kr") == "1234567890"
 
     def test_항목28_면허종류_한의사(self):
         raw = build_procedure_record(self._make_proc(license_type="3")).encode("euc-kr")
-        license_type_byte = raw[129:130].decode("euc-kr")
+        license_type_byte = raw[187:188].decode("euc-kr")
         assert license_type_byte == "3", "한의사 면허종류는 '3'"
 
 
