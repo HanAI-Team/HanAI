@@ -98,3 +98,42 @@ async def test_validate_as_of_미래날짜(client, approved_doctor, kcd_codes):
 async def test_validate_인증없으면_401(client, kcd_codes):
     res = await client.post("/api/kcd/validate", json={"codes": ["A001"]})
     assert res.status_code == 401
+
+async def test_validate_남성전용코드_여성환자_불일치(client, approved_doctor, kcd_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/kcd/validate",
+        json={"codes": ["M001"], "patient_gender": "F"},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["has_error"] is True
+    assert data["results"][0]["is_valid"] is False
+    assert "남성 전용 상병코드" in data["results"][0]["error"]
+
+
+async def test_validate_남성전용코드_남성환자_일치(client, approved_doctor, kcd_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/kcd/validate",
+        json={"codes": ["M001"], "patient_gender": "M"},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["has_error"] is False
+    assert data["results"][0]["is_valid"] is True
+
+
+async def test_validate_법정감염병_is_notifiable_반환(client, approved_doctor, kcd_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/kcd/validate",
+        json={"codes": ["A001"]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["results"][0]["is_valid"] is True
+    assert data["results"][0]["is_notifiable"] is True

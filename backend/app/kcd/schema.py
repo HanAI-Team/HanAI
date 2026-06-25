@@ -15,17 +15,19 @@ class KcdUCodeResponse(BaseModel):
 
 
 class KcdValidateRequest(BaseModel):
-    codes: List[str]            # 검증할 상병코드 목록 (예: ["U234", "A001"])
-    as_of: Optional[date] = None  # 기준일 (기본: 오늘)
+    codes: List[str]
+    as_of: Optional[date] = None
+    patient_gender: Optional[str] = None  # "M" 또는 "F"
 
 
 class KcdValidateResult(BaseModel):
-    code: str                       # 입력된 코드
-    is_valid: bool                  # 완전코드 여부 (마스터 존재 + 유효기간 내)
-    korean_name: Optional[str] = None  # 유효한 경우 한글명
-    error: Optional[str] = None    # 유효하지 않은 경우 사유
+    code: str
+    is_valid: bool
+    korean_name: Optional[str] = None
+    is_notifiable: Optional[bool] = None  # 법정감염병 여부
+    error: Optional[str] = None
 
 
 class KcdValidateResponse(BaseModel):
     results: List[KcdValidateResult]
-    has_error: bool                 # 하나라도 invalid면 True
+    has_error: bool

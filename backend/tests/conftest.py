@@ -86,9 +86,11 @@ async def approved_doctor(db, client):
 async def kcd_codes(db):
     """테스트용 KCD 코드 픽스처."""
     codes = [
-        KcdUCode(code="A001", korean_name="콜레라", effective_date=date(2000, 1, 1), expired_date=None),
-        KcdUCode(code="B001", korean_name="장티푸스", effective_date=date(2000, 1, 1), expired_date=None),
-        KcdUCode(code="Z999", korean_name="만료된코드", effective_date=date(2000, 1, 1), expired_date=date(2020, 12, 31)),
+        KcdUCode(code="A001", korean_name="콜레라", effective_date=date(2000, 1, 1), expired_date=None, sex_restriction=None, is_notifiable=True),
+        KcdUCode(code="B001", korean_name="장티푸스", effective_date=date(2000, 1, 1), expired_date=None, sex_restriction=None, is_notifiable=False),
+        KcdUCode(code="Z999", korean_name="만료된코드", effective_date=date(2000, 1, 1), expired_date=date(2020, 12, 31), sex_restriction=None, is_notifiable=False),
+        KcdUCode(code="M001", korean_name="남성전용질환", effective_date=date(2000, 1, 1), expired_date=None, sex_restriction="M", is_notifiable=False),
+        KcdUCode(code="F001", korean_name="여성전용질환", effective_date=date(2000, 1, 1), expired_date=None, sex_restriction="F", is_notifiable=False),
     ]
     db.add_all(codes)
     await db.commit()

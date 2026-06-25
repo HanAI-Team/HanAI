@@ -21,8 +21,9 @@ async def validate_kcd_codes(
 ):
     """상병코드 완전코드 여부 검증.
 
-    입력된 코드 목록 각각에 대해 KCD 마스터에 존재하는지,
-    유효기간 내인지 확인하여 결과를 반환한다.
+    - 마스터 존재 여부 + 유효기간 체크
+    - 환자 성별과 상병코드 sex_restriction 불일치 체크
+    - 법정감염병 여부 반환
     """
     ref_date = body.as_of or date.today()
     results = []
@@ -40,13 +41,29 @@ async def validate_kcd_codes(
         item = result.scalar_one_or_none()
 
         if item:
-            results.append(KcdValidateResult(
-                code=code,
-                is_valid=True,
-                korean_name=item.korean_name,
-            ))
+            # 성별 제한 체크
+            if (
+                body.patient_gender
+                and item.sex_restriction
+                and item.sex_restriction != body.patient_gender
+            ):
+                gender_label = "남성" if item.sex_restriction == "M" else "여성"
+                results.append(KcdValidateResult(
+                    code=code,
+                    is_valid=False,
+                    korean_name=item.korean_name,
+                    is_notifiable=item.is_notifiable,
+                    error=f"'{code}'는 {gender_label} 전용 상병코드입니다.",
+                ))
+            else:
+                results.append(KcdValidateResult(
+                    code=code,
+                    is_valid=True,
+                    korean_name=item.korean_name,
+                    is_notifiable=item.is_notifiable,
+                ))
         else:
-            # 코드 자체가 마스터에 없는지, 유효기간 만료인지 구분
+            # 존재하지 않는 코드 vs 만료 코드 구분
             result_any = await db.execute(
                 select(KcdUCode).where(KcdUCode.code == code)
             )
