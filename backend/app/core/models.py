@@ -273,6 +273,8 @@ class KcdUCode(Base):
     category = Column(String(100))
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)
+    sex_restriction = Column(String(1), nullable=True)   # "M"=남성만, "F"=여성만, None=제한없음
+    is_notifiable = Column(Boolean, default=False)        # 법정감염병 여부
 
 
 class FeeMaster(Base):
