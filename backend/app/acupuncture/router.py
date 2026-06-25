@@ -7,7 +7,7 @@ from app.acupuncture.schema import (
 )
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
-from app.core.models import AcupuncturePoint
+from app.core.models import AcupuncturePoint, FeeMaster
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,25 +58,24 @@ async def check_concurrent_acupuncture(
     current_doctor=Depends(get_current_doctor),
     db: AsyncSession = Depends(get_db),
 ):
-    """단독침술 동시시술 점검 — is_standalone인 경혈이 2개 이상이면 청구 불가."""
+    """분구침술 동시청구 점검 — fee_master에서 is_standalone=True인 코드가 2개 이상이면 청구 불가."""
     if not body.codes:
-        return ConcurrentCheckResponse(valid=True, conflicting_codes=[], message="점검할 경혈이 없습니다.")
+        return ConcurrentCheckResponse(valid=True, conflicting_codes=[], message="점검할 코드가 없습니다.")
 
-    upper_codes = [c.upper() for c in body.codes]
     result = await db.execute(
-        select(AcupuncturePoint).where(
-            AcupuncturePoint.code.in_(upper_codes),
-            AcupuncturePoint.is_standalone.is_(True),
+        select(FeeMaster).where(
+            FeeMaster.code.in_(body.codes),
+            FeeMaster.is_standalone.is_(True),
         )
     )
-    standalone_points = result.scalars().all()
+    standalone_items = result.scalars().all()
 
-    if len(standalone_points) > 1:
-        conflicting = [p.code for p in standalone_points]
+    if len(standalone_items) > 1:
+        conflicting = [item.code for item in standalone_items]
         return ConcurrentCheckResponse(
             valid=False,
             conflicting_codes=conflicting,
-            message=f"단독침술 항목 {conflicting}은 동일 회차에 동시 청구할 수 없습니다.",
+            message=f"분구침술 항목 {conflicting}은 동일 회차에 동시 청구할 수 없습니다.",
         )
 
-    return ConcurrentCheckResponse(valid=True, conflicting_codes=[], message="동시시술 점검 통과.")
+    return ConcurrentCheckResponse(valid=True, conflicting_codes=[], message="동시청구 점검 통과.")

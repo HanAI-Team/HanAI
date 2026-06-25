@@ -15,6 +15,7 @@ from app.core.database import Base, get_db
 from app.core.models import Doctor, Hospital, Subscription, KcdUCode
 from datetime import date
 from main import app
+from app.core.models import FeeMaster
 
 TEST_ENGINE = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
@@ -91,6 +92,18 @@ async def kcd_codes(db):
         KcdUCode(code="Z999", korean_name="만료된코드", effective_date=date(2000, 1, 1), expired_date=date(2020, 12, 31), sex_restriction=None, is_notifiable=False),
         KcdUCode(code="M001", korean_name="남성전용질환", effective_date=date(2000, 1, 1), expired_date=None, sex_restriction="M", is_notifiable=False),
         KcdUCode(code="F001", korean_name="여성전용질환", effective_date=date(2000, 1, 1), expired_date=None, sex_restriction="F", is_notifiable=False),
+    ]
+    db.add_all(codes)
+    await db.commit()
+    return codes
+
+@pytest_asyncio.fixture
+async def fee_master_codes(db):
+    """테스트용 FeeMaster 픽스처."""
+    codes = [
+        FeeMaster(code="40121", name="이침술", category="침술", unit_price=1000, is_standalone=True, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
+        FeeMaster(code="40122", name="두침술", category="침술", unit_price=1000, is_standalone=True, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
+        FeeMaster(code="40001", name="체침술", category="침술", unit_price=1000, is_standalone=False, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
     ]
     db.add_all(codes)
     await db.commit()
