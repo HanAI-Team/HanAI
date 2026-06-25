@@ -348,6 +348,9 @@ async def get_billable_catalog(current_user=Depends(get_current_user)):
             id=item.id,
             name=item.name,
             sub=item.sub,
+            category=item.category,
+            unitPrice=item.unit_price,
+            isInsured=item.is_insured,
             requiresHyeolmyeong=item.requires_hyeolmyeong,
         )
         for item in BILLABLE_CATALOG
