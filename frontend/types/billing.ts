@@ -2,6 +2,9 @@ export interface BillableItem {
   id: string;
   name: string;
   sub: string;
+  category: string;
+  unitPrice: number;
+  isInsured: boolean;
   requiresHyeolmyeong: boolean;
 }
 
