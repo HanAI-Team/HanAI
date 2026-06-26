@@ -20,7 +20,7 @@ from app.auth.schema import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Doctor, StaffAccount
+from app.core.models import Doctor, Hospital, StaffAccount
 from app.core.redis import (
     add_session,
     add_token_blacklist,
@@ -288,7 +288,14 @@ async def unlock_account(
 @router.get("/me")
 async def get_me(
     user: Union[Doctor, StaffAccount] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
+    hospital_result = await db.execute(
+        select(Hospital).where(Hospital.id == user.hospital_id)
+    )
+    hospital = hospital_result.scalar_one_or_none()
+    institution_code = hospital.institution_code if hospital else None
+
     if isinstance(user, Doctor):
         return {
             "id": user.id,
@@ -296,6 +303,7 @@ async def get_me(
             "license_number": user.license_number,
             "role": user.role,
             "hospital_id": user.hospital_id,
+            "institution_code": institution_code,
         }
     return {
         "id": user.id,
@@ -304,6 +312,7 @@ async def get_me(
         "email": user.email,
         "role": user.role,
         "hospital_id": user.hospital_id,
+        "institution_code": institution_code,
     }
 
 

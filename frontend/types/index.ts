@@ -38,3 +38,11 @@ export interface Doctor {
   hospital_name: string
   license_number: string
 }
+
+export interface Hospital {
+  id: string
+  name: string
+  address?: string
+  phone?: string
+  institution_code?: string
+}

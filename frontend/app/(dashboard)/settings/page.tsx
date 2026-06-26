@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { jwtDecode } from 'jwt-decode'
 import { getStaffList, createStaff, deactivateStaff, activateStaff } from '@/lib/api/staff'
+import { updateHospital } from '@/lib/api/hospitals'
 import { Staff } from '@/types'
 import { Plus, X, MessageSquare } from 'lucide-react'
 
@@ -42,6 +43,12 @@ export default function SettingsPage() {
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSuccess, setPwSuccess] = useState(false)
 
+  const [hospitalId, setHospitalId] = useState<string | null>(null)
+  const [institutionCode, setInstitutionCode] = useState('')
+  const [hcLoading, setHcLoading] = useState(false)
+  const [hcError, setHcError] = useState<string | null>(null)
+  const [hcSuccess, setHcSuccess] = useState(false)
+
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [staffLoading, setStaffLoading] = useState(false)
   const [staffLimit, setStaffLimit] = useState<number | null>(null)
@@ -73,6 +80,19 @@ export default function SettingsPage() {
     if (tab !== 'staff' || !isOwner) return
     Promise.resolve().then(loadStaffData)
   }, [tab, isOwner])
+
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/auth/me`, { headers: getHeaders() })
+      .then((res) => {
+        if (!res.ok) throw new Error('내 정보 조회 실패')
+        return res.json()
+      })
+      .then((me) => {
+        setHospitalId(me.hospital_id)
+        setInstitutionCode(me.institution_code || '')
+      })
+      .catch(() => {})
+  }, [])
 
   function handleLogout() {
     localStorage.removeItem('token')
@@ -110,6 +130,25 @@ export default function SettingsPage() {
       setPwError(e.message)
     } finally {
       setPwLoading(false)
+    }
+  }
+
+  async function handleSaveInstitutionCode() {
+    if (!hospitalId) return
+    if (!/^\d{8}$/.test(institutionCode)) {
+      setHcError('요양기관기호는 8자리 숫자여야 합니다.')
+      return
+    }
+    setHcLoading(true)
+    setHcError(null)
+    try {
+      await updateHospital(hospitalId, { institution_code: institutionCode })
+      setHcSuccess(true)
+      setTimeout(() => setHcSuccess(false), 3000)
+    } catch (e: any) {
+      setHcError(e.message || '요양기관기호 저장에 실패했습니다.')
+    } finally {
+      setHcLoading(false)
     }
   }
 
@@ -200,6 +239,37 @@ export default function SettingsPage() {
                 }`}
               >
                 {pwSuccess ? '✓ 변경되었습니다' : pwLoading ? '변경 중...' : '비밀번호 변경'}
+              </button>
+            </form>
+          </div>
+          <div className="bg-card border border-border rounded-lg p-5">
+            <div className="text-xs font-medium text-text uppercase tracking-wide mb-4">병원 정보</div>
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveInstitutionCode() }} className="flex flex-col gap-3">
+              <div>
+                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">요양기관기호</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={institutionCode}
+                  onChange={(e) => setInstitutionCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="8자리 숫자"
+                  className="w-full bg-bg border border-border rounded-md px-4 py-2.5 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              {hcError && (
+                <div className="text-xs text-red-500">{hcError}</div>
+              )}
+              <button
+                type="submit"
+                disabled={hcLoading}
+                className={`w-full rounded-md py-2.5 text-sm font-medium transition-all mt-1 ${
+                  hcSuccess
+                    ? 'bg-green-600 text-white'
+                    : 'bg-[#EF6600] text-white hover:opacity-90 disabled:opacity-50'
+                }`}
+              >
+                {hcSuccess ? '✓ 저장되었습니다' : hcLoading ? '저장 중...' : '저장'}
               </button>
             </form>
           </div>
