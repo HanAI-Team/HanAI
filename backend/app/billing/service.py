@@ -14,8 +14,11 @@ from app.billing.edi_writer import (
     SpecialRecord,
     generate_edi,
 )
+from collections import defaultdict
+
 from app.core.models import (
     Claim,
+    ClaimLineItem,
     Doctor,
     Hospital,
     MedicalRecord,
@@ -124,17 +127,25 @@ async def generate_claim_edi(
     r2 = await db.execute(select(MedicalRecord).where(MedicalRecord.claim_id == claim_id))
     medical_records = r2.scalars().all()
 
+    # ClaimLineItem 우선 사용 (BillableItemPicker 경로)
+    # 없으면 MedicalRecordProcedure 폴백 (구 차팅 경로)
+    r_li = await db.execute(
+        select(ClaimLineItem)
+        .where(ClaimLineItem.claim_id == claim_id)
+        .order_by(ClaimLineItem.created_at)
+    )
+    all_line_items = r_li.scalars().all()
+    line_items_by_record: dict = defaultdict(list)
+    for li in all_line_items:
+        line_items_by_record[li.medical_record_id].append(li)
+
     procedures = []
-    prescriptions = []
     for record in medical_records:
-        r3 = await db.execute(
-            select(MedicalRecordProcedure).where(MedicalRecordProcedure.medical_record_id == record.id)
-        )
-        procedures.extend(r3.scalars().all())
-        r4 = await db.execute(
-            select(Prescription).where(Prescription.medical_record_id == record.id)
-        )
-        prescriptions.extend(r4.scalars().all())
+        if not line_items_by_record.get(record.id):
+            r3 = await db.execute(
+                select(MedicalRecordProcedure).where(MedicalRecordProcedure.medical_record_id == record.id)
+            )
+            procedures.extend(r3.scalars().all())
 
     r5 = await db.execute(select(Patient).where(Patient.id == claim.patient_id))
     patient = r5.scalar_one_or_none()
@@ -187,6 +198,16 @@ async def generate_claim_edi(
             claim_amount=claim.claim_amount,
         ))
 
+        # MT032: 접수일시 (명세서 단위, 줄 없음)
+        if record.recorded_at:
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT032",
+                content=record.recorded_at.strftime("%Y%m%d%H%M"),
+            )))
+
         # DiagnosisRecord
         if record.chart_structured and record.kcd_code:
             diagnosis_records.append((serial, DiagnosisRecord(
@@ -200,29 +221,64 @@ async def generate_claim_edi(
                 license_no=doctor.license_number if doctor else "",
             )))
 
-        for proc in [p for p in procedures if p.medical_record_id == record.id]:
-            procedure_records.append((serial, ProcedureDetail(
-                key=rec_key,
-                hang=proc.hang or "04",
-                mok=proc.mok or "99",
-                code_gubun=proc.code_gubun or "A",
-                code=proc.fee_master_code or "",
-                unit_price=Decimal(str(proc.unit_price or 0)),
-                qty=Decimal(str(proc.qty or 1)),
-                days=proc.days or 1,
-                amount=proc.amount or 0,
-                license_type=proc.license_type or "3",
-                license_no=doctor.license_number if doctor else "",
-            )))
-
-            if proc.special_detail:
-                special_records.append((serial, SpecialRecord(
+        record_line_items = line_items_by_record.get(record.id, [])
+        if record_line_items:
+            # BillableItemPicker 경로: ClaimLineItem 사용
+            for line_no, li in enumerate(record_line_items, start=1):
+                procedure_records.append((serial, ProcedureDetail(
                     key=rec_key,
-                    prescription_no=0,
-                    record_ext_no=0,
-                    special_code="JS011",
-                    content=proc.special_detail,
+                    hang=li.hang,
+                    mok=li.mok,
+                    code_gubun="A",
+                    code=li.code,
+                    unit_price=Decimal(str(li.unit_price or 0)),
+                    qty=Decimal(str(li.qty or 1)),
+                    days=li.days or 1,
+                    amount=li.amount or 0,
+                    license_type="3",
+                    license_no=doctor.license_number if doctor else "",
                 )))
+                # JS010: 진료일시 (줄 단위)
+                if record.recorded_at:
+                    special_records.append((serial, SpecialRecord(
+                        key=rec_key,
+                        prescription_no=0,
+                        record_ext_no=line_no,
+                        special_code="JS010",
+                        content=record.recorded_at.strftime("%Y%m%d%H%M"),
+                    )))
+                if li.hyeolmyeong_names:
+                    special_records.append((serial, SpecialRecord(
+                        key=rec_key,
+                        prescription_no=0,
+                        record_ext_no=line_no,
+                        special_code="JS011",
+                        content="/".join(li.hyeolmyeong_names),
+                    )))
+        else:
+            # 구 차팅 경로 폴백: MedicalRecordProcedure 사용
+            for proc in [p for p in procedures if p.medical_record_id == record.id]:
+                procedure_records.append((serial, ProcedureDetail(
+                    key=rec_key,
+                    hang=proc.hang or "04",
+                    mok=proc.mok or "99",
+                    code_gubun=proc.code_gubun or "A",
+                    code=proc.fee_master_code or "",
+                    unit_price=Decimal(str(proc.unit_price or 0)),
+                    qty=Decimal(str(proc.qty or 1)),
+                    days=proc.days or 1,
+                    amount=proc.amount or 0,
+                    license_type=proc.license_type or "3",
+                    license_no=doctor.license_number if doctor else "",
+                )))
+                if proc.special_detail:
+                    special_records.append((serial, SpecialRecord(
+                        key=rec_key,
+                        prescription_no=0,
+                        record_ext_no=0,
+                        special_code="JS011",
+                        content=proc.special_detail,
+                    )))
 
     edi_file = EDIFile(
         header=header,
