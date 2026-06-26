@@ -23,10 +23,20 @@ class ConcurrentCheckResponse(BaseModel):
 
 
 class DailyLimitCheckRequest(BaseModel):
-    codes: list[str]  # 당일 청구할 침술 행위코드 목록
+    codes: list[str]
 
 
 class DailyLimitCheckResponse(BaseModel):
     valid: bool
-    excess_count: int        # 초과 종수
+    excess_count: int
+    message: str
+
+
+class SpecialLimitCheckRequest(BaseModel):
+    codes: list[str]
+
+
+class SpecialLimitCheckResponse(BaseModel):
+    valid: bool
+    excess_count: int
     message: str

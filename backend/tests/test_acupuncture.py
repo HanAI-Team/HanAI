@@ -130,3 +130,74 @@ async def test_침술_daily_limit_인증없으면_401(client, fee_master_codes):
         json={"codes": ["AA159"]},
     )
     assert res.status_code == 401
+
+async def test_특수침술_2종_이내_통과(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-special-limit",
+        json={"codes": ["40030", "40040"]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True
+    assert data["excess_count"] == 2
+
+
+async def test_특수침술_3종_초과_불가(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-special-limit",
+        json={"codes": ["40030", "40040", "40050"]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is False
+    assert data["excess_count"] == 3
+
+
+async def test_특수침술_1종만_통과(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-special-limit",
+        json={"codes": ["40030"]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True
+
+
+async def test_특수침술_일반침술_혼합시_특수만_카운트(client, approved_doctor, fee_master_codes):
+    """일반침술 코드는 특수침술 카운트에서 제외."""
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-special-limit",
+        json={"codes": ["40030", "40040", "AA159"]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True
+    assert data["excess_count"] == 2
+
+
+async def test_특수침술_빈목록_통과(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-special-limit",
+        json={"codes": []},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True
+
+
+async def test_특수침술_인증없으면_401(client, fee_master_codes):
+    res = await client.post(
+        "/api/acupuncture/check-special-limit",
+        json={"codes": ["40030"]},
+    )
+    assert res.status_code == 401

@@ -6,6 +6,8 @@ from app.acupuncture.schema import (
     ConcurrentCheckResponse,
     DailyLimitCheckRequest,
     DailyLimitCheckResponse,
+    SpecialLimitCheckRequest,
+    SpecialLimitCheckResponse,
 )
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
@@ -16,7 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["acupuncture"])
 
-DAILY_ACUPUNCTURE_LIMIT = 3  # 1일 최대 침술 종수
+DAILY_ACUPUNCTURE_LIMIT = 3      # 1일 최대 침술 종수
+SPECIAL_ACUPUNCTURE_LIMIT = 2    # 특수침술 1일 최대 종수
+SPECIAL_ACUPUNCTURE_CODES = {    # 하-3~하-8, 하-10 특수침술 코드
+    "40030", "40040", "40050", "40060", "40070", "40080", "40100"
+}
 
 
 @router.get("/search", response_model=List[AcupuncturePointResponse])
@@ -62,7 +68,7 @@ async def check_concurrent_acupuncture(
     current_doctor=Depends(get_current_doctor),
     db: AsyncSession = Depends(get_db),
 ):
-    """분구침술 동시청구 점검 — fee_master에서 is_standalone=True인 코드가 2개 이상이면 청구 불가."""
+    """분구침술 동시청구 점검 — is_standalone=True인 코드가 2개 이상이면 청구 불가."""
     if not body.codes:
         return ConcurrentCheckResponse(valid=True, conflicting_codes=[], message="점검할 코드가 없습니다.")
 
@@ -91,7 +97,7 @@ async def check_daily_acupuncture_limit(
     current_doctor=Depends(get_current_doctor),
     db: AsyncSession = Depends(get_db),
 ):
-    """1일 침술 3종 초과 점검 — fee_master category='침술'인 코드가 3종 초과이면 청구 불가."""
+    """1일 침술 3종 초과 점검 — category='침술'인 코드가 3종 초과이면 청구 불가."""
     if not body.codes:
         return DailyLimitCheckResponse(valid=True, excess_count=0, message="점검할 코드가 없습니다.")
 
@@ -112,3 +118,26 @@ async def check_daily_acupuncture_limit(
         )
 
     return DailyLimitCheckResponse(valid=True, excess_count=count, message="1일 침술 종수 점검 통과.")
+
+
+@router.post("/check-special-limit", response_model=SpecialLimitCheckResponse)
+async def check_special_acupuncture_limit(
+    body: SpecialLimitCheckRequest,
+    current_doctor=Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
+):
+    """특수침술 2종 초과 점검 — 하-3~하-8, 하-10(40030~40100) 코드가 2종 초과이면 청구 불가."""
+    if not body.codes:
+        return SpecialLimitCheckResponse(valid=True, excess_count=0, message="점검할 코드가 없습니다.")
+
+    special_codes = [c for c in body.codes if c in SPECIAL_ACUPUNCTURE_CODES]
+    count = len(special_codes)
+
+    if count > SPECIAL_ACUPUNCTURE_LIMIT:
+        return SpecialLimitCheckResponse(
+            valid=False,
+            excess_count=count,
+            message=f"특수침술은 1일 {SPECIAL_ACUPUNCTURE_LIMIT}종 이내로 산정 가능합니다. (현재 {count}종)",
+        )
+
+    return SpecialLimitCheckResponse(valid=True, excess_count=count, message="특수침술 종수 점검 통과.")
