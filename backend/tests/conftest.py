@@ -101,9 +101,13 @@ async def kcd_codes(db):
 async def fee_master_codes(db):
     """테스트용 FeeMaster 픽스처."""
     codes = [
-        FeeMaster(code="40121", name="이침술", category="침술", unit_price=1000, is_standalone=True, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
-        FeeMaster(code="40122", name="두침술", category="침술", unit_price=1000, is_standalone=True, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
+        FeeMaster(code="40121", name="이침술", category="분구침술", unit_price=1000, is_standalone=True, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
+        FeeMaster(code="40122", name="두침술", category="분구침술", unit_price=1000, is_standalone=True, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
         FeeMaster(code="40001", name="체침술", category="침술", unit_price=1000, is_standalone=False, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
+        FeeMaster(code="AA159", name="체침 단순침술", category="침술", unit_price=1000, is_standalone=False, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
+        FeeMaster(code="AA161", name="전침", category="침술", unit_price=1000, is_standalone=False, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
+        FeeMaster(code="AA163", name="도침", category="침술", unit_price=1000, is_standalone=False, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
+        FeeMaster(code="AA165", name="화침", category="침술", unit_price=1000, is_standalone=False, is_insured=True, insured_health=True, insured_medical_aid=True, insured_veterans=False),
     ]
     db.add_all(codes)
     await db.commit()

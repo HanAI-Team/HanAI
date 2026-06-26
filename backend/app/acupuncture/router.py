@@ -4,6 +4,8 @@ from app.acupuncture.schema import (
     AcupuncturePointResponse,
     ConcurrentCheckRequest,
     ConcurrentCheckResponse,
+    DailyLimitCheckRequest,
+    DailyLimitCheckResponse,
 )
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
@@ -13,6 +15,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["acupuncture"])
+
+DAILY_ACUPUNCTURE_LIMIT = 3  # 1일 최대 침술 종수
 
 
 @router.get("/search", response_model=List[AcupuncturePointResponse])
@@ -79,3 +83,32 @@ async def check_concurrent_acupuncture(
         )
 
     return ConcurrentCheckResponse(valid=True, conflicting_codes=[], message="동시청구 점검 통과.")
+
+
+@router.post("/check-daily-limit", response_model=DailyLimitCheckResponse)
+async def check_daily_acupuncture_limit(
+    body: DailyLimitCheckRequest,
+    current_doctor=Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
+):
+    """1일 침술 3종 초과 점검 — fee_master category='침술'인 코드가 3종 초과이면 청구 불가."""
+    if not body.codes:
+        return DailyLimitCheckResponse(valid=True, excess_count=0, message="점검할 코드가 없습니다.")
+
+    result = await db.execute(
+        select(FeeMaster).where(
+            FeeMaster.code.in_(body.codes),
+            FeeMaster.category == "침술",
+        )
+    )
+    acupuncture_items = result.scalars().all()
+    count = len(acupuncture_items)
+
+    if count > DAILY_ACUPUNCTURE_LIMIT:
+        return DailyLimitCheckResponse(
+            valid=False,
+            excess_count=count,
+            message=f"침술은 1일 {DAILY_ACUPUNCTURE_LIMIT}종 이내로 산정 가능합니다. (현재 {count}종)",
+        )
+
+    return DailyLimitCheckResponse(valid=True, excess_count=count, message="1일 침술 종수 점검 통과.")
