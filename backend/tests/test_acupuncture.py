@@ -73,3 +73,60 @@ async def test_인증없으면_401(client, fee_master_codes):
         json={"codes": ["40121"]},
     )
     assert res.status_code == 401
+
+async def test_침술_3종_이내_통과(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-daily-limit",
+        json={"codes": ["AA159", "AA161", "AA163"]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True
+    assert data["excess_count"] == 3
+
+
+async def test_침술_3종_초과_불가(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-daily-limit",
+        json={"codes": ["AA159", "AA161", "AA163", "AA165"]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is False
+    assert data["excess_count"] == 4
+
+
+async def test_침술_1종만_통과(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-daily-limit",
+        json={"codes": ["AA159"]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True
+
+
+async def test_침술_빈목록_통과(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-daily-limit",
+        json={"codes": []},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True
+
+
+async def test_침술_daily_limit_인증없으면_401(client, fee_master_codes):
+    res = await client.post(
+        "/api/acupuncture/check-daily-limit",
+        json={"codes": ["AA159"]},
+    )
+    assert res.status_code == 401
