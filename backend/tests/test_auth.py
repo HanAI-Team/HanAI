@@ -1,12 +1,11 @@
 import pytest
-
 from app.auth import router as auth_router
 from app.core.config import settings
 
 REGISTER_DATA = {
     "name": "홍길동",
     "license_number": "12345678",
-    "password": "password1234",
+    "password": "password1234!!!!",
     "clinic_name": "테스트의원",
 }
 
