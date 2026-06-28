@@ -50,6 +50,8 @@ class Doctor(Base):
     approved_at = Column(DateTime(timezone=True), nullable=True)
     license_verified_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
+    force_password_change = Column(Boolean, default=False, nullable=False, server_default="false")
 
     hospital = relationship("Hospital", back_populates="doctors")
     medical_records = relationship("MedicalRecord", back_populates="doctor")
@@ -68,6 +70,8 @@ class StaffAccount(Base):
     role = Column(String, default="nurse")
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
+    force_password_change = Column(Boolean, default=False, nullable=False, server_default="false")
 
     hospital = relationship("Hospital", back_populates="staff_accounts")
 
@@ -100,10 +104,10 @@ class Patient(Base):
     insurance_type = Column(String, default="health")
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    rrn = Column(EncryptedString(500), nullable=True)
     hospital = relationship("Hospital", back_populates="patients")
     medical_records = relationship("MedicalRecord", back_populates="patient")
-    rrn = Column(EncryptedString(500), nullable=True)
+
 
 
 class Claim(Base):
@@ -329,3 +333,38 @@ class FeeMaster(Base):
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)
     is_standalone = Column(Boolean, default=False, nullable=False, server_default="false")
+
+
+class AccountHistory(Base):
+    __tablename__ = "account_histories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_type = Column(String, nullable=False)  # "doctor" | "staff"
+    account_id = Column(UUID(as_uuid=True), nullable=False)
+    action = Column(String, nullable=False)  # "created" | "deactivated" | "role_changed"
+    actor_id = Column(UUID(as_uuid=True), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    detail = Column(Text, nullable=True)
+
+
+class LoginLog(Base):
+    __tablename__ = "login_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_type = Column(String, nullable=False)  # "doctor" | "staff"
+    account_id = Column(UUID(as_uuid=True), nullable=True)
+    success = Column(Boolean, nullable=False)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    attempted_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class PasswordHistory(Base):
+    __tablename__ = "password_histories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_type = Column(String, nullable=False)
+    account_id = Column(UUID(as_uuid=True), nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

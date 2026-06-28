@@ -33,6 +33,14 @@ class RegisterRequest(BaseModel):
         if not re.fullmatch(r"\d{4,}", v):
             raise ValueError("면허번호는 4자리 이상 숫자여야 합니다.")
         return v
+    @field_validator("password")
+    @classmethod
+    def password_complexity(cls, v:str)->str:
+        from app.auth.service import validate_password_complexity
+        errors = validate_password_complexity(v)
+        if errors:
+            raise ValueError("/".join(errors))
+        return v
 
 
 class ResetPasswordResponse(BaseModel):
@@ -79,6 +87,15 @@ class StaffCreateRequest(BaseModel):
     password: str
     role: str = "nurse"  # nurse / receptionist
 
+    @field_validator("password")
+    @classmethod
+    def password_complexity(cls, v: str) -> str:
+        from app.auth.service import validate_password_complexity
+        errors = validate_password_complexity(v)
+        if errors:
+            raise ValueError("/".join(errors))
+        return v
+
 
 class StaffLoginRequest(BaseModel):
     username: str
@@ -96,6 +113,15 @@ class StaffResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+    @field_validator("new_password")
+    @classmethod
+    def password_complexity(cls, v:str)->str:
+        from app.auth.service import validate_password_complexity
+        errors = validate_password_complexity(v)
+        if errors:
+            raise ValueError("/".join(errors))
+        return v
+
 
 
 class VerifyInitResponse(BaseModel):
