@@ -166,6 +166,9 @@ class BillableItemResponse(BaseModel):
     id: str
     name: str
     sub: str
+    category: str
+    unitPrice: float
+    isInsured: bool
     requiresHyeolmyeong: bool
 
 

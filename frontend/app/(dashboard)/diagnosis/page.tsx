@@ -1,57 +1,58 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import {
-  getPatients,
-  getPatient,
-  createPatient,
-  getPatientRecords,
-  saveRecord,
-  updatePatient,
-  deleteRecord,
-  importPatientsFromExcel,
-} from "@/lib/api/patients";
-import {
-  uploadAndAnalyze,
-  askDiagnosisStream,
-  diagnoseText,
-  finalizeRecord,
-  updateKcdCode,
-  ChartingEvent,
-} from "@/lib/api/diagnosis";
-import { searchKcd, KcdSearchResult } from "@/lib/api/kcd";
-import { Patient, DiagnosisResult } from "@/types";
 import BetaFeedbackBanner from "@/components/BetaFeedbackBanner";
 import { BillableItemPicker } from "@/components/billing/BillableItemPicker";
 import {
-  Search,
-  Mic,
-  Square,
-  FolderOpen,
-  Sparkles,
-  Clipboard,
+  askDiagnosisStream,
+  ChartingEvent,
+  diagnoseText,
+  finalizeRecord,
+  updateKcdCode,
+  uploadAndAnalyze,
+} from "@/lib/api/diagnosis";
+import { KcdSearchResult, searchKcd } from "@/lib/api/kcd";
+import {
+  createPatient,
+  deleteRecord,
+  getPatient,
+  getPatientRecords,
+  getPatients,
+  importPatientsFromExcel,
+  saveRecord,
+  updatePatient,
+} from "@/lib/api/patients";
+import { DiagnosisResult, Patient } from "@/types";
+import {
   Check,
-  TriangleAlert,
-  Save,
+  ChevronDown,
+  ChevronUp,
   CircleCheck,
-  Printer,
+  Clipboard,
   Download,
-  MessageCircle,
-  Stethoscope,
+  FileText,
+  FolderOpen,
   Leaf,
   MapPin,
-  User,
-  ChevronUp,
-  ChevronDown,
-  X,
-  Plus,
+  MessageCircle,
+  Mic,
   Pencil,
-  Trash2,
-  FileText,
-  ThumbsUp,
+  Plus,
+  Printer,
+  ReceiptText,
+  Save,
+  Search,
+  Sparkles,
+  Square,
+  Stethoscope,
   ThumbsDown,
+  ThumbsUp,
+  Trash2,
+  TriangleAlert,
+  User,
+  X,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 const PAGE_SIZE = 20;
 
@@ -78,7 +79,7 @@ export default function DiagnosisPage() {
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingResult2, setLoadingResult2] = useState(false);
-  const [copied, setCopied] = useState<"both" | "result1" | "result2" | null>(null);
+  const [historyCopied, setHistoryCopied] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [newPatient, setNewPatient] = useState({
@@ -172,8 +173,9 @@ export default function DiagnosisPage() {
   const filtered = patients.filter((p) => p.name.includes(search));
   const displayedPatients = filtered.slice(0, page * PAGE_SIZE);
   const hasMore = filtered.length > page * PAGE_SIZE;
+  const isOverviewTab = ["result", "history", "billing"].includes(activeTab);
   const recordsLoading =
-    activeTab === "history" &&
+    isOverviewTab &&
     !!selectedPatient &&
     recordsLastFetchedFor !== selectedPatient.id;
 
@@ -228,6 +230,7 @@ export default function DiagnosisPage() {
           return db - da;
         });
         const latest = sorted[0];
+        if (latest) setCurrentRecordId(latest.id);
         if (!latest?.chart_structured) return;
         setLatestChartStructured(latest.chart_structured);
         const sections = parseChartSections(latest.chart_structured);
@@ -259,7 +262,7 @@ export default function DiagnosisPage() {
   }, [kcdQuery]);
 
   useEffect(() => {
-    if (activeTab !== "history" || !selectedPatient) return;
+    if (!isOverviewTab || !selectedPatient) return;
     const id = selectedPatient.id;
     getPatientRecords(id)
       .then((data) => {
@@ -800,7 +803,6 @@ ${blocks.join("\n\n")}
   async function handleSave() {
     if (!result || !selectedPatient) return;
     const ccLine = result.chiefComplaintSummary?.trim() || chiefComplaint.trim() || "-";
-    const memoLine = memo.trim() || "-";
     const historyLine =
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
         ? recordMedicalHistory.text.trim()
@@ -821,9 +823,6 @@ ${ccLine}
 
 ${resultBlock}
 
-▶ 메모
-${memoLine}
-
 ▶ 병력
 ${historyLine}
 
@@ -840,6 +839,9 @@ ${historyLine}
               : null,
             saveSelection,
           );
+      if (response?.id) {
+        setCurrentRecordId(response.id);
+      }
       if (kcdCode && response?.id) {
         await updateKcdCode(response.id, kcdCode.code).catch(() => {
           setErrorMessage("상병코드 저장에 실패했습니다.");
@@ -891,7 +893,6 @@ ${historyLine}
   ): string | null {
     if (!result || !selectedPatient) return null;
     const ccLine = result.chiefComplaintSummary?.trim() || chiefComplaint.trim() || "-";
-    const memoLine = memo.trim() || "-";
     const historyLine =
       recordMedicalHistory.hasHistory && recordMedicalHistory.text.trim()
         ? recordMedicalHistory.text.trim()
@@ -912,21 +913,10 @@ ${ccLine}
 
 ${resultBlock}
 
-▶ 메모
-${memoLine}
-
 ▶ 병력
 ${historyLine}
 
 ※ AI 참고용 / 최종 판단은 담당 한의사`;
-  }
-
-  function copyResult(selection: "both" | "result1" | "result2") {
-    const text = buildResultText(selection);
-    if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopied(selection);
-    setTimeout(() => setCopied(null), 2500);
   }
 
   function handlePrint() {
@@ -1322,17 +1312,21 @@ ${historyLine}
           )}
         </div>
         <div className="flex border-b border-border bg-card flex-shrink-0">
-          {(["record", "result", "history", "ask", "billing"] as const).map((tab, i) => (
+          {([
+            { id: "record" as const, label: "진료 기록" },
+            { id: "result" as const, label: "진단·이력·청구" },
+            { id: "ask" as const, label: "한의학 검색" },
+          ]).map(({ id, label }) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={id}
+              onClick={() => setActiveTab(id)}
               className={`px-5 py-3.5 text-xs transition-all border-b-2 ${
-                activeTab === tab
+                (id === "result" ? isOverviewTab : activeTab === id)
                   ? "text-[#EF6600] border-[#EF6600]"
                   : "text-subtext border-transparent hover:text-text"
               }`}
             >
-              {["진료 기록", "진단 결과", "진료 이력", "한의학 검색", "청구"][i]}
+              {label}
             </button>
           ))}
         </div>
@@ -1340,22 +1334,12 @@ ${historyLine}
         <div
           className={`flex-1 p-5 ${activeTab === "ask" ? "overflow-hidden flex flex-col" : "overflow-y-auto"}`}
         >
-          {!selectedPatient && activeTab !== "ask" && activeTab !== "billing" && (
+          {!selectedPatient && activeTab === "record" && (
             <div className="text-sm text-muted text-center py-16">
               왼쪽에서 환자를 선택해주세요
             </div>
           )}
 
-          {/* 청구 탭 */}
-          {activeTab === "billing" && (
-            currentRecordId ? (
-              <BillableItemPicker medicalRecordId={currentRecordId} />
-            ) : (
-              <div className="text-sm text-muted text-center py-16">
-                먼저 진료 기록을 저장해주세요
-              </div>
-            )
-          )}
 
           {/* 진료 녹음 탭 */}
           {activeTab === "record" && selectedPatient && (
@@ -1586,9 +1570,13 @@ ${historyLine}
             </div>
           )}
 
-          {/* 진단 결과 탭 */}
-          {activeTab === "result" && selectedPatient && (
-            <div>
+          {/* 진단·이력·청구 통합 탭 */}
+          {isOverviewTab && selectedPatient && (
+            <div className="flex flex-col gap-8">
+
+          {/* ── 진단 결과 ── */}
+          <div>
+          <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">진단 결과</p>
               {!result ? (
                 <div className="text-sm text-muted text-center py-12">
                   아직 진단 결과가 없습니다.
@@ -1596,72 +1584,6 @@ ${historyLine}
               ) : (
                 <>
                   <BetaFeedbackBanner />
-                  <div className="mb-3 bg-card border border-border rounded-lg p-4">
-                    <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
-                      <Search className="w-3.5 h-3.5" /> 상병코드 (KCD)
-                    </div>
-                    {kcdCode ? (
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm text-text">
-                          <span className="font-medium text-[#EF6600]">
-                            {kcdCode.code}
-                          </span>{" "}
-                          {kcdCode.korean_name}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setKcdCode(null);
-                            setKcdQuery("");
-                          }}
-                          className="text-subtext hover:text-text transition-colors"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="relative">
-                        <input
-                          value={kcdQuery}
-                          onChange={(e) => {
-                            setKcdQuery(e.target.value);
-                            setKcdDropdownOpen(true);
-                          }}
-                          onFocus={() => setKcdDropdownOpen(true)}
-                          onBlur={() =>
-                            setTimeout(() => setKcdDropdownOpen(false), 150)
-                          }
-                          placeholder="코드 또는 진단명 검색 (예: U234, 두통)"
-                          className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
-                        />
-                        {kcdDropdownOpen && kcdResults.length > 0 && (
-                          <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto z-10">
-                            {kcdResults.map((item) => (
-                              <button
-                                key={item.code}
-                                type="button"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => {
-                                  setKcdCode(item);
-                                  setKcdQuery("");
-                                  setKcdResults([]);
-                                  setKcdDropdownOpen(false);
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors border-b border-border last:border-b-0"
-                              >
-                                <span className="font-medium text-[#EF6600]">
-                                  {item.code}
-                                </span>{" "}
-                                <span className="text-text">
-                                  {item.korean_name}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
                   {(result.chiefComplaintSummary || chiefComplaint) && (
                     <div className="mb-3 bg-card border border-border rounded-lg p-4">
                       <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
@@ -1843,79 +1765,6 @@ ${historyLine}
                       </div>
                     )}
                   </div>
-                  <div className="bg-[#232323] rounded-lg p-5 mt-4">
-                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                      <div className="flex items-center gap-1.5 text-xs text-[#A09892] uppercase tracking-wide">
-                        <Clipboard className="w-3.5 h-3.5" /> 동의보감 차팅용 전체
-                        복사
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {result.claudeBased && (
-                          <>
-                            <button
-                              onClick={() => copyResult("result1")}
-                              className={`text-xs px-2.5 py-1.5 rounded-md flex items-center gap-1.5 transition-all ${
-                                copied === "result1"
-                                  ? "bg-green-600 text-white"
-                                  : "bg-[#3A3A3A] text-white hover:opacity-90"
-                              }`}
-                            >
-                              {copied === "result1" ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5" /> 복사 완료!
-                                </>
-                              ) : (
-                                <>
-                                  <Clipboard className="w-3.5 h-3.5" /> 결과 1 전체
-                                  복사
-                                </>
-                              )}
-                            </button>
-                            <button
-                              onClick={() => copyResult("result2")}
-                              className={`text-xs px-2.5 py-1.5 rounded-md flex items-center gap-1.5 transition-all ${
-                                copied === "result2"
-                                  ? "bg-green-600 text-white"
-                                  : "bg-[#3A3A3A] text-white hover:opacity-90"
-                              }`}
-                            >
-                              {copied === "result2" ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5" /> 복사 완료!
-                                </>
-                              ) : (
-                                <>
-                                  <Clipboard className="w-3.5 h-3.5" /> 결과 2 전체
-                                  복사
-                                </>
-                              )}
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => copyResult("both")}
-                          className={`text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all ${
-                            copied === "both"
-                              ? "bg-green-600 text-white"
-                              : "bg-[#EF6600] text-white hover:opacity-90"
-                          }`}
-                        >
-                          {copied === "both" ? (
-                            <>
-                              <Check className="w-3.5 h-3.5" /> 복사 완료!
-                            </>
-                          ) : (
-                            <>
-                              <Clipboard className="w-3.5 h-3.5" /> 전체 복사
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    <pre className="text-xs text-white/70 leading-relaxed whitespace-pre-wrap font-sans">
-                      {buildResultText("both")}
-                    </pre>
-                  </div>
                   <div className="flex items-center gap-1.5 text-xs text-muted mt-3 p-3 bg-fill border border-border rounded-lg">
                     <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0" />본
                     결과는 AI 참고용이며 최종 진단 및 처방은 반드시 한의사가
@@ -2018,11 +1867,10 @@ ${historyLine}
                 </>
               )}
             </div>
-          )}
 
-          {/* 진료 이력 탭 */}
-          {activeTab === "history" && selectedPatient && (
-            <div className="overflow-y-auto">
+            {/* ── 진료 이력 ── */}
+            <div>
+              <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">진료 이력</p>
               {recordsLoading ? (
                 <div className="text-sm text-muted text-center py-12">
                   불러오는 중...
@@ -2104,6 +1952,32 @@ ${historyLine}
                               ) : (
                                 <ChevronDown className="w-4 h-4 text-subtext flex-shrink-0 mt-0.5" />
                               )}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (!r.chart_structured) return;
+                                navigator.clipboard.writeText(r.chart_structured);
+                                setHistoryCopied(r.id);
+                                setTimeout(() => setHistoryCopied(null), 2000);
+                              }}
+                              className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
+                              title="복사"
+                            >
+                              {historyCopied === r.id ? (
+                                <Check className="w-3.5 h-3.5 text-green-500" />
+                              ) : (
+                                <Clipboard className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCurrentRecordId(r.id);
+                                setActiveTab("billing");
+                              }}
+                              className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
+                              title="청구"
+                            >
+                              <ReceiptText className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleDeleteRecord(r.id)}
@@ -2239,6 +2113,67 @@ ${historyLine}
                 </div>
               )}
             </div>
+
+            {/* ── 청구 ── */}
+            <div>
+              <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">청구</p>
+              <div className="mb-4 bg-card border border-border rounded-lg p-4">
+                <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
+                  <Search className="w-3.5 h-3.5" /> 상병코드 (KCD)
+                </div>
+                {kcdCode ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-text">
+                      <span className="font-medium text-[#EF6600]">{kcdCode.code}</span>{" "}
+                      {kcdCode.korean_name}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setKcdCode(null); setKcdQuery(""); }}
+                      className="text-subtext hover:text-text transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      value={kcdQuery}
+                      onChange={(e) => { setKcdQuery(e.target.value); setKcdDropdownOpen(true); }}
+                      onFocus={() => setKcdDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setKcdDropdownOpen(false), 150)}
+                      placeholder="코드 또는 진단명 검색 (예: U234, 두통)"
+                      className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                    />
+                    {kcdDropdownOpen && kcdResults.length > 0 && (
+                      <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto z-10">
+                        {kcdResults.map((item) => (
+                          <button
+                            key={item.code}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => { setKcdCode(item); setKcdQuery(""); setKcdResults([]); setKcdDropdownOpen(false); }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors border-b border-border last:border-b-0"
+                          >
+                            <span className="font-medium text-[#EF6600]">{item.code}</span>{" "}
+                            <span className="text-text">{item.korean_name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {currentRecordId ? (
+                <BillableItemPicker medicalRecordId={currentRecordId} />
+              ) : (
+                <div className="text-sm text-muted text-center py-8">
+                  먼저 진료 기록을 저장해주세요
+                </div>
+              )}
+            </div>
+
+          </div>
           )}
 
           {activeTab === "ask" && (
@@ -2494,12 +2429,25 @@ ${historyLine}
               <div className="text-sm font-medium text-text mb-5">
                 저장되었습니다
               </div>
-              <button
-                onClick={() => setShowSavedModal(false)}
-                className="w-full bg-[#EF6600] text-white rounded-md py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
-              >
-                확인
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSavedModal(false)}
+                  className="flex-1 border border-border text-text rounded-md py-2.5 text-sm font-medium hover:bg-fill transition-colors"
+                >
+                  확인
+                </button>
+                {currentRecordId && (
+                  <button
+                    onClick={() => {
+                      setShowSavedModal(false);
+                      setActiveTab("billing");
+                    }}
+                    className="flex-1 bg-[#EF6600] text-white rounded-md py-2.5 text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
+                  >
+                    <ReceiptText className="w-3.5 h-3.5" /> 청구하기
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
