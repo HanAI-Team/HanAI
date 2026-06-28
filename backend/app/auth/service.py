@@ -2,15 +2,14 @@ import re
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import HTTPException, status
-from jose import jwt
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from passlib.context import CryptContext
-
 from app.auth.schema import RegisterRequest
 from app.core.config import settings
-from app.core.models import Doctor, Hospital, Subscription
+from app.core.models import Doctor, Hospital, PasswordHistory, Subscription
+from fastapi import HTTPException, status
+from jose import jwt
+from passlib.context import CryptContext
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -83,7 +82,6 @@ async def get_doctor_by_license(db: AsyncSession, license_number: str) -> Doctor
 
 async def get_pending_doctors(db: AsyncSession) -> list:
     from app.core.models import Hospital
-    from sqlalchemy import join
 
     result = await db.execute(
         select(Doctor, Hospital.name.label("clinic_name"))
@@ -134,3 +132,55 @@ async def get_staff_by_username(db: AsyncSession, username: str):
         select(StaffAccount).where(StaffAccount.username == username)
     )
     return result.scalar_one_or_none()
+
+
+
+def validate_password_complexity(password :str)->list[str]:
+    errors = []
+
+    if len(password) < 8:
+        errors.append("비밀번호는 8자 이상이어야 합니다.")
+
+    if not re.search(r"[A-Za-z]", password):
+        errors.append("영문자를 포함해야 합니다.")
+    
+    if not re.search(r"\d", password):
+        errors.append("숫자를 포함해야 합니다.")
+
+    if not re.search(r"[!@#$%^&*()_+\-=\[\]{}|;:',.<>?/~`]", password):
+        errors.append("특수문자를 포함해야 합니다.")
+
+    return errors 
+
+
+
+async def check_password_history(
+        db: AsyncSession,
+        account_type:str,
+        account_id : UUID,
+        new_password: str,
+        limit :int =5
+)->bool:
+    result = await db.execute(select(PasswordHistory).where(
+        PasswordHistory.account_type == account_type,
+        PasswordHistory.account_id == account_id
+    ).limit(limit=limit))
+    password_history = result.scalars().all()
+
+    return any(pwd_context.verify(new_password, h.password_hash) for h in password_history)
+
+
+async def save_password_history(
+    db: AsyncSession,
+    account_type: str,
+    account_id: UUID,
+    password_hash: str,
+) -> None:
+    password_history = PasswordHistory(
+        account_type  = account_type,
+        account_id = account_id,
+        password_hash = password_hash
+    )
+    db.add(password_history)
+    
+
