@@ -1,58 +1,58 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import {
-  getPatients,
-  getPatient,
-  createPatient,
-  getPatientRecords,
-  saveRecord,
-  updatePatient,
-  deleteRecord,
-  importPatientsFromExcel,
-} from "@/lib/api/patients";
-import {
-  uploadAndAnalyze,
-  askDiagnosisStream,
-  diagnoseText,
-  finalizeRecord,
-  updateKcdCode,
-  ChartingEvent,
-} from "@/lib/api/diagnosis";
-import { searchKcd, KcdSearchResult } from "@/lib/api/kcd";
-import { Patient, DiagnosisResult } from "@/types";
 import BetaFeedbackBanner from "@/components/BetaFeedbackBanner";
 import { BillableItemPicker } from "@/components/billing/BillableItemPicker";
 import {
-  Search,
-  Mic,
-  Square,
-  FolderOpen,
-  Sparkles,
-  Clipboard,
+  askDiagnosisStream,
+  ChartingEvent,
+  diagnoseText,
+  finalizeRecord,
+  updateKcdCode,
+  uploadAndAnalyze,
+} from "@/lib/api/diagnosis";
+import { KcdSearchResult, searchKcd } from "@/lib/api/kcd";
+import {
+  createPatient,
+  deleteRecord,
+  getPatient,
+  getPatientRecords,
+  getPatients,
+  importPatientsFromExcel,
+  saveRecord,
+  updatePatient,
+} from "@/lib/api/patients";
+import { DiagnosisResult, Patient } from "@/types";
+import {
   Check,
-  TriangleAlert,
-  Save,
+  ChevronDown,
+  ChevronUp,
   CircleCheck,
-  Printer,
+  Clipboard,
   Download,
-  MessageCircle,
-  Stethoscope,
+  FileText,
+  FolderOpen,
   Leaf,
   MapPin,
-  User,
-  ChevronUp,
-  ChevronDown,
-  X,
-  Plus,
+  MessageCircle,
+  Mic,
   Pencil,
-  Trash2,
-  FileText,
-  ThumbsUp,
-  ThumbsDown,
+  Plus,
+  Printer,
   ReceiptText,
+  Save,
+  Search,
+  Sparkles,
+  Square,
+  Stethoscope,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+  TriangleAlert,
+  User,
+  X,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 const PAGE_SIZE = 20;
 
