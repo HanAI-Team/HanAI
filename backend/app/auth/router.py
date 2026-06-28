@@ -73,6 +73,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
             detail="면허번호는 4자리 이상 숫자여야 합니다.",
         )
     doctor = await service.register_doctor(db, data)
+    await service.record_account_history(db, "doctor", doctor.id , "created")
     return RegisterResponse(
         doctor_id=UUID(str(doctor.id)),
         name=str(doctor.name),
