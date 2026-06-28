@@ -1,3 +1,5 @@
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Union
 from uuid import UUID
 
@@ -20,7 +22,7 @@ from app.auth.schema import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Doctor, Hospital, StaffAccount
+from app.core.models import Doctor, Hospital, LoginLog, StaffAccount
 from app.core.redis import (
     add_session,
     add_token_blacklist,
@@ -29,7 +31,7 @@ from app.core.redis import (
     set_verify_pending,
 )
 from app.subscription.service import get_subscription
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +39,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(tags=["auth"])
 bearer_scheme = HTTPBearer()
 
-import secrets
 
 _redis = get_redis()
 
@@ -145,9 +146,13 @@ async def register_verify_confirm(
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(data: LoginRequest,request:Request, db: AsyncSession = Depends(get_db)):
     FAIL_KEY = f"login_fail:{data.license_number}"
     LOCK_KEY = f"login_lock:{data.license_number}"
+    PW_EXPIRE_DAYS = 90
+
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent")
 
     if _redis:
         is_locked = _redis.get(LOCK_KEY)
@@ -166,6 +171,15 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     is_verified = service.pwd_context.verify(data.password, str(doctor.password_hash))
     if not is_verified:
+        login_log = LoginLog(
+            success = False, 
+            ip_address = ip,
+            account_type = "doctor",
+            account_id = doctor.id,
+            user_agent = ua
+        )
+        db.add(login_log)
+        await db.commit()
         if _redis:
             fail_count = _redis.incr(FAIL_KEY)
             _redis.expire(FAIL_KEY, LOCK_SECONDS)
@@ -193,10 +207,22 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="승인 대기 중입니다.",
         )
+    if doctor.force_password_change:
+        raise HTTPException(status_code=403, detail="초기 비밀번호를 변경해야 합니다.", headers={"X-Require": "password-change"})
+    
+    if doctor.password_changed_at:
+        if datetime.now(timezone.utc) - doctor.password_changed_at > timedelta(days=PW_EXPIRE_DAYS):
+            raise HTTPException(status_code=403, detail="비밀번호 사용 기간(90일)이 만료되었습니다.", headers={"X-Require": "password-change"})
 
     subscription = await get_subscription(db, doctor)
     tier = subscription.tier if subscription else "basic"
-
+    login_log  = LoginLog(
+            success = True, 
+            ip_address = ip,
+            account_type = "doctor",
+            account_id = doctor.id,
+            user_agent = ua
+    )
     token = service.create_access_token(
         UUID(str(doctor.id)), UUID(str(doctor.hospital_id)), str(doctor.role)
     )
@@ -205,6 +231,8 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     )
     if not allowed:
         raise HTTPException(status_code=429, detail="이미 다른 기기에서 로그인 중입니다.")
+    db.add(login_log)
+    await db.commit()
 
     return TokenResponse(
         access_token=token,
