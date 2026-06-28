@@ -4,7 +4,13 @@ from uuid import UUID
 
 from app.auth.schema import RegisterRequest
 from app.core.config import settings
-from app.core.models import Doctor, Hospital, PasswordHistory, Subscription
+from app.core.models import (
+    AccountHistory,
+    Doctor,
+    Hospital,
+    PasswordHistory,
+    Subscription,
+)
 from fastapi import HTTPException, status
 from jose import jwt
 from passlib.context import CryptContext
@@ -182,5 +188,26 @@ async def save_password_history(
         password_hash = password_hash
     )
     db.add(password_history)
-    
+  
 
+
+
+
+async def record_account_history(
+        db:AsyncSession,
+        account_type : str,
+        account_id :UUID,
+        action:str,
+        actor_id : UUID | None = None,
+        detail:str | None = None
+)->None:
+    account_history = AccountHistory(
+        account_type = account_type,
+        account_id  = account_id,
+        action = action ,
+        actor_id = actor_id,
+        detail=detail
+    )
+    db.add(account_history)
+
+    
