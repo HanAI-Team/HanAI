@@ -1,13 +1,13 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.auth.service import record_account_history
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import Doctor
 from app.staff import service
-
 from app.staff.schema import StaffCreateRequest, StaffResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["staff"])
 
@@ -25,9 +25,15 @@ async def create_staff(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="owner 계정만 접근 가능합니다.",
         )
-    return await service.create_staff(
+    staff =  await service.create_staff(
         db=db, hospital_id=UUID(str(doctor.hospital_id)), data=data
     )
+    await record_account_history(
+        db, "staff", staff.id, "created", 
+        actor_id=doctor.id
+    )
+    await db.commit()
+    return staff 
 
 
 @router.get("/", response_model=list[StaffResponse])
@@ -51,9 +57,17 @@ async def deactivate_staff(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="owner 계정만 접근 가능합니다.",
         )
-    return await service.deactivate_staff(
+    staff =  await service.deactivate_staff(
         db=db, hospital_id=UUID(str(doctor.hospital_id)), staff_id=staff_id
     )
+    await record_account_history(
+        db, "staff", staff.id, "deactivated", 
+        actor_id=doctor.id
+    )
+    await db.commit()
+    return staff 
+
+
 
 
 @router.patch("/{staff_id}/activate", response_model=StaffResponse)
@@ -67,6 +81,14 @@ async def activate_staff(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="owner 계정만 접근 가능합니다.",
         )
-    return await service.activate_staff(
+    staff =  await service.activate_staff(
         db=db, hospital_id=UUID(str(doctor.hospital_id)), staff_id=staff_id
     )
+
+    await record_account_history(
+    db, "staff", staff.id, "role_changed",
+    actor_id=doctor.id,
+    detail="reactivated"
+    )
+    await db.commit()
+    return staff 
