@@ -15,6 +15,12 @@ export async function apiCall(
     },
   })
 
+  if (res.status === 401) {
+    localStorage.removeItem('token')
+    window.location.href = '/login'
+    throw new Error('인증이 만료되었습니다')
+  }
+
   if (!res.ok) {
     const error = await res.json()
     throw new Error(error.detail || '오류가 발생했습니다')
