@@ -13,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -56,6 +57,22 @@ class Doctor(Base):
     hospital = relationship("Hospital", back_populates="doctors")
     medical_records = relationship("MedicalRecord", back_populates="doctor")
     feedbacks = relationship("Feedback", back_populates="doctor")
+
+
+class SaturdayHolidayStaffing(Base):
+    """MT050(토요일·공휴일 근무현황) 산출용 — 병원 단위, 날짜별 근무 한의사수.
+    같은 청구기간(claim_period_year/month) 안의 모든 청구서가 이 데이터를 공유 조회한다."""
+    __tablename__ = "saturday_holiday_staffing"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    work_date = Column(Date, nullable=False)               # 토요일 또는 공휴일 날짜
+    doctor_count = Column(Numeric(3, 1), nullable=False)   # 근무 한의사수 (0.5인 단위 가능, MT050 9(2).V9(1))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    hospital = relationship("Hospital")
+
+    __table_args__ = (UniqueConstraint("hospital_id", "work_date", name="uq_sat_holiday_staffing_date"),)
 
 
 class StaffAccount(Base):

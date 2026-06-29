@@ -1,5 +1,6 @@
+import calendar
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from app.core.models import (
     MedicalRecordProcedure,
     Patient,
     Prescription,
+    SaturdayHolidayStaffing,
 )
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -180,6 +182,26 @@ async def generate_claim_edi(
     procedure_records = []
     special_records = []
 
+    # MT050: 토요일·공휴일 근무현황 (병원 단위, 청구서당 1회만 기재 — 첫 명세서에 부착)
+    # ※ 내용(content) 바이트 레이아웃은 공식 "명세서 작성요령" 문서를 확보하지 못한 상태의 추정값.
+    #   MT008 실사례("YYMMDD/22/YYMMDD/20/...")의 슬래시 구분 표기를 따라
+    #   "YYYYMMDD/근무인원수(9(2).V9(1))" 쌍을 날짜순으로 슬래시(/) 연결한다.
+    #   예: "20260606/01.0/20260613/00.5" — 공식 스펙 확보 시 재검증 필요.
+    last_day = calendar.monthrange(claim.claim_period_year, claim.claim_period_month)[1]
+    r_staff = await db.execute(
+        select(SaturdayHolidayStaffing)
+        .where(
+            SaturdayHolidayStaffing.hospital_id == hospital_id,
+            SaturdayHolidayStaffing.work_date >= date(claim.claim_period_year, claim.claim_period_month, 1),
+            SaturdayHolidayStaffing.work_date <= date(claim.claim_period_year, claim.claim_period_month, last_day),
+        )
+        .order_by(SaturdayHolidayStaffing.work_date)
+    )
+    staffing_rows = r_staff.scalars().all()
+    mt050_content = "/".join(
+        f"{row.work_date.strftime('%Y%m%d')}/{row.doctor_count:04.1f}" for row in staffing_rows
+    )
+
     for i, record in enumerate(medical_records):
         serial = i + 1
         rec_key = RecordKey(institution_code=inst_code, serial_no=serial, ext_no=0)
@@ -206,6 +228,16 @@ async def generate_claim_edi(
                 record_ext_no=0,
                 special_code="MT032",
                 content=record.recorded_at.strftime("%Y%m%d%H%M"),
+            )))
+
+        # MT050: 토요일·공휴일 근무현황 (병원 단위 데이터라 청구서 내 첫 명세서에만 1회 부착)
+        if i == 0 and mt050_content:
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT050",
+                content=mt050_content,
             )))
 
         # DiagnosisRecord
