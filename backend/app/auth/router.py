@@ -22,7 +22,7 @@ from app.auth.schema import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Doctor, Hospital, LoginLog, StaffAccount
+from app.core.models import AccountHistory, Doctor, Hospital, LoginLog, StaffAccount
 from app.core.redis import (
     add_session,
     add_token_blacklist,
@@ -410,3 +410,51 @@ async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db
         access_token=token,
         expires_in=settings.JWT_EXPIRE_MINUTES * 60,
     )
+
+
+
+
+@router.get("/login-logs", )
+async def get_login_logs(db:AsyncSession=Depends(get_db),
+                            user: Union[Doctor, StaffAccount] = Depends(get_current_user),
+                        ):
+    if user.role != "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="오너 계정만 접근 가능합니다.")
+    doctor_ids = (await db.execute(
+        select(Doctor.id).where(Doctor.hospital_id == user.hospital_id)
+    )).scalars().all()
+
+    staff_ids = (await db.execute(
+        select(StaffAccount.id).where(StaffAccount.hospital_id == user.hospital_id)
+    )).scalars().all()
+
+    all_ids = list(doctor_ids) + list(staff_ids)
+
+    result = await db.execute(
+        select(LoginLog)
+        .where(LoginLog.account_id.in_(all_ids))
+        .order_by(LoginLog.attempted_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/account-histories")
+async def get_account_histories(db:AsyncSession=Depends(get_db),
+                            user: Union[Doctor, StaffAccount] = Depends(get_current_user),
+                        ):
+    if user.role != "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="오너 계정만 접근 가능합니다.")
+    doctor_ids = (await db.execute(
+        select(Doctor.id).where(Doctor.hospital_id == user.hospital_id)
+    )).scalars().all()
+
+    staff_ids = (await db.execute(
+        select(StaffAccount.id).where(StaffAccount.hospital_id == user.hospital_id)
+    )).scalars().all()
+
+    all_ids = list(doctor_ids) + list(staff_ids)
+
+    result = await db.execute(select(AccountHistory)
+.where(AccountHistory.account_id.in_(all_ids))
+.order_by(AccountHistory.started_at.desc()))  
+    return result.scalars().all()
