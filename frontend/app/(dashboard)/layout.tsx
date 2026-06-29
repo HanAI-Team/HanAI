@@ -1,6 +1,7 @@
 "use client";
 import PwaInstallGuide from "@/components/PwaInstallGuide";
 import ThemeToggle from "@/components/ThemeToggle";
+import { useIdleLogout } from "@/hooks/useIdleLogout";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  useIdleLogout();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
