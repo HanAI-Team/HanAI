@@ -1,5 +1,9 @@
 """KMISHE EDIFACT 전자문서 생성기.
 
+# DEPRECATED: 2026.4.24 보건복지부 고시 제2026-95호로 EDI 전산청구 폐지됨.
+# KT EDI 서비스 종료로 KMISHE EDIFACT 방식은 더 이상 사용되지 않음.
+# 전산매체(C2) 방식은 edi_writer.py 참고.
+
 HIRA 건강보험 요양급여비용 전자문서 (별표1) 기준.
 한방용 요양급여(의료급여)비용 명세서 (KMISHE) — UN/EDIFACT D:96A.
 

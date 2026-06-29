@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { jwtDecode } from 'jwt-decode'
 import { getStaffList, createStaff, deactivateStaff, activateStaff } from '@/lib/api/staff'
 import { updateHospital } from '@/lib/api/hospitals'
+import { getLoginLogs, getAccountHistories, LoginLog, AccountHistory } from '@/lib/api/auth'
 import { Staff } from '@/types'
 import { Plus, X, MessageSquare } from 'lucide-react'
 
@@ -24,9 +25,26 @@ const STAFF_ROLE_LABEL: Record<string, string> = {
   receptionist: '데스크',
 }
 
+const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+  doctor: '의사',
+  staff: '직원',
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  created: '생성',
+  deactivated: '비활성화',
+  role_changed: '권한 변경',
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export default function SettingsPage() {
   const router = useRouter()
-  const [tab, setTab] = useState<'general' | 'staff'>('general')
+  const [tab, setTab] = useState<'general' | 'staff' | 'access'>('general')
   const [isOwner] = useState(() => {
     if (typeof window === 'undefined') return false
     const token = localStorage.getItem('token')
@@ -57,6 +75,12 @@ export default function SettingsPage() {
   const [addStaffLoading, setAddStaffLoading] = useState(false)
   const [staffErrorMessage, setStaffErrorMessage] = useState<string | null>(null)
 
+  const [accessSubTab, setAccessSubTab] = useState<'login-logs' | 'account-histories'>('login-logs')
+  const [loginLogs, setLoginLogs] = useState<LoginLog[]>([])
+  const [accountHistories, setAccountHistories] = useState<AccountHistory[]>([])
+  const [accessLoading, setAccessLoading] = useState(false)
+  const [accessError, setAccessError] = useState<string | null>(null)
+
   async function loadStaffData() {
     setStaffLoading(true)
     try {
@@ -76,9 +100,28 @@ export default function SettingsPage() {
     }
   }
 
+  async function loadAccessData() {
+    setAccessLoading(true)
+    setAccessError(null)
+    try {
+      const [logs, histories] = await Promise.all([getLoginLogs(), getAccountHistories()])
+      setLoginLogs(logs)
+      setAccountHistories(histories)
+    } catch (e: any) {
+      setAccessError(e.message || '데이터를 불러오지 못했습니다.')
+    } finally {
+      setAccessLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (tab !== 'staff' || !isOwner) return
     Promise.resolve().then(loadStaffData)
+  }, [tab, isOwner])
+
+  useEffect(() => {
+    if (tab !== 'access' || !isOwner) return
+    Promise.resolve().then(loadAccessData)
   }, [tab, isOwner])
 
   useEffect(() => {
@@ -191,10 +234,11 @@ export default function SettingsPage() {
           {[
             { value: 'general', label: '일반' },
             { value: 'staff', label: '하위 계정 관리' },
+            { value: 'access', label: '접근 관리' },
           ].map((t) => (
             <button
               key={t.value}
-              onClick={() => setTab(t.value as 'general' | 'staff')}
+              onClick={() => setTab(t.value as 'general' | 'staff' | 'access')}
               className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
                 tab === t.value ? 'bg-card text-text shadow-sm' : 'text-subtext'
               }`}
@@ -353,6 +397,95 @@ export default function SettingsPage() {
             >
               <Plus className="w-4 h-4" /> 하위 계정 추가
             </button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'access' && isOwner && (
+        <div className="flex flex-col gap-4">
+          <div className="flex bg-fill border border-border rounded-md p-1">
+            {[
+              { value: 'login-logs', label: '로그인 기록' },
+              { value: 'account-histories', label: '계정 이력' },
+            ].map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setAccessSubTab(t.value as 'login-logs' | 'account-histories')}
+                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                  accessSubTab === t.value ? 'bg-card text-text shadow-sm' : 'text-subtext'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="bg-card border border-border rounded-lg p-5">
+            {accessLoading ? (
+              <div className="text-sm text-muted text-center py-8">불러오는 중...</div>
+            ) : accessError ? (
+              <div className="text-sm text-red-500 text-center py-8">{accessError}</div>
+            ) : accessSubTab === 'login-logs' ? (
+              loginLogs.length === 0 ? (
+                <div className="text-sm text-muted text-center py-8">로그인 기록이 없습니다</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left text-subtext pb-2 pr-3 font-medium whitespace-nowrap">계정유형</th>
+                        <th className="text-left text-subtext pb-2 pr-3 font-medium whitespace-nowrap">성공여부</th>
+                        <th className="text-left text-subtext pb-2 pr-3 font-medium whitespace-nowrap">IP 주소</th>
+                        <th className="text-left text-subtext pb-2 font-medium whitespace-nowrap">시각</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loginLogs.map((log) => (
+                        <tr key={log.id} className="border-b border-border last:border-0">
+                          <td className="py-2 pr-3 text-text">{ACCOUNT_TYPE_LABEL[log.account_type] ?? log.account_type}</td>
+                          <td className="py-2 pr-3">
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                              log.success
+                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                            }`}>
+                              {log.success ? '성공' : '실패'}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3 text-subtext font-mono">{log.ip_address ?? '-'}</td>
+                          <td className="py-2 text-subtext whitespace-nowrap">{formatDate(log.attempted_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : (
+              accountHistories.length === 0 ? (
+                <div className="text-sm text-muted text-center py-8">계정 이력이 없습니다</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left text-subtext pb-2 pr-3 font-medium whitespace-nowrap">계정유형</th>
+                        <th className="text-left text-subtext pb-2 pr-3 font-medium whitespace-nowrap">액션</th>
+                        <th className="text-left text-subtext pb-2 font-medium whitespace-nowrap">처리일시</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {accountHistories.map((h) => (
+                        <tr key={h.id} className="border-b border-border last:border-0">
+                          <td className="py-2 pr-3 text-text">{ACCOUNT_TYPE_LABEL[h.account_type] ?? h.account_type}</td>
+                          <td className="py-2 pr-3 text-text">{ACTION_LABEL[h.action] ?? h.action}</td>
+                          <td className="py-2 text-subtext whitespace-nowrap">{formatDate(h.started_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
           </div>
         </div>
       )}
