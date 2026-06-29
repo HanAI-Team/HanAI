@@ -1,4 +1,29 @@
+import { apiCall } from './client'
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+export type LoginLog = {
+  id: string
+  account_type: string
+  success: boolean
+  ip_address: string | null
+  attempted_at: string
+}
+
+export type AccountHistory = {
+  id: string
+  account_type: string
+  action: string
+  started_at: string
+}
+
+export async function getLoginLogs(): Promise<LoginLog[]> {
+  return apiCall('/api/auth/login-logs')
+}
+
+export async function getAccountHistories(): Promise<AccountHistory[]> {
+  return apiCall('/api/auth/account-histories')
+}
 
 export async function login(license_number: string, password: string) {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
