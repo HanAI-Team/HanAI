@@ -20,6 +20,7 @@ from collections import defaultdict
 from app.core.models import (
     Claim,
     ClaimLineItem,
+    ClaimResubmissionHistory,
     Doctor,
     Hospital,
     MedicalRecord,
@@ -109,6 +110,48 @@ async def create_claim(
     # 진료기록에 claim_id 연결
     for record in records:
         record.claim_id = claim.id
+
+    await db.commit()
+    await db.refresh(claim)
+    return claim
+
+
+async def update_claim_resubmission(
+    db: AsyncSession,
+    hospital_id: UUID,
+    actor_id: UUID,
+    claim_id: UUID,
+    claim_type: str,
+    original_receipt_no: int,
+    original_record_serial: int,
+    rejection_reason_code: str | None,
+) -> Claim:
+    """보완·추가청구 처리. 반려(rejected)된 청구서에만 적용 가능하며 상태는 바꾸지 않는다."""
+    result = await db.execute(select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id))
+    claim = result.scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+    if claim.status != "rejected":
+        raise HTTPException(
+            status_code=409, detail="반려된 청구서만 보완·추가청구 처리할 수 있습니다."
+        )
+
+    reason_code = rejection_reason_code if claim_type == "supplement" else None
+
+    claim.claim_type = claim_type
+    claim.original_receipt_no = original_receipt_no
+    claim.original_record_serial = original_record_serial
+    claim.rejection_reason_code = reason_code
+
+    db.add(ClaimResubmissionHistory(
+        id=uuid.uuid4(),
+        claim_id=claim.id,
+        actor_id=actor_id,
+        claim_type=claim_type,
+        receipt_no=original_receipt_no,
+        record_serial=original_record_serial,
+        reason_code=reason_code,
+    ))
 
     await db.commit()
     await db.refresh(claim)
@@ -218,6 +261,10 @@ async def generate_claim_edi(
             benefit_total_1=claim.total_amount,
             copayment=claim.patient_copay,
             claim_amount=claim.claim_amount,
+            # 보완·추가청구(claim_type)일 때만 당초 접수번호/명일련/사유코드를 채워 넣는다.
+            receipt_no=claim.original_receipt_no or 0,
+            record_serial=claim.original_record_serial or 0,
+            reason_code=claim.rejection_reason_code or "  ",
         ))
 
         # MT032: 접수일시 (명세서 단위, 줄 없음)
