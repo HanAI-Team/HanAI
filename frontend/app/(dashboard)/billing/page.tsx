@@ -87,6 +87,97 @@ export default function BillingPage() {
     }
   }
 
+  async function handleReceiptPrint(claim: ClaimListItem) {
+    const printWindow = window.open("", "_blank", "width=600,height=860");
+    if (!printWindow) {
+      alert("팝업이 차단되어 인쇄할 수 없습니다. 팝업 차단을 해제해주세요.");
+      return;
+    }
+
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const token = localStorage.getItem("token");
+    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+    let hospitalName = "-";
+    let institutionCode = "-";
+    try {
+      const meRes = await fetch(`${base}/api/auth/me`, { headers: authHeaders });
+      if (meRes.ok) {
+        const me = await meRes.json();
+        if (me.institution_code) institutionCode = me.institution_code;
+        if (me.hospital_id) {
+          const hospRes = await fetch(`${base}/api/hospitals/${me.hospital_id}`, { headers: authHeaders });
+          if (hospRes.ok) {
+            const hosp = await hospRes.json();
+            if (hosp.name) hospitalName = hosp.name;
+          }
+        }
+      }
+    } catch {}
+
+    // 급여 공단부담금 = 청구금액(claim_amount), 본인부담금 = patient_copay
+    // 비급여 = total_amount - patient_copay - claim_amount (0원인 경우가 일반적)
+    const nonCovered = Math.max(0, claim.total_amount - claim.patient_copay - claim.claim_amount);
+    const grandTotal = claim.patient_copay + claim.claim_amount + nonCovered;
+
+    const html = "<!DOCTYPE html>"
+      + `<html lang="ko"><head><meta charset="UTF-8"/>`
+      + `<title>영수증 - ${claim.patient_name}</title>`
+      + `<style>`
+      + `*{margin:0;padding:0;box-sizing:border-box}`
+      + `body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#000;background:#fff;padding:28px 36px;max-width:560px;margin:0 auto}`
+      + `h1{font-size:18px;font-weight:bold;text-align:center;letter-spacing:6px;margin-bottom:3px}`
+      + `.subtitle{text-align:center;font-size:11px;color:#555;margin-bottom:12px}`
+      + `hr{border:none;border-top:1.5px solid #000;margin:10px 0}`
+      + `hr.thin{border-top:1px solid #ccc;margin:8px 0}`
+      + `.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px 16px;font-size:13px;margin:8px 0}`
+      + `.item{display:flex;gap:6px;align-items:baseline}`
+      + `.lbl{color:#444;min-width:72px;font-weight:500;flex-shrink:0}`
+      + `table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}`
+      + `th{border:1px solid #999;padding:6px 10px;background:#f0f0f0;font-weight:500}`
+      + `th.left{text-align:left}`
+      + `th.right{text-align:right}`
+      + `td{border:1px solid #ccc;padding:6px 10px}`
+      + `td.item-name{text-align:left}`
+      + `td.amount{text-align:right}`
+      + `.totals{font-size:13px;margin-top:4px}`
+      + `.t-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee}`
+      + `.t-row.bold{font-weight:bold;font-size:14px;border-top:1.5px solid #000;border-bottom:none;padding-top:10px;margin-top:4px}`
+      + `.notice{margin-top:14px;font-size:11px;color:#888;border-top:1px dashed #bbb;padding-top:8px;text-align:center}`
+      + `@media print{body{padding:0}@page{margin:12mm;size:A4}}`
+      + `</style></head><body>`
+      + `<h1>진료비 계산서·영수증</h1>`
+      + `<div class="subtitle">「의료법 시행규칙」별지 제9호 서식</div>`
+      + `<hr/>`
+      + `<div class="grid2">`
+      + `<div class="item"><span class="lbl">요양기관명</span><span>${hospitalName}</span></div>`
+      + `<div class="item"><span class="lbl">요양기관기호</span><span>${institutionCode}</span></div>`
+      + `<div class="item"><span class="lbl">환자명</span><span>${claim.patient_name}</span></div>`
+      + `<div class="item"><span class="lbl">진료기간</span><span>${claim.claim_period}</span></div>`
+      + `</div>`
+      + `<hr/>`
+      + `<table>`
+      + `<thead><tr><th class="left">항목</th><th class="right">금액</th></tr></thead>`
+      + `<tbody>`
+      + `<tr><td class="item-name">급여 - 본인부담금</td><td class="amount">${claim.patient_copay.toLocaleString()}원</td></tr>`
+      + `<tr><td class="item-name">급여 - 공단부담금</td><td class="amount">${claim.claim_amount.toLocaleString()}원</td></tr>`
+      + `<tr><td class="item-name">비급여</td><td class="amount">${nonCovered.toLocaleString()}원</td></tr>`
+      + `</tbody></table>`
+      + `<hr class="thin"/>`
+      + `<div class="totals">`
+      + `<div class="t-row"><span>합계</span><span>${grandTotal.toLocaleString()}원</span></div>`
+      + `<div class="t-row bold"><span>본인부담금 합계</span><span>${claim.patient_copay.toLocaleString()}원</span></div>`
+      + `</div>`
+      + `<div class="notice">본 영수증은 보험 청구 목적으로 발급된 것입니다.</div>`
+      + `</body></html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onafterprint = () => printWindow.close();
+    printWindow.print();
+  }
+
   return (
     <div className="p-6 md:p-8 max-w-[1100px] mx-auto">
       {/* 헤더 */}
@@ -165,18 +256,19 @@ export default function BillingPage() {
               <th className="p-3 text-right">본인부담</th>
               <th className="p-3 text-right">청구금액</th>
               <th className="p-3 text-center">EDI</th>
+              <th className="p-3 text-center">영수증</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={9} className="p-8 text-center text-subtext text-xs">
                   불러오는 중...
                 </td>
               </tr>
             ) : claims.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={9} className="p-8 text-center text-subtext text-xs">
                   청구 내역이 없습니다.
                 </td>
               </tr>
@@ -240,6 +332,14 @@ export default function BillingPage() {
                         </button>
                       )}
                     </div>
+                  </td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => handleReceiptPrint(claim)}
+                      className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                    >
+                      출력
+                    </button>
                   </td>
                 </tr>
               ))
