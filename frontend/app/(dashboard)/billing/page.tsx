@@ -147,7 +147,7 @@ export default function BillingPage() {
       + `@media print{body{padding:0}@page{margin:12mm;size:A4}}`
       + `</style></head><body>`
       + `<h1>진료비 계산서·영수증</h1>`
-      + `<div class="subtitle">「의료법 시행규칙」별지 제9호 서식</div>`
+      + `<div class="subtitle">「국민건강보험 요양급여의 기준에 관한 규칙」별지 제9호 서식</div>`
       + `<hr/>`
       + `<div class="grid2">`
       + `<div class="item"><span class="lbl">요양기관명</span><span>${hospitalName}</span></div>`
