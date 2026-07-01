@@ -1,7 +1,10 @@
+import base64
 import os
 
 # DATABASE_URL must be set before any app module is imported
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+# Patient.rrn은 EncryptedString이라 테스트에도 키가 필요 (테스트 전용 고정 키, 운영과 무관)
+os.environ.setdefault("RRN_ENCRYPTION_KEY", base64.b64encode(b"0" * 32).decode())
 
 from datetime import datetime, timezone
 from uuid import UUID

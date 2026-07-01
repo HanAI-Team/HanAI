@@ -5,6 +5,7 @@ import {
   bulkDownloadEdi,
   downloadEdi,
   getClaims,
+  resubmitClaim,
   statusLabel,
 } from "@/lib/api/billing";
 
@@ -28,15 +29,18 @@ export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [resubmitTarget, setResubmitTarget] = useState<ClaimListItem | null>(null);
 
-  useEffect(() => {
+  function reload() {
     setLoading(true);
     setSelected(new Set());
     getClaims({ month: month || undefined, status: statusFilter || undefined })
       .then(setClaims)
       .catch(() => setClaims([]))
       .finally(() => setLoading(false));
-  }, [month, statusFilter]);
+  }
+
+  useEffect(reload, [month, statusFilter]);
 
   const counts = {
     전체: claims.length,
@@ -143,7 +147,7 @@ export default function BillingPage() {
       + `@media print{body{padding:0}@page{margin:12mm;size:A4}}`
       + `</style></head><body>`
       + `<h1>진료비 계산서·영수증</h1>`
-      + `<div class="subtitle">「의료법 시행규칙」별지 제9호 서식</div>`
+      + `<div class="subtitle">「국민건강보험 요양급여의 기준에 관한 규칙」별지 제9호 서식</div>`
       + `<hr/>`
       + `<div class="grid2">`
       + `<div class="item"><span class="lbl">요양기관명</span><span>${hospitalName}</span></div>`
@@ -311,13 +315,23 @@ export default function BillingPage() {
                     {claim.claim_amount.toLocaleString()}원
                   </td>
                   <td className="p-3 text-center">
-                    <button
-                      onClick={() => handleDownload(claim.id)}
-                      disabled={downloading === claim.id}
-                      className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all"
-                    >
-                      {downloading === claim.id ? "생성 중..." : "다운로드"}
-                    </button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={() => handleDownload(claim.id)}
+                        disabled={downloading === claim.id}
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all"
+                      >
+                        {downloading === claim.id ? "생성 중..." : "다운로드"}
+                      </button>
+                      {claim.status === "rejected" && (
+                        <button
+                          onClick={() => setResubmitTarget(claim)}
+                          className="px-3 py-1 text-xs rounded-md border border-[#EF6600] text-[#EF6600] hover:bg-[#EF6600] hover:text-white transition-all"
+                        >
+                          보완·추가청구
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="p-3 text-center">
                     <button
@@ -332,6 +346,135 @@ export default function BillingPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {resubmitTarget && (
+        <ResubmissionModal
+          claim={resubmitTarget}
+          onClose={() => setResubmitTarget(null)}
+          onDone={() => {
+            setResubmitTarget(null);
+            reload();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ResubmissionModal({
+  claim,
+  onClose,
+  onDone,
+}: {
+  claim: ClaimListItem;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [claimType, setClaimType] = useState<"supplement" | "addition">("supplement");
+  const [receiptNo, setReceiptNo] = useState("");
+  const [recordSerial, setRecordSerial] = useState("");
+  const [reasonCode, setReasonCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setError(null);
+    if (!receiptNo || !recordSerial) {
+      setError("접수번호와 명일련을 입력해주세요.");
+      return;
+    }
+    if (claimType === "supplement" && !reasonCode) {
+      setError("보완청구는 심사불능사유코드를 입력해주세요.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await resubmitClaim(claim.id, {
+        claim_type: claimType,
+        original_receipt_no: Number(receiptNo),
+        original_record_serial: Number(recordSerial),
+        rejection_reason_code: claimType === "supplement" ? reasonCode : undefined,
+      });
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "처리에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-lg p-6 w-[380px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="font-serif text-lg text-text mb-1">보완·추가청구</h2>
+        <p className="text-xs text-subtext mb-4">
+          {claim.patient_name} · {claim.claim_period}
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-subtext mb-1">청구구분</label>
+            <select
+              value={claimType}
+              onChange={(e) => setClaimType(e.target.value as "supplement" | "addition")}
+              className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
+            >
+              <option value="supplement">보완청구</option>
+              <option value="addition">추가청구</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-subtext mb-1">당초 청구명세서 접수번호</label>
+            <input
+              type="number"
+              value={receiptNo}
+              onChange={(e) => setReceiptNo(e.target.value)}
+              className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-subtext mb-1">명일련</label>
+            <input
+              type="number"
+              value={recordSerial}
+              onChange={(e) => setRecordSerial(e.target.value)}
+              className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
+            />
+          </div>
+          {claimType === "supplement" && (
+            <div>
+              <label className="block text-xs text-subtext mb-1">심사불능사유코드 (2자리)</label>
+              <input
+                type="text"
+                maxLength={2}
+                value={reasonCode}
+                onChange={(e) => setReasonCode(e.target.value)}
+                className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
+              />
+            </div>
+          )}
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="flex-1 px-3 py-2 text-xs rounded-md border border-border text-subtext hover:text-text transition-all"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 px-3 py-2 text-xs rounded-md bg-[#EF6600] text-white hover:bg-[#d45a00] disabled:opacity-50 transition-all"
+          >
+            {submitting ? "처리 중..." : "제출"}
+          </button>
+        </div>
       </div>
     </div>
   );

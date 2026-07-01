@@ -207,3 +207,25 @@ class ClaimSummaryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ClaimResubmissionUpdate(BaseModel):
+    """보완·추가청구 처리 — 반려(rejected)된 청구서에만 적용 가능."""
+    claim_type: Literal["supplement", "addition"]
+    original_receipt_no: int = Field(..., description="당초 청구명세서 접수번호")
+    original_record_serial: int = Field(..., description="명일련")
+    rejection_reason_code: Optional[str] = Field(
+        None, max_length=2, description="심사불능사유코드 (보완청구일 때만 사용)"
+    )
+
+
+class ClaimResubmissionResponse(BaseModel):
+    id: str
+    status: str
+    claim_type: str
+    original_receipt_no: Optional[int] = None
+    original_record_serial: Optional[int] = None
+    rejection_reason_code: Optional[str] = None
+
+    class Config:
+        from_attributes = True
