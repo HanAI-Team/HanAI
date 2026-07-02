@@ -467,3 +467,15 @@ async def export_records_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=medical_records.csv"}
     )
+
+
+
+@router.patch("/{patient_id}/anonymize", response_model=PatientResponse)
+async def anonymize_patient(
+    patient_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),  # owner만 가능
+):
+    if str(doctor.role) != "owner":
+        raise HTTPException(status_code=403, detail="owner 계정만 접근 가능합니다.")
+    return await service.anonymize_patient(db, doctor, patient_id)
