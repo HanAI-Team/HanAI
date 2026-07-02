@@ -16,6 +16,7 @@ from app.charting.schema import (
     UpdateMedicalHistoryRequest,
     UpdateStatusRequest,
 )
+from app.core.audit import write_audit
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.models import Doctor, StaffAccount
@@ -77,10 +78,21 @@ async def get_patient_records(
 @router.get("/{record_id}", response_model=MedicalRecordResponse)
 async def get_record(
     record_id: uuid.UUID,
-    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await service.get_medical_record(db, current_doctor, record_id)
+    record =  await service.get_medical_record(db, doctor, record_id)
+    await write_audit(
+        db,
+        table_name="medical_records",
+        record_id=str(record_id),
+        action="READ",
+        actor_id=doctor.id,
+        actor_type="doctor",
+    )
+    await db.commit()
+    return record
+
 
 
 @router.patch("/{record_id}/status", response_model=MedicalRecordResponse)
