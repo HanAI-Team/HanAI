@@ -1,10 +1,16 @@
 import calendar
 import uuid
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from app.billing.copayment import BillingInput, InsuranceType, VisitType, calculate_billing
+from app.billing.copayment import (
+    BillingInput,
+    InsuranceType,
+    VisitType,
+    calculate_billing,
+)
 from app.billing.edi_writer import (
     ClaimHeader,
     DiagnosisRecord,
@@ -15,18 +21,16 @@ from app.billing.edi_writer import (
     SpecialRecord,
     generate_edi,
 )
-from collections import defaultdict
-
 from app.core.models import (
     Claim,
     ClaimLineItem,
     ClaimResubmissionHistory,
     Doctor,
     Hospital,
+    KcdUCode,
     MedicalRecord,
     MedicalRecordProcedure,
     Patient,
-    Prescription,
     SaturdayHolidayStaffing,
 )
 from fastapi import HTTPException
@@ -71,8 +75,31 @@ async def create_claim(
         )
     )
     records = r_records.scalars().all()
+  
     if not records:
         raise HTTPException(status_code=404, detail="진료기록을 찾을 수 없습니다.")
+    for record in records:
+        if not record.kcd_code:
+            raise HTTPException(
+            status_code=400,
+            detail=f"진료기록({record.id})에 상병코드(KCD)가 입력되지 않았습니다."
+        )
+        r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
+        kcd = r_kcd.scalar_one_or_none()
+        if kcd.sex_restriction:
+            gender_map = {"남성": "M", "여성": "F", "남": "M", "여": "F"}
+            patient_gender = gender_map.get(patient.gender or "", "")
+            if patient_gender and patient_gender != kcd.sex_restriction:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"상병코드 {record.kcd_code}는 {'여성' if kcd.sex_restriction == 'F' else '남성'} 환자에게만 적용됩니다."
+        )
+            if kcd.is_notifiable:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+        f"법정감염병 상병코드 청구: record_id={record.id}, kcd={record.kcd_code}"
+    )
 
     # 시술 금액 합산
     r_procs = await db.execute(
