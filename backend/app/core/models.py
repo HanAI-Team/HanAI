@@ -13,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -56,6 +57,22 @@ class Doctor(Base):
     hospital = relationship("Hospital", back_populates="doctors")
     medical_records = relationship("MedicalRecord", back_populates="doctor")
     feedbacks = relationship("Feedback", back_populates="doctor")
+
+
+class SaturdayHolidayStaffing(Base):
+    """MT050(토요일·공휴일 근무현황) 산출용 — 병원 단위, 날짜별 근무 한의사수.
+    같은 청구기간(claim_period_year/month) 안의 모든 청구서가 이 데이터를 공유 조회한다."""
+    __tablename__ = "saturday_holiday_staffing"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    work_date = Column(Date, nullable=False)               # 토요일 또는 공휴일 날짜
+    doctor_count = Column(Numeric(3, 1), nullable=False)   # 근무 한의사수 (0.5인 단위 가능, MT050 9(2).V9(1))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    hospital = relationship("Hospital")
+
+    __table_args__ = (UniqueConstraint("hospital_id", "work_date", name="uq_sat_holiday_staffing_date"),)
 
 
 class StaffAccount(Base):
@@ -119,7 +136,12 @@ class Claim(Base):
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
     claim_period_year = Column(Integer, nullable=False)
     claim_period_month = Column(Integer, nullable=False)
+    # 청구구분: null=최초, "supplement"=보완, "addition"=추가
+    # ※ kmishe_writer.py의 claim_type(보험자종별: 건강보험/의료급여/보훈)과는 무관한 별개 필드
     claim_type = Column(String, nullable=True)
+    original_receipt_no = Column(Integer, nullable=True)      # 당초 청구명세서 접수번호 (보완·추가청구 시)
+    original_record_serial = Column(Integer, nullable=True)   # 명일련 (보완·추가청구 시)
+    rejection_reason_code = Column(String(2), nullable=True)  # 심사불능사유코드 (보완청구 시만)
     total_amount = Column(Integer, nullable=False, default=0)
     patient_copay = Column(Integer, nullable=False, default=0)
     claim_amount = Column(Integer, nullable=False, default=0)
@@ -131,6 +153,20 @@ class Claim(Base):
 
     medical_records = relationship("MedicalRecord", back_populates="claim")
     line_items = relationship("ClaimLineItem", back_populates="claim", cascade="all, delete-orphan")
+
+
+class ClaimResubmissionHistory(Base):
+    """보완·추가청구 처리 이력 (append-only). PATCH 호출마다 한 줄씩 쌓인다."""
+    __tablename__ = "claim_resubmission_histories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=False)
+    actor_id = Column(UUID(as_uuid=True), nullable=True)  # Doctor 또는 StaffAccount — FK 미설정(AccountHistory와 동일 패턴)
+    claim_type = Column(String, nullable=False)          # "supplement" | "addition"
+    receipt_no = Column(Integer, nullable=True)
+    record_serial = Column(Integer, nullable=True)
+    reason_code = Column(String(2), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class ClaimLineItem(Base):

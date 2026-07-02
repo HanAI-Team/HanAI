@@ -19,13 +19,15 @@ from app.billing.schema import (
     BillingCalcRequest,
     BillingCalcResponse,
     ClaimLineItemResponse,
+    ClaimResubmissionResponse,
+    ClaimResubmissionUpdate,
     ClaimSummaryResponse,
     FeeItem,
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
     ViolationItem,
 )
-from app.billing.service import create_claim, generate_claim_edi
+from app.billing.service import create_claim, generate_claim_edi, update_claim_resubmission
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import Claim, ClaimLineItem, FeeMaster, MedicalRecord, Patient
@@ -128,6 +130,33 @@ async def list_claims(
         )
         for claim, patient in results
     ]
+
+
+@router.patch("/claims/{claim_id}/resubmission", response_model=ClaimResubmissionResponse)
+async def patch_claim_resubmission(
+    claim_id: UUID,
+    body: ClaimResubmissionUpdate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await update_claim_resubmission(
+        db=db,
+        hospital_id=current_user.hospital_id,
+        actor_id=current_user.id,
+        claim_id=claim_id,
+        claim_type=body.claim_type,
+        original_receipt_no=body.original_receipt_no,
+        original_record_serial=body.original_record_serial,
+        rejection_reason_code=body.rejection_reason_code,
+    )
+    return ClaimResubmissionResponse(
+        id=str(claim.id),
+        status=claim.status,
+        claim_type=claim.claim_type,
+        original_receipt_no=claim.original_receipt_no,
+        original_record_serial=claim.original_record_serial,
+        rejection_reason_code=claim.rejection_reason_code,
+    )
 
 
 @router.post("/claims/bulk-edi")

@@ -22,6 +22,28 @@ export interface ClaimListItem {
   created_at: string;
 }
 
+export interface ClaimResubmissionRequest {
+  claim_type: "supplement" | "addition";
+  original_receipt_no: number;
+  original_record_serial: number;
+  rejection_reason_code?: string;
+}
+
+export async function resubmitClaim(
+  claimId: string,
+  data: ClaimResubmissionRequest
+): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/resubmission`, {
+    method: "PATCH",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || "보완·추가청구 처리 실패");
+  }
+}
+
 export async function getClaims(params?: { month?: string; status?: string }): Promise<ClaimListItem[]> {
   const query = new URLSearchParams();
   if (params?.month) query.set("month", params.month);

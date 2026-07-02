@@ -938,6 +938,115 @@ ${historyLine}
     printWindow.print();
   }
 
+  async function handlePrescriptionPrint() {
+    if (!result || !selectedPatient) return;
+    const printWindow = window.open("", "_blank", "width=720,height=960");
+    if (!printWindow) {
+      setErrorMessage("팝업이 차단되어 인쇄할 수 없습니다. 팝업 차단을 해제해주세요.");
+      return;
+    }
+
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const token = localStorage.getItem("token");
+    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+    let doctorName = "담당 한의사";
+    let licenseNumber = "-";
+    let hospitalName = "-";
+    try {
+      const meRes = await fetch(`${base}/api/auth/me`, { headers: authHeaders });
+      if (meRes.ok) {
+        const me = await meRes.json();
+        if (me.name) doctorName = me.name;
+        if (me.license_number) licenseNumber = me.license_number;
+        if (me.hospital_id) {
+          const hospRes = await fetch(`${base}/api/hospitals/${me.hospital_id}`, { headers: authHeaders });
+          if (hospRes.ok) {
+            const hosp = await hospRes.json();
+            if (hosp.name) hospitalName = hosp.name;
+          }
+        }
+      }
+    } catch {}
+
+    const target =
+      saveSelection === "result2" && result.claudeBased
+        ? result.claudeBased
+        : result;
+
+    const today = new Date().toLocaleDateString("ko-KR");
+    const birthDate = selectedPatient.birth_date
+      ? selectedPatient.birth_date.replace(/(\d{4})-(\d{2})-(\d{2})/, "$1년 $2월 $3일")
+      : "-";
+
+    const herbRows = (target.herbs ?? []).length > 0
+      ? (target.herbs ?? []).map((h) => {
+          const m = h.match(/^(.+?)\s+(\d[\w.]*)$/);
+          const name = m ? m[1] : h;
+          const dosage = m ? m[2] : "-";
+          return `<tr><td>${name}</td><td>${dosage}</td></tr>`;
+        }).join("")
+      : `<tr><td colspan="2" style="text-align:center;color:#888">-</td></tr>`;
+
+    const acuSection =
+      (target.acupuncture ?? []).length > 0
+        ? `<div class="section-label">침 처방</div>
+<div class="acu">${(target.acupuncture ?? []).join(", ")}</div>`
+        : "";
+
+    const html = "<!DOCTYPE html>"
+      + `<html lang="ko"><head><meta charset="UTF-8"/>`
+      + `<title>처방전 - ${selectedPatient.name}</title>`
+      + `<style>`
+      + `*{margin:0;padding:0;box-sizing:border-box}`
+      + `body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#000;background:#fff;padding:28px 36px;max-width:600px;margin:0 auto}`
+      + `.hospital{text-align:center;font-size:13px;font-weight:600;margin-bottom:6px}`
+      + `h1{font-size:22px;font-weight:bold;text-align:center;letter-spacing:10px;margin-bottom:10px}`
+      + `hr{border:none;border-top:1.5px solid #000;margin:10px 0}`
+      + `hr.thin{border-top:1px solid #ccc;margin:8px 0}`
+      + `.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px 16px;font-size:13px;margin:8px 0}`
+      + `.item{display:flex;gap:6px;align-items:baseline}`
+      + `.lbl{color:#444;min-width:60px;font-weight:500;flex-shrink:0}`
+      + `.full{display:flex;gap:6px;font-size:13px;margin:6px 0;align-items:baseline}`
+      + `.full .lbl{min-width:60px;flex-shrink:0}`
+      + `.section-label{font-size:12px;font-weight:600;margin:12px 0 4px;color:#333}`
+      + `table{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0}`
+      + `th{border:1px solid #999;padding:5px 8px;background:#f5f5f5;font-weight:500;text-align:left}`
+      + `td{border:1px solid #ccc;padding:5px 8px;text-align:left}`
+      + `.usage{font-size:13px;margin:8px 0}`
+      + `.acu{font-size:13px;margin-bottom:8px}`
+      + `.notice{margin-top:16px;font-size:11px;color:#888;border-top:1px dashed #bbb;padding-top:8px}`
+      + `@media print{body{padding:0}@page{margin:15mm;size:A4}}`
+      + `</style></head><body>`
+      + `<div class="hospital">${hospitalName}</div>`
+      + `<h1>처  방  전</h1>`
+      + `<hr/>`
+      + `<div class="grid2">`
+      + `<div class="item"><span class="lbl">환자명</span><span>${selectedPatient.name}</span></div>`
+      + `<div class="item"><span class="lbl">생년월일</span><span>${birthDate}</span></div>`
+      + `<div class="item"><span class="lbl">처방일</span><span>${today}</span></div>`
+      + `<div class="item"><span class="lbl">면허번호</span><span>${licenseNumber}</span></div>`
+      + `</div>`
+      + `<div class="full"><span class="lbl">한의사명</span><span>${doctorName}</span></div>`
+      + `<hr/>`
+      + `<div class="full"><span class="lbl">처방명</span><span>${target.prescription || "-"}</span></div>`
+      + `<div class="section-label">약재 목록</div>`
+      + `<table><thead><tr><th>약재명</th><th>용량</th></tr></thead>`
+      + `<tbody>${herbRows}</tbody></table>`
+      + `<hr class="thin"/>`
+      + `<div class="usage">용법: 1일 3회, 식후 30분</div>`
+      + acuSection
+      + `<hr/>`
+      + `<div class="notice">※ 본 처방전은 AI 보조 도구를 활용한 참고용이며, 최종 처방은 담당 한의사의 판단에 따릅니다.</div>`
+      + `</body></html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onafterprint = () => printWindow.close();
+    printWindow.print();
+  }
+
   function formatPhone(value: string): string {
     const digits = value.replace(/\D/g, "").slice(0, 11);
     if (digits.length <= 3) return digits;
@@ -1787,10 +1896,10 @@ ${historyLine}
                       )}
                     </button>
                     <button
-                      onClick={handlePrint}
+                      onClick={handlePrescriptionPrint}
                       className="flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5"
                     >
-                      <Printer className="w-3.5 h-3.5" /> 인쇄
+                      <Printer className="w-3.5 h-3.5" /> 처방전 출력
                     </button>
                     <button
                       onClick={() => {

@@ -4,7 +4,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import Doctor
 from app.hospitals import service
-from app.hospitals.schema import HospitalResponse, HospitalUpdate
+from app.hospitals.schema import HospitalResponse, HospitalUpdate, StaffingCreate, StaffingResponse
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,3 +25,27 @@ async def patch_hospital(
 
     hospital = await service.update_hospital(db, doctor, hospital_id, data)
     return hospital
+
+
+@router.post("/{hospital_id}/saturday-holiday-staffing", response_model=StaffingResponse)
+async def create_staffing(
+    hospital_id: UUID,
+    data: StaffingCreate,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    if doctor.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="근무현황 등록 권한이 없습니다."
+        )
+
+    return await service.create_staffing(db, doctor, hospital_id, data)
+
+
+@router.get("/{hospital_id}/saturday-holiday-staffing", response_model=list[StaffingResponse])
+async def list_staffing(
+    hospital_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    return await service.list_staffing(db, doctor, hospital_id)

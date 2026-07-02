@@ -1,5 +1,6 @@
+import calendar
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -19,12 +20,14 @@ from collections import defaultdict
 from app.core.models import (
     Claim,
     ClaimLineItem,
+    ClaimResubmissionHistory,
     Doctor,
     Hospital,
     MedicalRecord,
     MedicalRecordProcedure,
     Patient,
     Prescription,
+    SaturdayHolidayStaffing,
 )
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -113,6 +116,48 @@ async def create_claim(
     return claim
 
 
+async def update_claim_resubmission(
+    db: AsyncSession,
+    hospital_id: UUID,
+    actor_id: UUID,
+    claim_id: UUID,
+    claim_type: str,
+    original_receipt_no: int,
+    original_record_serial: int,
+    rejection_reason_code: str | None,
+) -> Claim:
+    """보완·추가청구 처리. 반려(rejected)된 청구서에만 적용 가능하며 상태는 바꾸지 않는다."""
+    result = await db.execute(select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id))
+    claim = result.scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+    if claim.status != "rejected":
+        raise HTTPException(
+            status_code=409, detail="반려된 청구서만 보완·추가청구 처리할 수 있습니다."
+        )
+
+    reason_code = rejection_reason_code if claim_type == "supplement" else None
+
+    claim.claim_type = claim_type
+    claim.original_receipt_no = original_receipt_no
+    claim.original_record_serial = original_record_serial
+    claim.rejection_reason_code = reason_code
+
+    db.add(ClaimResubmissionHistory(
+        id=uuid.uuid4(),
+        claim_id=claim.id,
+        actor_id=actor_id,
+        claim_type=claim_type,
+        receipt_no=original_receipt_no,
+        record_serial=original_record_serial,
+        reason_code=reason_code,
+    ))
+
+    await db.commit()
+    await db.refresh(claim)
+    return claim
+
+
 async def generate_claim_edi(
     db: AsyncSession,
     hospital_id: UUID,
@@ -180,6 +225,26 @@ async def generate_claim_edi(
     procedure_records = []
     special_records = []
 
+    # MT050: 토요일·공휴일 근무현황 (병원 단위, 청구서당 1회만 기재 — 첫 명세서에 부착)
+    # ※ 내용(content) 바이트 레이아웃은 공식 "명세서 작성요령" 문서를 확보하지 못한 상태의 추정값.
+    #   MT008 실사례("YYMMDD/22/YYMMDD/20/...")의 슬래시 구분 표기를 따라
+    #   "YYYYMMDD/근무인원수(9(2).V9(1))" 쌍을 날짜순으로 슬래시(/) 연결한다.
+    #   예: "20260606/01.0/20260613/00.5" — 공식 스펙 확보 시 재검증 필요.
+    last_day = calendar.monthrange(claim.claim_period_year, claim.claim_period_month)[1]
+    r_staff = await db.execute(
+        select(SaturdayHolidayStaffing)
+        .where(
+            SaturdayHolidayStaffing.hospital_id == hospital_id,
+            SaturdayHolidayStaffing.work_date >= date(claim.claim_period_year, claim.claim_period_month, 1),
+            SaturdayHolidayStaffing.work_date <= date(claim.claim_period_year, claim.claim_period_month, last_day),
+        )
+        .order_by(SaturdayHolidayStaffing.work_date)
+    )
+    staffing_rows = r_staff.scalars().all()
+    mt050_content = "/".join(
+        f"{row.work_date.strftime('%Y%m%d')}/{row.doctor_count:04.1f}" for row in staffing_rows
+    )
+
     for i, record in enumerate(medical_records):
         serial = i + 1
         rec_key = RecordKey(institution_code=inst_code, serial_no=serial, ext_no=0)
@@ -196,6 +261,10 @@ async def generate_claim_edi(
             benefit_total_1=claim.total_amount,
             copayment=claim.patient_copay,
             claim_amount=claim.claim_amount,
+            # 보완·추가청구(claim_type)일 때만 당초 접수번호/명일련/사유코드를 채워 넣는다.
+            receipt_no=claim.original_receipt_no or 0,
+            record_serial=claim.original_record_serial or 0,
+            reason_code=claim.rejection_reason_code or "  ",
         ))
 
         # MT032: 접수일시 (명세서 단위, 줄 없음)
@@ -206,6 +275,16 @@ async def generate_claim_edi(
                 record_ext_no=0,
                 special_code="MT032",
                 content=record.recorded_at.strftime("%Y%m%d%H%M"),
+            )))
+
+        # MT050: 토요일·공휴일 근무현황 (병원 단위 데이터라 청구서 내 첫 명세서에만 1회 부착)
+        if i == 0 and mt050_content:
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT050",
+                content=mt050_content,
             )))
 
         # DiagnosisRecord
