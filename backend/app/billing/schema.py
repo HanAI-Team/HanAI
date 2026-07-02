@@ -1,7 +1,8 @@
-from typing import Literal, Optional
 from datetime import date
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from typing import Literal, Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class HerbItem(BaseModel):
@@ -84,6 +85,13 @@ class BillingCalcRequest(BaseModel):
     support_fund: int = Field(0, ge=0, description="지원금 (원)")
     treatment_days: Decimal = Field(Decimal("0"), description="진료(조제)일수")
     graduated_fee_index: Decimal = Field(Decimal("0"), description="차등지수")
+    @field_validator("graduated_fee_index")
+    @classmethod
+    def validate_graduated_fee_index(cls, v: Decimal) -> Decimal:
+        if v < 0 or v > 1:
+            raise ValueError("차등지수는 0 이상 1 이하여야 합니다.")
+        return v
+
     procedures: list[ProcedureItem] = Field(
         default_factory=list,
         description="진료내역 목록. EDI 명세서진료내역 + 특정내역 생성에 사용",

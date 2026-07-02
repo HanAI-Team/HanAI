@@ -1,11 +1,11 @@
 from uuid import UUID
 
+from app.core.audit import write_audit
+from app.core.models import Doctor, MedicalRecord, Patient
+from app.patients.schema import PatientCreate, PatientUpdate
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.models import Doctor, MedicalRecord, Patient
-from app.patients.schema import PatientCreate, PatientUpdate
 
 
 async def create_patient(
@@ -95,3 +95,28 @@ async def get_patient_with_records(
     records = list(result.scalars().all())
 
     return patient, records
+
+
+async def anonymize_patient  (
+    db: AsyncSession,
+    doctor: Doctor,
+    patient_id: UUID,
+)->Patient:
+    patient = await get_patient(db, doctor, patient_id)
+
+    patient.name = "익명"
+    patient.phone = None
+    patient.rrn = None
+    await write_audit(
+    db,
+    table_name="patients",
+    record_id=str(patient_id),
+    action="ANONYMIZE",  # 파기 액션
+    actor_id=doctor.id,
+    actor_type="doctor",
+    detail="개인정보 파기: name, phone, rrn 익명화",
+)   
+    await db.commit()
+    await db.refresh(patient)
+    return patient
+    
