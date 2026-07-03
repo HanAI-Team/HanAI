@@ -9,8 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        serif: ['DM Serif Display', 'serif'],
-        sans: ['Noto Serif KR', 'serif'],
+      sans: ['Pretendard', '-apple-system', 'sans-serif'],
+      serif: ['DM Serif Display', 'serif'],
       },
       colors: {
         orange: '#EF6600',
