@@ -26,6 +26,7 @@ from app.core.models import (
     ClaimLineItem,
     ClaimResubmissionHistory,
     Doctor,
+    DoctorWorkDays,
     Hospital,
     KcdUCode,
     MedicalRecord,
@@ -271,6 +272,12 @@ async def generate_claim_edi(
     procedure_records = []
     special_records = []
 
+    # 의료급여 환자 여부 판정 (MT019 진료확인번호 부착 조건에 사용)
+    patient_insurance_type = _INSURANCE_MAP.get(
+        (patient.insurance_type if patient else None) or "health", InsuranceType.HEALTH
+    )
+    is_medical_aid_patient = patient_insurance_type == InsuranceType.MEDICAL_AID
+
     # MT050: 토요일·공휴일 근무현황 (병원 단위, 청구서당 1회만 기재 — 첫 명세서에 부착)
     # ※ 내용(content) 바이트 레이아웃은 공식 "명세서 작성요령" 문서를 확보하지 못한 상태의 추정값.
     #   MT008 실사례("YYMMDD/22/YYMMDD/20/...")의 슬래시 구분 표기를 따라
@@ -289,6 +296,28 @@ async def generate_claim_edi(
     staffing_rows = r_staff.scalars().all()
     mt050_content = "/".join(
         f"{row.work_date.strftime('%Y%m%d')}/{row.doctor_count:04.1f}" for row in staffing_rows
+    )
+
+    # MT008: 의사별 진료일수 (병원 단위, 청구서당 1회만 기재 — 첫 명세서에 부착)
+    # ※ HIRA 사례집(v089, 외래 사례1)에서 실제 확인된 형식:
+    #   "의사생년월일(YYMMDD)/실제진료일수" 쌍을 의사별로 슬래시(/) 연결.
+    #   예: "YYMMDD/22/YYMMDD/20/YYMMDD/12"
+    #   - 시간제·격일제 의사의 1/2 계산·4사5입·월 15일 상한 적용, "기타" 인력 제외 등은
+    #     DoctorWorkDays 테이블 입력 시점에 이미 반영된 최종값이라고 가정한다.
+    #     (현재 DoctorWorkDays를 채우는 입력 엔드포인트가 없어 확인 불가 — 추후 재검증 필요)
+    #   - 정렬 기준(의사 순서)을 명시한 스펙을 확보 못해 id(입력 순서) 기준으로 정렬한다.
+    r_work_days = await db.execute(
+        select(DoctorWorkDays)
+        .where(
+            DoctorWorkDays.hospital_id == hospital_id,
+            DoctorWorkDays.claim_period_year == claim.claim_period_year,
+            DoctorWorkDays.claim_period_month == claim.claim_period_month,
+        )
+        .order_by(DoctorWorkDays.id)
+    )
+    work_days_rows = r_work_days.scalars().all()
+    mt008_content = "/".join(
+        f"{row.doctor_birth_date}/{row.work_days}" for row in work_days_rows
     )
 
     for i, record in enumerate(medical_records):
@@ -323,6 +352,19 @@ async def generate_claim_edi(
                 content=record.recorded_at.strftime("%Y%m%d%H%M"),
             )))
 
+        # MT019: 진료확인번호 (명세서 단위) — 의료급여 환자이고 confirmation_no가 있을 때만 기재
+        # ※ HIRA 사례집(입원 사례 9-1~9-5, 전부 의료급여 1·2종)에서 실제 확인.
+        #   현재 confirmation_no를 채우는 API 엔드포인트가 없어(patients 라우터에 미구현),
+        #   Patient.confirmation_no 컬럼값을 그대로 사용한다고 가정 — 추후 재검증 필요.
+        if is_medical_aid_patient and patient and patient.confirmation_no:
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT019",
+                content=patient.confirmation_no,
+            )))
+
         # MT050: 토요일·공휴일 근무현황 (병원 단위 데이터라 청구서 내 첫 명세서에만 1회 부착)
         if i == 0 and mt050_content:
             special_records.append((serial, SpecialRecord(
@@ -331,6 +373,16 @@ async def generate_claim_edi(
                 record_ext_no=0,
                 special_code="MT050",
                 content=mt050_content,
+            )))
+
+        # MT008: 의사별 진료일수 (병원 단위 데이터라 청구서 내 첫 명세서에만 1회 부착)
+        if i == 0 and mt008_content:
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT008",
+                content=mt008_content,
             )))
 
         # DiagnosisRecord

@@ -49,9 +49,7 @@ app.add_middleware(
         "https://zinmac.vercel.app",
         "https://zinmac.kr",
         "https://www.zinmac.kr",
-        "https://bookish-winner-9gjq997vp6gcpxjv-3000.app.github.dev",
-        "https://bookish-winner-9gjq997vp6gcpxjv-3000.app.github.dev"
-
+        "https://super-duper-capybara-q75wx6jp567rhv5v-8000.app.github.dev"
     ],
     #allow_origin_regex=r"https://zinmac.*\.vercel\.app",
     allow_origin_regex=r"https://(zinmac.*\.vercel\.app|.*\.app\.github\.dev)",
