@@ -1,3 +1,4 @@
+import logging
 import pytest
 from datetime import date
 
@@ -99,6 +100,7 @@ async def test_validate_인증없으면_401(client, kcd_codes):
     res = await client.post("/api/kcd/validate", json={"codes": ["A001"]})
     assert res.status_code == 401
 
+
 async def test_validate_남성전용코드_여성환자_불일치(client, approved_doctor, kcd_codes):
     _, headers = approved_doctor
     res = await client.post(
@@ -137,3 +139,63 @@ async def test_validate_법정감염병_is_notifiable_반환(client, approved_do
     data = res.json()
     assert data["results"][0]["is_valid"] is True
     assert data["results"][0]["is_notifiable"] is True
+
+
+async def test_create_claim_성별제한없는_법정감염병_경고로그_찍힘(
+    db, approved_doctor, kcd_codes, caplog
+):
+    """
+    회귀 테스트: sex_restriction=None 인 법정감염병 코드(A001 콜레라)로
+    create_claim() 호출 시 is_notifiable 경고 로그가 찍혀야 한다.
+
+    수정 전 버그: is_notifiable 체크가 sex_restriction 블록 안에 중첩돼 있어서
+    sex_restriction=None 이면 경고가 아예 실행되지 않았음.
+    수정 후: 두 블록이 독립적으로 실행됨.
+    """
+    from app.billing.service import create_claim
+    from app.core.models import Hospital, MedicalRecord, Patient
+
+    doctor, _ = approved_doctor
+    hospital = await db.get(Hospital, doctor.hospital_id)
+
+    patient = Patient(
+        hospital_id=hospital.id,
+        name="테스트환자",
+        gender="남",        # sex_restriction=None 이므로 성별 체크와 무관
+        insurance_type="health",
+    )
+    db.add(patient)
+    await db.flush()
+
+    record = MedicalRecord(
+        patient_id=patient.id,
+        doctor_id=doctor.id,
+        hospital_id=hospital.id,
+        kcd_code="A001",    # sex_restriction=None, is_notifiable=True (콜레라)
+        chart_structured="콜레라",
+        status="completed",
+    )
+    db.add(record)
+    await db.commit()
+
+    with caplog.at_level(logging.WARNING, logger="app.billing.service"):
+        try:
+            await create_claim(
+                db=db,
+                hospital_id=hospital.id,
+                doctor_id=doctor.id,
+                patient_id=patient.id,
+                medical_record_ids=[record.id],
+                claim_period_year=2026,
+                claim_period_month=6,
+            )
+        except Exception:
+            pass  # 금액 계산 등 후속 로직 실패는 무관
+
+    warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("A001" in msg for msg in warning_messages), (
+        "sex_restriction=None인 법정감염병 코드(A001)에서 "
+        "is_notifiable 경고 로그가 찍히지 않았습니다. "
+        "service.py의 is_notifiable 블록이 sex_restriction 블록 밖에 있는지 확인하세요.\n"
+        f"실제 캡처된 WARNING 로그: {warning_messages}"
+    )
