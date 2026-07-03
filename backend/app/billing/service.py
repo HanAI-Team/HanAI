@@ -69,7 +69,7 @@ async def create_claim(
         raise HTTPException(status_code=404, detail="환자를 찾을 수 없습니다.")
     r_sub = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital_id))
     sub = r_sub.scalar_one_or_none()
-    tier = sub.tier if sub  else "basic"
+    tier = sub.tier if sub else "basic"
 
     if tier == "basic":
         from sqlalchemy import func
@@ -83,9 +83,10 @@ async def create_claim(
         count = count_result.scalar()
         if count >= 50:
             raise HTTPException(
-            status_code=403,
-            detail="베이직 플랜은 월 50건까지 청구 가능합니다. 프리미엄으로 업그레이드하세요."
-        )
+                status_code=403,
+                detail="베이직 플랜은 월 50건까지 청구 가능합니다. 프리미엄으로 업그레이드하세요."
+            )
+
     # 진료기록 조회
     r_records = await db.execute(
         select(MedicalRecord).where(
@@ -98,28 +99,33 @@ async def create_claim(
 
     if not records:
         raise HTTPException(status_code=404, detail="진료기록을 찾을 수 없습니다.")
+
     for record in records:
         if not record.kcd_code:
             raise HTTPException(
-            status_code=400,
-            detail=f"진료기록({record.id})에 상병코드(KCD)가 입력되지 않았습니다."
-        )
+                status_code=400,
+                detail=f"진료기록({record.id})에 상병코드(KCD)가 입력되지 않았습니다."
+            )
         r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
         kcd = r_kcd.scalar_one_or_none()
-        if kcd.sex_restriction:
+
+        # ── 남녀 상병 일치 체크 (sex_restriction 있는 코드만) ──────────────────
+        if kcd and kcd.sex_restriction:
             gender_map = {"남성": "M", "여성": "F", "남": "M", "여": "F"}
             patient_gender = gender_map.get(patient.gender or "", "")
             if patient_gender and patient_gender != kcd.sex_restriction:
                 raise HTTPException(
                     status_code=400,
                     detail=f"상병코드 {record.kcd_code}는 {'여성' if kcd.sex_restriction == 'F' else '남성'} 환자에게만 적용됩니다."
-        )
-            if kcd.is_notifiable:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(
-        f"법정감염병 상병코드 청구: record_id={record.id}, kcd={record.kcd_code}"
-    )
+                )
+
+        # ── 법정감염병 경고 (sex_restriction 유무와 무관하게 독립 실행) ──────────
+        if kcd and kcd.is_notifiable:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"법정감염병 상병코드 청구: record_id={record.id}, kcd={record.kcd_code}"
+            )
 
     # 시술 금액 합산
     r_procs = await db.execute(
