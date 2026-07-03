@@ -20,6 +20,9 @@ from datetime import date
 from main import app
 from app.core.models import FeeMaster
 
+from app.auth.router import _redis
+import pytest
+
 TEST_ENGINE = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
     connect_args={"check_same_thread": False},
@@ -28,6 +31,8 @@ TEST_ENGINE = create_async_engine(
 TEST_SESSION = async_sessionmaker(
     TEST_ENGINE, class_=AsyncSession, expire_on_commit=False
 )
+
+
 
 
 @pytest_asyncio.fixture
@@ -43,6 +48,15 @@ async def _tables():
 async def db(_tables):
     async with TEST_SESSION() as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def clear_redis():
+    if _redis:
+        _redis.flushdb()
+    yield
+    if _redis:
+        _redis.flushdb()
 
 
 @pytest_asyncio.fixture
