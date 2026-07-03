@@ -36,8 +36,10 @@
   31 특정내역        (C2-08 특정내역 레코드)
 """
 
+import pytest
 from datetime import date
 from decimal import Decimal
+from app.billing.schema import BillingCalcRequest
 
 from app.billing.copayment import (
     BillingInput,
@@ -627,3 +629,50 @@ class TestC2_08_특정내역:
     def test_C2_08_레코드_길이_747_plus_CRLF(self):
         raw = build_special_record(self._make_special(["합곡"])).encode("euc-kr")
         assert len(raw) == 749
+
+class TestS12b_차등수가_범위검증:
+    def test_차등지수_0_미적용_통과(self):
+        """0은 미적용 의미로 허용."""
+        req = BillingCalcRequest(
+            insurance_type="4",
+            visit_type="외래",
+            benefit_total=10000,
+            graduated_fee_index=Decimal("0"),
+        )
+        assert req.graduated_fee_index == Decimal("0")
+
+    def test_차등지수_1_통과(self):
+        req = BillingCalcRequest(
+            insurance_type="4",
+            visit_type="외래",
+            benefit_total=10000,
+            graduated_fee_index=Decimal("1"),
+        )
+        assert req.graduated_fee_index == Decimal("1")
+
+    def test_차등지수_0_5_통과(self):
+        req = BillingCalcRequest(
+            insurance_type="4",
+            visit_type="외래",
+            benefit_total=10000,
+            graduated_fee_index=Decimal("0.5"),
+        )
+        assert req.graduated_fee_index == Decimal("0.5")
+
+    def test_차등지수_음수_거부(self):
+        with pytest.raises(Exception):
+            BillingCalcRequest(
+                insurance_type="4",
+                visit_type="외래",
+                benefit_total=10000,
+                graduated_fee_index=Decimal("-0.1"),
+            )
+
+    def test_차등지수_1초과_거부(self):
+        with pytest.raises(Exception):
+            BillingCalcRequest(
+                insurance_type="4",
+                visit_type="외래",
+                benefit_total=10000,
+                graduated_fee_index=Decimal("1.1"),
+            )

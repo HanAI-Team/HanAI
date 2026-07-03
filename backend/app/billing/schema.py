@@ -1,7 +1,8 @@
-from typing import Literal, Optional
 from datetime import date
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from typing import Literal, Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class HerbItem(BaseModel):
@@ -83,11 +84,22 @@ class BillingCalcRequest(BaseModel):
     disability_medical_cost: int = Field(0, ge=0, description="장애인의료비 (원, 의료급여)")
     support_fund: int = Field(0, ge=0, description="지원금 (원)")
     treatment_days: Decimal = Field(Decimal("0"), description="진료(조제)일수")
-    graduated_fee_index: Decimal = Field(Decimal("0"), description="차등지수")
+    graduated_fee_index: Decimal = Field(
+        Decimal("0"), description="차등지수 (0=미적용, 0 초과 1 이하=차등 적용)"
+    )
     procedures: list[ProcedureItem] = Field(
         default_factory=list,
         description="진료내역 목록. EDI 명세서진료내역 + 특정내역 생성에 사용",
     )
+
+    @field_validator("graduated_fee_index")
+    @classmethod
+    def validate_graduated_fee_index(cls, v: Decimal) -> Decimal:
+        if v < 0:
+            raise ValueError("차등지수는 0 이상이어야 합니다.")
+        if v > 1:
+            raise ValueError("차등지수는 1 이하여야 합니다. (1 초과 청구 불가)")
+        return v
 
 
 INSURANCE_TYPE_CHOICES = [
@@ -116,19 +128,12 @@ class FeeItem(BaseModel):
 
 
 class BillingCalcResponse(BaseModel):
-    # 입력 에코 (EDI 생성 시 재사용)
     special_code: Optional[str] = None
-
-    # 요양급여비용 총액
     benefit_total_1: int
     benefit_total_2: int
-
-    # 청구 핵심 3개
     copayment: int
     claim_amount: int
     upper_limit_excess: int
-
-    # 유형별 본인일부부담금
     health_outpatient_copay: int
     health_inpatient_copay: int
     medical_aid_outpatient_copay: int
@@ -141,26 +146,18 @@ class BillingCalcResponse(BaseModel):
     under_15_inpatient_copay: int
     disability_medical_cost: int
     support_fund: int
-
-    # 100분의100 / 100분의100미만
     full_price_copay_total: int
     under_full_total: int
     under_full_copay: int
     under_full_claim: int
-
-    # 보훈
     veterans_claim: int
     veterans_copay: int
     veterans_total: int
     under_full_veterans_claim: int
-
-    # 차등수가
     treatment_days: Decimal
     graduated_claim: int
     graduated_index: Decimal
 
-
-# ---------- 카탈로그 조회 응답 ----------
 
 class BillableItemResponse(BaseModel):
     id: str
@@ -172,8 +169,6 @@ class BillableItemResponse(BaseModel):
     requiresHyeolmyeong: bool
 
 
-# ---------- 라인아이템 추가 요청 ----------
-
 class LineItemInput(BaseModel):
     item_id: str
     hyeolmyeong_names: list[str] = Field(default_factory=list)
@@ -183,8 +178,6 @@ class AddLineItemsRequest(BaseModel):
     medical_record_id: str
     items: list[LineItemInput] = Field(..., min_length=1)
 
-
-# ---------- 응답 ----------
 
 class ClaimLineItemResponse(BaseModel):
     id: str
