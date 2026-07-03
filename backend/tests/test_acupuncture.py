@@ -201,3 +201,46 @@ async def test_특수침술_인증없으면_401(client, fee_master_codes):
         json={"codes": ["40030"]},
     )
     assert res.status_code == 401
+
+async def test_당일_다른내원_분구침술_중복_불가(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-cross-visit",
+        json={
+            "patient_id": "00000000-0000-0000-0000-000000000001",
+            "visit_date": "2026-06-01",
+            "codes": ["40121"],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True  # DB에 다른 내원 없으니까 통과
+
+
+async def test_당일_중복없으면_통과(client, approved_doctor, fee_master_codes):
+    _, headers = approved_doctor
+    res = await client.post(
+        "/api/acupuncture/check-cross-visit",
+        json={
+            "patient_id": "00000000-0000-0000-0000-000000000001",
+            "visit_date": "2026-06-01",
+            "codes": [],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["valid"] is True
+
+
+async def test_cross_visit_인증없으면_401(client, fee_master_codes):
+    res = await client.post(
+        "/api/acupuncture/check-cross-visit",
+        json={
+            "patient_id": "00000000-0000-0000-0000-000000000001",
+            "visit_date": "2026-06-01",
+            "codes": ["40121"],
+        },
+    )
+    assert res.status_code == 401
