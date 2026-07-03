@@ -1,4 +1,5 @@
 from typing import Optional, List
+from datetime import date
 from pydantic import BaseModel
 
 
@@ -39,4 +40,16 @@ class SpecialLimitCheckRequest(BaseModel):
 class SpecialLimitCheckResponse(BaseModel):
     valid: bool
     excess_count: int
+    message: str
+
+
+class CrossVisitDuplicateCheckRequest(BaseModel):
+    patient_id: str
+    visit_date: date
+    codes: list[str]
+
+
+class CrossVisitDuplicateCheckResponse(BaseModel):
+    valid: bool
+    conflicting_codes: list[str]
     message: str

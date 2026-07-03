@@ -32,13 +32,33 @@ class _FakeRedis:
     def delete(self, key):
         self._store.pop(key, None)
 
+    def llen(self, key):
+        return len(self._store.get(key, []))
+
+    def lpop(self, key):
+        lst = self._store.get(key)
+        if not lst:
+            return None
+        return lst.pop(0)
+
+    def rpush(self, key, value):
+        self._store.setdefault(key, []).append(value)
+        return len(self._store[key])
+
+    def lrange(self, key, start, end):
+        lst = self._store.get(key, [])
+        if end == -1:
+            return lst[start:]
+        return lst[start : end + 1]
+
 
 @pytest.fixture
 def fake_redis(monkeypatch):
     redis = _FakeRedis()
     monkeypatch.setattr(auth_router, "_redis", redis)
+    import app.core.redis as core_redis
+    monkeypatch.setattr(core_redis, "_redis", redis)
     return redis
-
 
 async def _register_and_approve(client) -> None:
     reg = await client.post("/api/auth/register", json=REGISTER_DATA)
