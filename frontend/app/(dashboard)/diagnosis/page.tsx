@@ -1,4 +1,5 @@
 "use client";
+import { AcupointViewer, parseAcupointCodes } from "@/components/AcupointViewer";
 import BetaFeedbackBanner from "@/components/BetaFeedbackBanner";
 import { BillableItemPicker } from "@/components/billing/BillableItemPicker";
 import {
@@ -1836,6 +1837,20 @@ ${historyLine}
                       결과 2 (일반 한의학 기반) 분석 중...
                     </div>
                   )}
+                  {(result.acupuncture?.length || result.claudeBased?.acupuncture?.length) ? (
+                    <div className="mt-3 bg-card border border-border rounded-lg p-4">
+                      <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-3">
+                        <MapPin className="w-3.5 h-3.5" /> 침 처방 위치
+                      </div>
+                      <AcupointViewer
+                        readOnly
+                        highlightedPoints={parseAcupointCodes([
+                          ...(result.acupuncture ?? []),
+                          ...(result.claudeBased?.acupuncture ?? []),
+                        ])}
+                      />
+                    </div>
+                  ) : null}
                   <div className="mt-3 bg-card border border-border rounded-lg overflow-hidden">
                     <button
                       onClick={() => setResultMemoOpen((p) => !p)}
