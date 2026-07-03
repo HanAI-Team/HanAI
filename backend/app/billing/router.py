@@ -22,7 +22,9 @@ from app.billing.schema import (
     ClaimResubmissionResponse,
     ClaimResubmissionUpdate,
     ClaimSummaryResponse,
+    FeeCreate,
     FeeItem,
+    FeeUpdate,
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
     ViolationItem,
@@ -31,7 +33,8 @@ from app.billing.service import create_claim, generate_claim_edi, update_claim_r
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import Claim, ClaimLineItem, FeeMaster, MedicalRecord, Patient
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from app.core.config import settings
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -340,21 +343,79 @@ async def list_fees(
     stmt = stmt.order_by(FeeMaster.category, FeeMaster.code)
     result = await db.execute(stmt)
     rows = result.scalars().all()
-    return [
-        FeeItem(
-            code=r.code,
-            name=r.name,
-            category=r.category,
-            insured_health=r.insured_health,
-            insured_medical_aid=r.insured_medical_aid,
-            insured_veterans=r.insured_veterans,
-            unit_price=r.unit_price,
-            is_insured=r.is_insured,
-            effective_date=r.effective_date,
-            expired_date=r.expired_date,
-        )
-        for r in rows
-    ]
+    return [_fee_to_item(r) for r in rows]
+
+
+def _fee_to_item(r: FeeMaster) -> FeeItem:
+    return FeeItem(
+        code=r.code,
+        name=r.name,
+        category=r.category,
+        insured_health=r.insured_health,
+        insured_medical_aid=r.insured_medical_aid,
+        insured_veterans=r.insured_veterans,
+        unit_price=r.unit_price,
+        is_insured=r.is_insured,
+        is_standalone=r.is_standalone,
+        effective_date=r.effective_date,
+        expired_date=r.expired_date,
+    )
+
+
+def _check_admin(key: str) -> None:
+    if key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="관리자 키가 올바르지 않습니다.")
+
+
+@router.post("/fees", response_model=FeeItem, status_code=201)
+async def create_fee(
+    body: FeeCreate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    existing = await db.execute(select(FeeMaster).where(FeeMaster.code == body.code))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 존재하는 행위코드입니다.")
+    fee = FeeMaster(**body.model_dump())
+    db.add(fee)
+    await db.commit()
+    await db.refresh(fee)
+    return _fee_to_item(fee)
+
+
+@router.put("/fees/{code}", response_model=FeeItem)
+async def update_fee(
+    code: str,
+    body: FeeUpdate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(FeeMaster).where(FeeMaster.code == code))
+    fee = result.scalar_one_or_none()
+    if not fee:
+        raise HTTPException(status_code=404, detail="수가 코드를 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(fee, field, value)
+    await db.commit()
+    await db.refresh(fee)
+    return _fee_to_item(fee)
+
+
+@router.delete("/fees/{code}", status_code=204)
+async def delete_fee(
+    code: str,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(FeeMaster).where(FeeMaster.code == code))
+    fee = result.scalar_one_or_none()
+    if not fee:
+        raise HTTPException(status_code=404, detail="수가 코드를 찾을 수 없습니다.")
+    await db.delete(fee)
+    await db.commit()
 
 @router.get("/claims/{claim_id}/edi")
 async def download_claim_edi(

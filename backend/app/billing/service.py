@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
+from app.billing.notice_rules import validate_notice_rules
 
 from app.billing.copayment import (
     BillingInput,
@@ -135,7 +136,24 @@ async def create_claim(
     )
     procedures = r_procs.scalars().all()
     benefit_total = sum(p.amount or 0 for p in procedures)
+    notice_errors = validate_notice_rules(
+        patient=patient,
+        records=records,
+        procedures=procedures,
+        claim_period_year=claim_period_year,
+        claim_period_month=claim_period_month,
+    )
 
+    blocking_errors = [e for e in notice_errors if e["severity"] == "ERROR"]
+
+    if blocking_errors:
+        raise HTTPException(
+            status_code=400,
+        detail={
+            "message": "고시 기준 필수 특정내역/청구 검증 오류가 있습니다.",
+            "errors": blocking_errors,
+        },
+    )
     # 본인부담금 계산
     insurance_type = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
     billing_result = calculate_billing(BillingInput(
