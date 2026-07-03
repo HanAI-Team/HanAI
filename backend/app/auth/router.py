@@ -22,7 +22,7 @@ from app.auth.schema import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import AccountHistory, Doctor, Hospital, LoginLog, StaffAccount
+from app.core.models import AccountHistory, Doctor, Hospital, LoginLog, StaffAccount, Subscription
 from app.core.redis import (
     add_session,
     add_token_blacklist,
@@ -326,6 +326,9 @@ async def get_me(
     institution_code = hospital.institution_code if hospital else None
 
     if isinstance(user, Doctor):
+        subscription_result = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital.id ))
+        subscription = subscription_result.scalar_one_or_none()
+
         return {
             "id": user.id,
             "name": user.name,
@@ -333,6 +336,8 @@ async def get_me(
             "role": user.role,
             "hospital_id": user.hospital_id,
             "institution_code": institution_code,
+            "tier" :  subscription.tier,
+            "expired_at" : subscription.expired_at
         }
     return {
         "id": user.id,

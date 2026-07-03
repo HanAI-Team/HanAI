@@ -5,6 +5,8 @@ import { useIdleLogout } from "@/hooks/useIdleLogout";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { UserInfoForNav } from "@/components/userInfo";
+
 
 export default function DashboardLayout({
   children,
@@ -25,12 +27,14 @@ export default function DashboardLayout({
     { label: "홈", path: "/home" },
     { label: "진료", path: "/diagnosis" },
     { label: "청구", path: "/billing" },
+    { label: "멤버쉽", path: "/membership" },
     { label: "설정", path: "/settings" },
   ];
 
   const mobileNavLinks = [
     { label: "홈", path: "/home" },
     { label: "진료", path: "/patients" },
+    { label: "멤버쉽", path: "/membership" },
     { label: "설정", path: "/settings" },
   ];
 
@@ -38,20 +42,21 @@ export default function DashboardLayout({
     <div className="flex flex-col min-h-screen">
       {/* PC 네비바 */}
       <nav className="hidden sm:flex h-[52px] bg-[#232323] dark:bg-card dark:border-b dark:border-border items-center px-6 flex-shrink-0">
-        <div className="flex items-center gap-2 mr-9">
+        <div className="flex items-center  mr-9 cursor-pointer "  onClick={()=>router.push("/home")}>
             <Image
             src="/images/logo-light.png"
             alt="Zinmac"
             width={40}
             height={40}
-            className="w-10 h-10 dark:hidden"
+            className="w-10 h-10 dark:hidden "
           />
           <Image
+       
             src="/images/logo-dark.png"
             alt="Zinmac"
             width={40}
             height={40}
-            className="w-10 h-10 hidden dark:block"
+            className="w-10 h-10 hidden dark:block "
           />
           <div className="font-serif text-[19px] text-white">Zinmac</div>
         </div>
@@ -60,7 +65,7 @@ export default function DashboardLayout({
             <button
               key={link.path}
               onClick={() => router.push(link.path)}
-              className={`px-4 py-1.5 text-xs rounded-md transition-all font-sans ${
+              className={` cursor-pointer px-4 py-1.5 text-xs rounded-md transition-all font-sans ${
                 pathname === link.path
                   ? "text-white bg-white/[0.06]"
                   : "text-[#585753] hover:text-white"
@@ -70,7 +75,12 @@ export default function DashboardLayout({
             </button>
           ))}
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <div className="cursor-pointer" onClick={()=>router.push("/membership")}>
+            <UserInfoForNav />
+          </div>
+          <ThemeToggle />
+        </div>
       </nav>
 
       {/* 모바일 헤더 */}
@@ -137,6 +147,7 @@ export default function DashboardLayout({
             </button>
           ))}
         </div>
+        {/* todo 하드코딩 말고 실 데이터로 변경하기  */}
         <div className="px-5 py-4 border-t border-white/5 flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white">
             이
