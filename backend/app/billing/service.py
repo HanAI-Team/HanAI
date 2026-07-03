@@ -32,6 +32,7 @@ from app.core.models import (
     MedicalRecordProcedure,
     Patient,
     SaturdayHolidayStaffing,
+    Subscription,
 )
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -65,7 +66,25 @@ async def create_claim(
     patient = r_patient.scalar_one_or_none()
     if not patient:
         raise HTTPException(status_code=404, detail="환자를 찾을 수 없습니다.")
+    r_sub = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital_id))
+    sub = r_sub.scalar_one_or_none()
+    tier = sub.tier if sub  else "basic"
 
+    if tier == "basic":
+        from sqlalchemy import func
+        count_result = await db.execute(
+            select(func.count(Claim.id)).where(
+                Claim.hospital_id == hospital_id,
+                Claim.claim_period_year == claim_period_year,
+                Claim.claim_period_month == claim_period_month,
+            )
+        )
+        count = count_result.scalar()
+        if count >= 50:
+            raise HTTPException(
+            status_code=403,
+            detail="베이직 플랜은 월 50건까지 청구 가능합니다. 프리미엄으로 업그레이드하세요."
+        )
     # 진료기록 조회
     r_records = await db.execute(
         select(MedicalRecord).where(
@@ -75,7 +94,7 @@ async def create_claim(
         )
     )
     records = r_records.scalars().all()
-  
+
     if not records:
         raise HTTPException(status_code=404, detail="진료기록을 찾을 수 없습니다.")
     for record in records:
