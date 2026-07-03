@@ -49,12 +49,18 @@ app.add_middleware(
         "https://zinmac.vercel.app",
         "https://zinmac.kr",
         "https://www.zinmac.kr",
+        "https://bookish-winner-9gjq997vp6gcpxjv-3000.app.github.dev",
+        "https://bookish-winner-9gjq997vp6gcpxjv-3000.app.github.dev"
+
     ],
-    allow_origin_regex=r"https://zinmac.*\.vercel\.app",
+    #allow_origin_regex=r"https://zinmac.*\.vercel\.app",
+    allow_origin_regex=r"https://(zinmac.*\.vercel\.app|.*\.app\.github\.dev)",
+
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 @app.middleware("http")
@@ -84,8 +90,12 @@ RATE_LIMIT_PATHS = {
 }
 
 
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
+    if settings.TESTING or settings.DATABASE_URL.startswith("sqlite"):
+        return await call_next(request)
     path = request.url.path
     if path in RATE_LIMIT_PATHS:
         ip = request.client.host if request.client else "unknown"
@@ -122,3 +132,5 @@ app.include_router(hospitals_router, prefix="/api/hospitals", tags=["hospitals"]
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
