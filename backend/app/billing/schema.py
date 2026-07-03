@@ -123,8 +123,36 @@ class FeeItem(BaseModel):
     insured_veterans: bool
     unit_price: int
     is_insured: bool
+    is_standalone: bool
     effective_date: Optional[date]
     expired_date: Optional[date]
+
+
+class FeeCreate(BaseModel):
+    code: str
+    name: str
+    category: str
+    unit_price: int
+    is_insured: bool = True
+    is_standalone: bool = False
+    insured_health: bool = True
+    insured_medical_aid: bool = True
+    insured_veterans: bool = False
+    effective_date: Optional[date] = None
+    expired_date: Optional[date] = None
+
+
+class FeeUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: Optional[int] = None
+    is_insured: Optional[bool] = None
+    is_standalone: Optional[bool] = None
+    insured_health: Optional[bool] = None
+    insured_medical_aid: Optional[bool] = None
+    insured_veterans: Optional[bool] = None
+    effective_date: Optional[date] = None
+    expired_date: Optional[date] = None
 
 
 class BillingCalcResponse(BaseModel):
