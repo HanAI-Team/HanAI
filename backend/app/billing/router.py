@@ -58,7 +58,7 @@ class ClaimCreateRequest(BaseModel):
     medical_record_ids: list[str]
     claim_period_year: int
     claim_period_month: int
-    visit_type: str = "outpatient"
+    visit_type: str = "외래"  # "외래" 또는 "입원" (VisitType enum과 일치)
 
 
 class ClaimCreateResponse(BaseModel):

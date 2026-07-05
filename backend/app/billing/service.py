@@ -59,7 +59,7 @@ async def create_claim(
     medical_record_ids: list[UUID],
     claim_period_year: int,
     claim_period_month: int,
-    visit_type: str = "outpatient",
+    visit_type: str = "외래",  # "외래" 또는 "입원" (VisitType enum과 일치)
 ) -> Claim:
     # 환자 조회 및 권한 확인
     r_patient = await db.execute(
@@ -136,12 +136,17 @@ async def create_claim(
     )
     procedures = r_procs.scalars().all()
     benefit_total = sum(p.amount or 0 for p in procedures)
+    # ── 고시 기반 특정내역/청구 검증 (notice_rules.py) ──────────────────────────
+    # ※ validate_notice_rules()의 실제 파라미터명은 _records, _claim_period_year,
+    #   _claim_period_month (언더스코어 prefix = 함수 내부 미사용 파라미터).
+    #   과거 호출부가 records=, claim_period_year=, claim_period_month=로
+    #   잘못된 키워드명을 사용해 TypeError가 발생했던 버그를 수정함.
     notice_errors = validate_notice_rules(
         patient=patient,
-        records=records,
+        _records=records,
         procedures=procedures,
-        claim_period_year=claim_period_year,
-        claim_period_month=claim_period_month,
+        _claim_period_year=claim_period_year,
+        _claim_period_month=claim_period_month,
     )
 
     blocking_errors = [e for e in notice_errors if e["severity"] == "ERROR"]
@@ -149,11 +154,11 @@ async def create_claim(
     if blocking_errors:
         raise HTTPException(
             status_code=400,
-        detail={
-            "message": "고시 기준 필수 특정내역/청구 검증 오류가 있습니다.",
-            "errors": blocking_errors,
-        },
-    )
+            detail={
+                "message": "고시 기준 필수 특정내역/청구 검증 오류가 있습니다.",
+                "errors": blocking_errors,
+            },
+        )
     # 본인부담금 계산
     insurance_type = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
     billing_result = calculate_billing(BillingInput(

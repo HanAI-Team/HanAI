@@ -64,16 +64,16 @@ const MERIDIANS = [
       { region: "head", from: 8, to: 20, count: 12, offsetPx: 25 },
       { region: "abdomen", from: "shoulder", to: 34, count: 6, offsetPx: 45 },
       { region: "abdomen", from: 34, to: "navel", count: 12, offsetPx: 38 },
-      { region: "leg", from: "hip", to: "ankle", count: 10, offsetPx: 90 },
-      { region: "foot", from: "ankle", to: 95, count: 5, offsetPx: 75 },
+      { region: "leg", from: "hip", to: "ankle", count: 10, offsetPx: 38 },
+      { region: "foot", from: "ankle", to: 95, count: 5, offsetPx: 34 },
     ],
     names: ["승읍", "사백", "거료", "지창", "대영", "협거", "하관", "두유", "인영", "수돌", "기사", "결분", "기호", "고방", "옥예", "응창", "유중", "유근", "불용", "승만", "양문", "관문", "태을", "활육문", "천추", "외릉", "대거", "수도", "귀래", "기충", "비관", "복토", "음시", "양구", "독비", "족삼리", "상거허", "조구", "하거허", "풍륭", "해계", "충양", "함곡", "내정", "여태"],
   },
   {
     code: "SP", view: "front", side: "left",
     segments: [
-      { region: "foot", from: 95, to: "ankle", count: 5, offsetPx: 70 },
-      { region: "leg", from: "ankle", to: "hip", count: 6, offsetPx: 90 },
+      { region: "foot", from: 95, to: "ankle", count: 5, offsetPx: 26 },
+      { region: "leg", from: "ankle", to: "hip", count: 6, offsetPx: 22 },
       { region: "abdomen", from: "hip", to: 25, count: 10, offsetPx: 55 },
     ],
     names: ["은백", "대도", "태백", "공손", "상구", "삼음교", "누곡", "지기", "음릉천", "혈해", "기문", "충문", "부사", "복결", "대횡", "복애", "식두", "천계", "흉향", "주영", "대포"],
@@ -95,22 +95,22 @@ const MERIDIANS = [
     names: ["소택", "전곡", "후계", "완골", "양곡", "양로", "지정", "소해", "견정", "노유", "천종", "병풍", "곡원", "견외유", "견중유", "천창", "천용", "관료", "청궁"],
   },
   {
-    code: "BL", view: "back", side: "right",
+    code: "BL", view: "back", side: "right", alternate: true,
     segments: [
       { region: "head", from: 5, to: "neckBase", count: 10, offsetPx: 25 },
       { region: "back", from: "shoulder", to: "hip", count: 25, offsetPx: 40 },
-      { region: "leg", from: "hip", to: "knee", count: 5, offsetPx: 85 },
+      { region: "leg", from: "hip", to: "knee", count: 5, offsetPx: 28 },
       { region: "back", from: "shoulder", to: "hip", count: 14, offsetPx: 65 },
-      { region: "leg", from: "knee", to: "ankle", count: 5, offsetPx: 75 },
-      { region: "foot", from: "ankle", to: 98, count: 8, offsetPx: 70 },
+      { region: "leg", from: "knee", to: "ankle", count: 5, offsetPx: 32 },
+      { region: "foot", from: "ankle", to: 98, count: 8, offsetPx: 30 },
     ],
     names: ["정명", "찬죽", "미충", "곡차", "오처", "승광", "통천", "낙각", "옥침", "천주", "대저", "풍문", "폐유", "궐음유", "심유", "독유", "격유", "간유", "담유", "비유", "위유", "삼초유", "신유", "기해유", "대장유", "관원유", "소장유", "방광유", "중려유", "백환유", "상료", "차료", "중료", "하료", "회양", "승부", "은문", "부극", "위양", "위중", "부분", "백호", "고황", "신당", "의희", "격관", "혼문", "양강", "의사", "위창", "황문", "지실", "포황", "질변", "합양", "승근", "승산", "비양", "부양", "곤륜", "복삼", "신맥", "금문", "경골", "속골", "족통곡", "지음"],
   },
   {
     code: "KI", view: "front", side: "left",
     segments: [
-      { region: "foot", from: 98, to: "ankle", count: 6, offsetPx: 55 },
-      { region: "leg", from: 88, to: "knee", count: 4, offsetPx: 65 },
+      { region: "foot", from: 98, to: "ankle", count: 6, offsetPx: 38 },
+      { region: "leg", from: 88, to: "knee", count: 4, offsetPx: 28 },
       { region: "abdomen", from: 62, to: 25, count: 17, offsetPx: 15 },
     ],
     names: ["용천", "연곡", "태계", "대종", "수천", "조해", "부류", "교신", "축빈", "음곡", "횡골", "대혁", "기혈", "사만", "중주", "황유", "상곡", "석관", "음도", "복통곡", "유문", "보랑", "신봉", "영허", "신장", "욱중", "수부"],
@@ -133,20 +133,20 @@ const MERIDIANS = [
     names: ["관충", "액문", "중저", "양지", "외관", "지구", "회종", "삼양락", "사독", "천정", "청랭연", "소락", "노회", "견료", "천료", "천유", "예풍", "계맥", "노식", "각손", "이문", "화료", "사죽공"],
   },
   {
-    code: "GB", view: "back", side: "right",
+    code: "GB", view: "back", side: "right", alternate: true,
     segments: [
       { region: "head", from: 8, to: "neckBase", count: 20, offsetPx: 35 },
       { region: "back", from: "shoulder", to: 40, count: 8, offsetPx: 70 },
-      { region: "leg", from: "hip", to: 88, count: 11, offsetPx: 95 },
-      { region: "foot", from: "ankle", to: 98, count: 5, offsetPx: 80 },
+      { region: "leg", from: "hip", to: 88, count: 11, offsetPx: 48 },
+      { region: "foot", from: "ankle", to: 98, count: 5, offsetPx: 44 },
     ],
     names: ["동자료", "청회", "상관", "함염", "현로", "현리", "곡빈", "솔곡", "천충", "부백", "두규음", "완골", "본신", "양백", "두임읍", "목창", "정영", "승령", "뇌공", "풍지", "견정", "연액", "첩근", "일월", "경문", "대맥", "오추", "유도", "거료", "환도", "풍시", "중독", "슬양관", "양릉천", "양교", "외구", "광명", "양보", "현종", "구허", "족임읍", "지오회", "협계", "족규음"],
   },
   {
     code: "LR", view: "front", side: "left",
     segments: [
-      { region: "foot", from: 98, to: "ankle", count: 4, offsetPx: 60 },
-      { region: "leg", from: 88, to: "hip", count: 7, offsetPx: 75 },
+      { region: "foot", from: 98, to: "ankle", count: 4, offsetPx: 42 },
+      { region: "leg", from: 88, to: "hip", count: 7, offsetPx: 34 },
       { region: "abdomen", from: "hip", to: 32, count: 3, offsetPx: 60 },
     ],
     names: ["대돈", "행간", "태충", "중봉", "여구", "중도", "슬관", "곡천", "음포", "족오리", "음렴", "급맥", "장문", "기문"],
@@ -205,7 +205,10 @@ function generate() {
       for (let i = 0; i < seg.count; i++) {
         const t = seg.count === 1 ? 0.5 : i / (seg.count - 1);
         const yPct = yFrom + (yTo - yFrom) * t;
-        const dir = m.side === "left" ? -1 : 1;
+        // alternate: 경락 전체를 한쪽에 몰아주는 대신, 점 순서를 좌우로 번갈아 배치해
+        // 척추/체측 양쪽에 고르게 분포시킨다 (BL/GB처럼 원래 좌우 대칭인 경락용)
+        const pointSide = m.alternate ? (i % 2 === 0 ? "right" : "left") : m.side;
+        const dir = pointSide === "left" ? -1 : 1;
         const x = seg.offsetPx === 0 ? CENTER_X : CENTER_X + dir * seg.offsetPx;
 
         points.push({
@@ -215,7 +218,7 @@ function generate() {
           meridianName: MERIDIAN_NAMES[m.code],
           view: m.view,
           region: seg.region,
-          side: isSided && m.side ? m.side : null,
+          side: isSided && pointSide ? pointSide : null,
           x: Math.round(x),
           y: Math.round((yPct / 100) * VIEW_H),
         });
