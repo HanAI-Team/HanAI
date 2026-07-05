@@ -45,6 +45,7 @@ class Doctor(Base):
     name = Column(String, nullable=False)
     license_number = Column(String, unique=True, nullable=False)
     license_kind = Column(String)
+    birth_date = Column(Date, nullable=True)  # 데이터허브 면허인증 시 주민번호에서 추출해 저장
     password_hash = Column(String, nullable=False)
     role = Column(String, default="owner")
     is_approved = Column(Boolean, default=False, nullable=False)

@@ -1,10 +1,11 @@
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Union
 from uuid import UUID
 
 from app.auth import service
-from app.auth.datahub import confirm_verification, request_verification
+from app.auth.datahub import confirm_verification, extract_birth_date, request_verification
 from app.auth.schema import (
     AdminApproveResponse,
     ChangePasswordRequest,
@@ -24,9 +25,12 @@ from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import AccountHistory, Doctor, Hospital, LoginLog, StaffAccount, Subscription
 from app.core.redis import (
+    VerifyPendingDecryptionError,
     add_session,
     add_token_blacklist,
+    del_verify_pending,
     get_redis,
+    get_verify_pending,
     remove_session,
     set_verify_pending,
 )
@@ -35,6 +39,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["auth"])
 bearer_scheme = HTTPBearer()
@@ -128,6 +134,31 @@ async def register_verify_confirm(
     if result.get("license_number") != data.license_number:
         raise HTTPException(status_code=400, detail="면허번호가 일치하지 않습니다.")
 
+    # /register/verify에서 저장해둔 jumin(주민번호)에서 생년월일을 뽑아낸다.
+    # pending 조회 실패나 형식 불일치는 회원가입을 막지 않고 birth_date만 비워두되,
+    # 실패 사유와 callback_id는 로그로 남긴다 (jumin 원본은 절대 로그에 남기지 않는다).
+    try:
+        pending = get_verify_pending(data.callback_id)
+    except VerifyPendingDecryptionError:
+        logger.warning(
+            "[register_verify_confirm] pending 데이터 복호화 실패 (callback_id=%s)",
+            data.callback_id,
+        )
+        pending = None
+
+    if pending is None:
+        logger.info(
+            "[register_verify_confirm] pending 데이터 없음 또는 TTL 만료 (callback_id=%s)",
+            data.callback_id,
+        )
+
+    birth_date = (
+        extract_birth_date(pending["jumin"], callback_id=data.callback_id)
+        if pending and pending.get("jumin")
+        else None
+    )
+    del_verify_pending(data.callback_id)
+
     register_data = RegisterRequest(
         name=data.name,
         license_number=data.license_number,
@@ -136,7 +167,7 @@ async def register_verify_confirm(
         clinic_address=data.clinic_address,
         clinic_phone=data.clinic_phone,
     )
-    doctor = await service.register_doctor(db, register_data)
+    doctor = await service.register_doctor(db, register_data, birth_date=birth_date)
     approved = await service.approve_doctor(db, UUID(str(doctor.id)))
     token = service.create_access_token(
         UUID(str(approved["doctor"].id)),
