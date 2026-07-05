@@ -139,7 +139,7 @@ def validate_notice_rules(
         category = str(_get(item, "category", "") or "").upper()
         text = _item_text(item)
 
-        is_physiotherapy = category == "PHYSIOTHERAPY" or "물리치료" in text
+        is_physiotherapy = category == "전기/온열" or "물리치료" in text
         is_holiday = (
             _get(item, "is_holiday", False)
             or _get(item, "isHoliday", False)
