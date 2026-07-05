@@ -20,8 +20,8 @@ const LANDMARK_Y_PCT = {
   elbow: 40,
   wrist: 55,
   navel: 60,
-  knee: 75,
-  ankle: 90,
+  knee: 73,
+  ankle: 89,
   sole: 100,
 };
 
@@ -64,7 +64,7 @@ const MERIDIANS = [
       { region: "head", from: 8, to: 20, count: 12, offsetPx: 25 },
       { region: "abdomen", from: "shoulder", to: 34, count: 6, offsetPx: 45 },
       { region: "abdomen", from: 34, to: "navel", count: 12, offsetPx: 38 },
-      { region: "leg", from: "hip", to: "ankle", count: 10, offsetPx: 38 },
+      { region: "leg", from: "hip", to: "ankle", count: 10, offsetPx: 45 },
       { region: "foot", from: "ankle", to: 95, count: 5, offsetPx: 34 },
     ],
     names: ["승읍", "사백", "거료", "지창", "대영", "협거", "하관", "두유", "인영", "수돌", "기사", "결분", "기호", "고방", "옥예", "응창", "유중", "유근", "불용", "승만", "양문", "관문", "태을", "활육문", "천추", "외릉", "대거", "수도", "귀래", "기충", "비관", "복토", "음시", "양구", "독비", "족삼리", "상거허", "조구", "하거허", "풍륭", "해계", "충양", "함곡", "내정", "여태"],
@@ -110,7 +110,7 @@ const MERIDIANS = [
     code: "KI", view: "front", side: "left",
     segments: [
       { region: "foot", from: 98, to: "ankle", count: 6, offsetPx: 38 },
-      { region: "leg", from: 88, to: "knee", count: 4, offsetPx: 28 },
+      { region: "leg", from: 88, to: "knee", count: 4, offsetPx: 25 },
       { region: "abdomen", from: 62, to: 25, count: 17, offsetPx: 15 },
     ],
     names: ["용천", "연곡", "태계", "대종", "수천", "조해", "부류", "교신", "축빈", "음곡", "횡골", "대혁", "기혈", "사만", "중주", "황유", "상곡", "석관", "음도", "복통곡", "유문", "보랑", "신봉", "영허", "신장", "욱중", "수부"],
@@ -137,7 +137,7 @@ const MERIDIANS = [
     segments: [
       { region: "head", from: 8, to: "neckBase", count: 20, offsetPx: 35 },
       { region: "back", from: "shoulder", to: 40, count: 8, offsetPx: 70 },
-      { region: "leg", from: "hip", to: 88, count: 11, offsetPx: 48 },
+      { region: "leg", from: "hip", to: 88, count: 11, offsetPx: 50 },
       { region: "foot", from: "ankle", to: 98, count: 5, offsetPx: 44 },
     ],
     names: ["동자료", "청회", "상관", "함염", "현로", "현리", "곡빈", "솔곡", "천충", "부백", "두규음", "완골", "본신", "양백", "두임읍", "목창", "정영", "승령", "뇌공", "풍지", "견정", "연액", "첩근", "일월", "경문", "대맥", "오추", "유도", "거료", "환도", "풍시", "중독", "슬양관", "양릉천", "양교", "외구", "광명", "양보", "현종", "구허", "족임읍", "지오회", "협계", "족규음"],
@@ -146,7 +146,7 @@ const MERIDIANS = [
     code: "LR", view: "front", side: "left",
     segments: [
       { region: "foot", from: 98, to: "ankle", count: 4, offsetPx: 42 },
-      { region: "leg", from: 88, to: "hip", count: 7, offsetPx: 34 },
+      { region: "leg", from: 88, to: "hip", count: 7, offsetPx: 25 },
       { region: "abdomen", from: "hip", to: 32, count: 3, offsetPx: 60 },
     ],
     names: ["대돈", "행간", "태충", "중봉", "여구", "중도", "슬관", "곡천", "음포", "족오리", "음렴", "급맥", "장문", "기문"],
