@@ -5,9 +5,10 @@ import GeneralTab from '@/components/settings/GeneralTab'
 import StaffTab from '@/components/settings/StaffTab'
 import AccessTab from '@/components/settings/AccessTab'
 import FaqTab from '@/components/settings/FaqTab'
+import WorkDaysTab from '@/components/settings/WorkDaysTab'
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'general' | 'staff' | 'access' | 'faq' | null>(null)
+  const [tab, setTab] = useState<'general' | 'staff' | 'access' | 'workdays' | 'faq' | null>(null)
 
   useEffect(() => {
     setTab('general')
@@ -37,6 +38,7 @@ export default function SettingsPage() {
               { value: 'general', label: '일반' },
               { value: 'staff', label: '하위 계정' },
               { value: 'access', label: '접근 기록' },
+              { value: 'workdays', label: '진료일수' },
               { value: 'faq', label: 'FAQ' },
             ].map((t) => (
               <button
@@ -55,6 +57,7 @@ export default function SettingsPage() {
         {tab === 'general' && <GeneralTab />}
         {tab === 'staff' && isOwner && <StaffTab />}
         {tab === 'access' && isOwner && <AccessTab />}
+        {tab === 'workdays' && isOwner && <WorkDaysTab />}
         {tab === 'faq' && <FaqTab />}
       </div>
     </div>

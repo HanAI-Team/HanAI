@@ -9,6 +9,7 @@ from app.auth.datahub import confirm_verification, extract_birth_date, request_v
 from app.auth.schema import (
     AdminApproveResponse,
     ChangePasswordRequest,
+    DoctorProfileUpdate,
     LoginRequest,
     PendingDoctorResponse,
     RegisterRequest,
@@ -367,6 +368,7 @@ async def get_me(
             "role": user.role,
             "hospital_id": user.hospital_id,
             "institution_code": institution_code,
+            "birth_date": user.birth_date,
             "tier" :  subscription.tier,
             "expired_at" : subscription.expired_at
         }
@@ -379,6 +381,18 @@ async def get_me(
         "hospital_id": user.hospital_id,
         "institution_code": institution_code,
     }
+
+
+@router.patch("/me")
+async def update_me(
+    data: DoctorProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    if data.birth_date is not None:
+        doctor.birth_date = data.birth_date
+    await db.commit()
+    return {"birth_date": doctor.birth_date}
 
 
 @router.post("/staff/login", response_model=TokenResponse)

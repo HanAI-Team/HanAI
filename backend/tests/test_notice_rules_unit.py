@@ -44,3 +44,11 @@ def test_holiday_physio_침술_공휴일_경고없음():
     results = validate_notice_rules(procedures=[_physio_item(is_holiday=True, category="침술")])
     rule_ids = [r["rule_id"] for r in results]
     assert "NOTICE_2008_124_HOLIDAY_PHYSIOTHERAPY" not in rule_ids
+
+
+def test_보훈국비_실제저장값_veterans_MT038_JT019_차단():
+    """service.py의 _INSURANCE_MAP이 실제로 저장하는 값 "veterans"로 판정해야 한다."""
+    results = validate_notice_rules(patient={"insurance_type": "veterans"})
+    rule_ids = [r["rule_id"] for r in results]
+    assert "NOTICE_2012_117_MT038" in rule_ids
+    assert "NOTICE_2012_117_JT019" in rule_ids

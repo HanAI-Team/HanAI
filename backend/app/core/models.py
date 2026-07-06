@@ -81,10 +81,18 @@ class DoctorWorkDays(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
     claim_period_year = Column(Integer, nullable=False)   # 청구년도
     claim_period_month = Column(Integer, nullable=False)  # 청구월
     doctor_birth_date = Column(String(6), nullable=False) # 의사 생년월일 YYMMDD
     work_days = Column(Integer, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "hospital_id", "claim_period_year", "claim_period_month", "doctor_id",
+            name="uq_doctor_work_days_period_doctor",
+        ),
+    )
 
 
 class StaffAccount(Base):
@@ -137,7 +145,27 @@ class Patient(Base):
     confirmation_no = Column(String(13), nullable=True)
     hospital = relationship("Hospital", back_populates="patients")
     medical_records = relationship("MedicalRecord", back_populates="patient")
+    special_case_registrations = relationship("SpecialCaseRegistration", back_populates="patient")
 
+
+class SpecialCaseRegistration(Base):
+    """산정특례 등록 이력. 환자당 다건 가능(암+희귀난치 동시 등록 등)."""
+    __tablename__ = "special_case_registrations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
+
+    special_code = Column(String(4), nullable=False)  # 특정기호. V193=암, V027=희귀난치, V221=중증화상 등
+    category = Column(String(20), nullable=False)     # 암 / 결핵 / 뇌혈관 / 심장 / 신체기능저하군
+    registered_disease_code = Column(String(10), nullable=True)  # 등록 상병코드 (KCD/ICD)
+
+    registered_at = Column(Date, nullable=False)
+    expires_at = Column(Date, nullable=True)  # NULL 허용: 결핵 등 이벤트(완치/사망/진단변경) 기반 종료는 날짜로 못 정함
+    status = Column(String(10), nullable=False, default="active")  # active / cancelled (수동 취소 전용. expired는 조회 시점에 expires_at으로 동적 판단)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    patient = relationship("Patient", back_populates="special_case_registrations")
 
 
 class Claim(Base):
