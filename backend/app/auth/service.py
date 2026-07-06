@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from app.auth.schema import RegisterRequest
@@ -39,7 +39,9 @@ def create_access_token(doctor_id: UUID, hospital_id: UUID, role: str) -> str:
     )
 
 
-async def register_doctor(db: AsyncSession, data: RegisterRequest) -> Doctor:
+async def register_doctor(
+    db: AsyncSession, data: RegisterRequest, birth_date: date | None = None
+) -> Doctor:
     result = await db.execute(
         select(Doctor).where(Doctor.license_number == data.license_number)
     )
@@ -61,6 +63,7 @@ async def register_doctor(db: AsyncSession, data: RegisterRequest) -> Doctor:
         hospital_id=hospital.id,
         name=data.name,
         license_number=data.license_number,
+        birth_date=birth_date,
         password_hash=pwd_context.hash(data.password),
         role="owner",
     )

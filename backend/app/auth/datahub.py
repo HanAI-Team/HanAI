@@ -1,5 +1,7 @@
 import base64
 import logging
+import re
+from datetime import date
 
 import httpx
 from Crypto.Cipher import AES
@@ -8,6 +10,41 @@ from Crypto.Util.Padding import pad
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# 주민번호 7번째 자리(성별 코드) -> 출생 세기
+_BIRTH_CENTURY_BY_GENDER_DIGIT = {
+    "9": 1800, "0": 1800,
+    "1": 1900, "2": 1900, "5": 1900, "6": 1900,
+    "3": 2000, "4": 2000, "7": 2000, "8": 2000,
+}
+
+
+def extract_birth_date(jumin: str, *, callback_id: str | None = None) -> date | None:
+    """주민번호 앞 6자리(YYMMDD)+7번째 자리(성별 코드)로 생년월일을 계산한다.
+    형식이 맞지 않으면 None을 반환한다 (호출부는 회원가입을 막지 않고 birth_date만 비워둔다).
+    실패 시 사유와 callback_id만 로그로 남기고 jumin 원본은 절대 남기지 않는다."""
+    digits = re.sub(r"\D", "", jumin)
+    if len(digits) < 7:
+        logger.warning(
+            "생년월일 파싱 실패: 자릿수 부족 (callback_id=%s)", callback_id
+        )
+        return None
+
+    century = _BIRTH_CENTURY_BY_GENDER_DIGIT.get(digits[6])
+    if century is None:
+        logger.warning(
+            "생년월일 파싱 실패: 성별 코드 인식 불가 (callback_id=%s)", callback_id
+        )
+        return None
+
+    yy, mm, dd = digits[0:2], digits[2:4], digits[4:6]
+    try:
+        return date(century + int(yy), int(mm), int(dd))
+    except ValueError:
+        logger.warning(
+            "생년월일 파싱 실패: 날짜 형식 무효 (callback_id=%s)", callback_id
+        )
+        return None
 
 _INQUIRY_URL = lambda: f"{settings.DATAHUB_URL}/scrap/common/mohw/MedicalLicenseInquirySimple"
 _CALLBACK_URL = lambda: f"{settings.DATAHUB_URL}/scrap/captcha"

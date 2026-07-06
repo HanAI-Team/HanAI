@@ -22,6 +22,9 @@ from app.billing.schema import (
     ClaimResubmissionResponse,
     ClaimResubmissionUpdate,
     ClaimSummaryResponse,
+    DoctorWorkDaysCreate,
+    DoctorWorkDaysItem,
+    DoctorWorkDaysUpdate,
     FeeCreate,
     FeeItem,
     FeeUpdate,
@@ -29,10 +32,15 @@ from app.billing.schema import (
     PrescriptionCheckResponse,
     ViolationItem,
 )
-from app.billing.service import create_claim, generate_claim_edi, update_claim_resubmission
+from app.billing.service import (
+    create_claim,
+    generate_claim_edi,
+    resolve_active_special_code,
+    update_claim_resubmission,
+)
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Claim, ClaimLineItem, FeeMaster, MedicalRecord, Patient
+from app.core.models import Claim, ClaimLineItem, DoctorWorkDays, FeeMaster, MedicalRecord, Patient
 from app.core.config import settings
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
@@ -58,7 +66,7 @@ class ClaimCreateRequest(BaseModel):
     medical_record_ids: list[str]
     claim_period_year: int
     claim_period_month: int
-    visit_type: str = "outpatient"
+    visit_type: str = "외래"  # "외래" 또는 "입원" (VisitType enum과 일치)
 
 
 class ClaimCreateResponse(BaseModel):
@@ -67,6 +75,7 @@ class ClaimCreateResponse(BaseModel):
     total_amount: int
     patient_copay: int
     claim_amount: int
+    needs_review: bool = False
 
 
 class BulkEdiRequest(BaseModel):
@@ -96,6 +105,7 @@ async def create_new_claim(
         total_amount=claim.total_amount,
         patient_copay=claim.patient_copay,
         claim_amount=claim.claim_amount,
+        needs_review=getattr(claim, "special_case_needs_review", False),
     )
 
 
@@ -293,18 +303,30 @@ async def check_prescription(
 async def calculate_copayment(
     body: BillingCalcRequest,
     current_doctor=Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
 ):
     """본인부담금 및 청구액 산정 (심사청구서 C2-00 금액 필드 30개).
 
     보험자종별구분에 따라 해당하는 본인부담금 항목만 값이 채워지고
     나머지 항목은 0으로 반환된다.
+
+    patient_id가 주어지면 활성 산정특례 등록을 조회해 body.special_code보다
+    우선 적용한다 (등록이 없으면 body.special_code 그대로 사용).
     """
+    needs_review = False
+    special_code = body.special_code
+    if body.patient_id is not None:
+        resolved = await resolve_active_special_code(db, body.patient_id)
+        if resolved.special_code is not None:
+            special_code = resolved.special_code
+            needs_review = resolved.needs_review
+
     inp = BillingInput(
         insurance_type=InsuranceType(body.insurance_type),
         visit_type=VisitType(body.visit_type),
         benefit_total=body.benefit_total,
         non_benefit_total=body.non_benefit_total,
-        special_code=body.special_code,
+        special_code=special_code,
         medical_aid_grade=MedicalAidGrade(body.medical_aid_grade) if body.medical_aid_grade else None,
         birth_date=body.birth_date,
         treatment_date=body.treatment_date,
@@ -315,7 +337,7 @@ async def calculate_copayment(
         graduated_fee_index=body.graduated_fee_index,
     )
     result = calculate_billing(inp)
-    return BillingCalcResponse(special_code=body.special_code, **result.__dict__)
+    return BillingCalcResponse(special_code=special_code, needs_review=needs_review, **result.__dict__)
 
 
 @router.get("/insurance-types")
@@ -416,6 +438,120 @@ async def delete_fee(
         raise HTTPException(status_code=404, detail="수가 코드를 찾을 수 없습니다.")
     await db.delete(fee)
     await db.commit()
+
+
+def _work_days_to_item(r: DoctorWorkDays) -> DoctorWorkDaysItem:
+    return DoctorWorkDaysItem(
+        id=r.id,
+        claim_period_year=r.claim_period_year,
+        claim_period_month=r.claim_period_month,
+        doctor_birth_date=r.doctor_birth_date,
+        work_days=r.work_days,
+    )
+
+
+@router.get("/doctor-work-days", response_model=list[DoctorWorkDaysItem])
+async def list_doctor_work_days(
+    year: int | None = Query(None, description="청구년도, 예: 2026"),
+    month: int | None = Query(None, ge=1, le=12, description="청구월, 예: 7"),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """MT008(의사별 진료일수) 원본 데이터 조회. year/month 지정 시 해당 청구월만 필터."""
+    stmt = select(DoctorWorkDays).where(DoctorWorkDays.hospital_id == current_user.hospital_id)
+    if year:
+        stmt = stmt.where(DoctorWorkDays.claim_period_year == year)
+    if month:
+        stmt = stmt.where(DoctorWorkDays.claim_period_month == month)
+    stmt = stmt.order_by(
+        DoctorWorkDays.claim_period_year.desc(),
+        DoctorWorkDays.claim_period_month.desc(),
+        DoctorWorkDays.id,
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return [_work_days_to_item(r) for r in rows]
+
+
+@router.post("/doctor-work-days", response_model=DoctorWorkDaysItem, status_code=201)
+async def create_doctor_work_days(
+    body: DoctorWorkDaysCreate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """MT008(의사별 진료일수) 원본 데이터 입력.
+
+    같은 병원·같은 청구년월·같은 의사생년월일 조합이 이미 있으면 409로 막는다
+    (실수로 같은 의사를 중복 입력해 EDI에 두 번 찍히는 것을 방지).
+    """
+    existing = await db.execute(
+        select(DoctorWorkDays).where(
+            DoctorWorkDays.hospital_id == current_user.hospital_id,
+            DoctorWorkDays.claim_period_year == body.claim_period_year,
+            DoctorWorkDays.claim_period_month == body.claim_period_month,
+            DoctorWorkDays.doctor_birth_date == body.doctor_birth_date,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="해당 청구년월·의사생년월일 조합의 진료일수가 이미 등록되어 있습니다.",
+        )
+
+    row = DoctorWorkDays(
+        hospital_id=current_user.hospital_id,
+        claim_period_year=body.claim_period_year,
+        claim_period_month=body.claim_period_month,
+        doctor_birth_date=body.doctor_birth_date,
+        work_days=body.work_days,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _work_days_to_item(row)
+
+
+@router.put("/doctor-work-days/{work_days_id}", response_model=DoctorWorkDaysItem)
+async def update_doctor_work_days(
+    work_days_id: int,
+    body: DoctorWorkDaysUpdate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(DoctorWorkDays).where(
+            DoctorWorkDays.id == work_days_id,
+            DoctorWorkDays.hospital_id == current_user.hospital_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="진료일수 데이터를 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(row, field, value)
+    await db.commit()
+    await db.refresh(row)
+    return _work_days_to_item(row)
+
+
+@router.delete("/doctor-work-days/{work_days_id}", status_code=204)
+async def delete_doctor_work_days(
+    work_days_id: int,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(DoctorWorkDays).where(
+            DoctorWorkDays.id == work_days_id,
+            DoctorWorkDays.hospital_id == current_user.hospital_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="진료일수 데이터를 찾을 수 없습니다.")
+    await db.delete(row)
+    await db.commit()
+
 
 @router.get("/claims/{claim_id}/edi")
 async def download_claim_edi(

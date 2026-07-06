@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from app.core.config import settings
+from app.core.crypto import decrypt, encrypt
 
 TIER_SESSION_LIMITS = {
     "basic": 1,
@@ -74,19 +75,47 @@ async def remove_session(hospital_id: str, token: str) -> None:
     _redis.lrem(session_key, 0, token)
 
 
+# jumin(주민번호)·password는 콜백 대기 중(최대 TTL) Redis에 평문으로 남으면 안 되는 값이라
+# Patient.rrn과 동일한 AES-256-GCM 함수(app.core.crypto)로 필드 단위 암호화한다.
+_VERIFY_PENDING_SENSITIVE_FIELDS = ("jumin", "password")
+
+
+class VerifyPendingDecryptionError(Exception):
+    """pending 데이터의 민감 필드 복호화 실패(키 불일치·데이터 변조 등).
+    호출부가 "데이터 없음"과 구분해서 처리해야 하므로 None으로 뭉개지 않고 예외로 알린다."""
+
+
 def set_verify_pending(callback_id: str, data: dict, ttl: int = 300) -> None:
     if _redis is None:
         return
-    _redis.set(f"verify:{callback_id}", json.dumps(data), ex=ttl)
+    payload = dict(data)
+    for field in _VERIFY_PENDING_SENSITIVE_FIELDS:
+        if payload.get(field) is not None:
+            payload[field] = encrypt(payload[field])
+    _redis.set(f"verify:{callback_id}", json.dumps(payload), ex=ttl)
 
 
 def get_verify_pending(callback_id: str) -> dict | None:
+    """pending 데이터가 없으면(미저장/TTL 만료) None을 반환한다.
+    데이터는 있는데 민감 필드 복호화에 실패하면 VerifyPendingDecryptionError를 던진다
+    (키 불일치·변조 상황을 "못 찾음"과 같은 취급으로 조용히 넘기지 않기 위함)."""
     if _redis is None:
         return None
     raw = _redis.get(f"verify:{callback_id}")
     if raw is None:
         return None
-    return json.loads(raw)
+
+    payload = json.loads(raw)
+    for field in _VERIFY_PENDING_SENSITIVE_FIELDS:
+        if payload.get(field) is None:
+            continue
+        try:
+            payload[field] = decrypt(payload[field])
+        except Exception as exc:
+            raise VerifyPendingDecryptionError(
+                f"pending 데이터 복호화 실패: callback_id={callback_id}, field={field}"
+            ) from exc
+    return payload
 
 
 def del_verify_pending(callback_id: str) -> None:

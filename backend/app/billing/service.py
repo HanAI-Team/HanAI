@@ -1,9 +1,11 @@
 import calendar
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
+from app.billing.notice_rules import validate_notice_rules
 
 from app.billing.copayment import (
     BillingInput,
@@ -26,17 +28,20 @@ from app.core.models import (
     ClaimLineItem,
     ClaimResubmissionHistory,
     Doctor,
+    DoctorWorkDays,
     Hospital,
     KcdUCode,
     MedicalRecord,
     MedicalRecordProcedure,
     Patient,
     SaturdayHolidayStaffing,
+    SpecialCaseRegistration,
     Subscription,
 )
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 # Patient.insurance_type 문자열 → InsuranceType 매핑
 _INSURANCE_MAP = {
@@ -48,6 +53,73 @@ _INSURANCE_MAP = {
     "7": InsuranceType.VETERANS,
 }
 
+# 특정기호별 본인부담률 (산정특례 우선순위 산정용).
+# (rate, needs_review) — needs_review=True는 별표6_특정기호코드.csv를 확보하지
+# 못해 정확한 값을 확인 못한 항목. rate에는 일반 본인부담률(20%)보다는 낮지만
+# 정확하지 않은 임시값(19%)을 넣어, 확정된 값들보다는 항상 후순위로 밀리게 한다.
+_SPECIAL_CASE_COPAY_RATE: dict[str, tuple[Decimal, bool]] = {
+    "V193": (Decimal("0.05"), False),  # 암
+    "V000": (Decimal("0.00"), False),  # 결핵
+    "V010": (Decimal("0.00"), False),  # 잠복결핵
+    "V027": (Decimal("0.10"), False),  # 희귀난치성 (copayment.py._special_rate와 동일)
+    "V221": (Decimal("0.19"), True),   # 중증화상 — copayment.py._special_rate는 5%로 두지만
+                                        # 코드 주석/커밋 이력 어디에도 근거(고시 번호 등)가 없어 재분류
+    "V191": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요 (별표6 미확보)
+    "V268": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요
+    "V275": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요
+    "V192": (Decimal("0.19"), True),   # 심장 — 확인 필요
+    "F006": (Decimal("0.19"), True),   # 신체기능저하군 — 확인 필요
+}
+_UNKNOWN_SPECIAL_CODE_RATE = (Decimal("0.19"), True)  # 위 테이블에 없는 특정기호
+
+
+@dataclass
+class SpecialCaseResolution:
+    special_code: Optional[str] = None
+    needs_review: bool = False
+
+
+async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> SpecialCaseResolution:
+    """환자의 활성 산정특례 등록 중 calculate_billing에 넘길 특정기호 하나를 정한다.
+
+    - status="cancelled"는 제외.
+    - expires_at이 있고 오늘보다 이전이면 만료로 간주해 제외 (동적 판단, 배치 없음).
+    - 여러 건이 동시에 활성 상태면 본인부담률이 가장 낮은 코드를 우선 적용한다
+      (산정특례 고시 — 면제/낮은 본인부담률 우선 적용 원칙).
+    - 해당하는 등록이 없으면 special_code=None을 반환한다 (기존과 동일하게 일반 본인부담률 적용).
+    """
+    result = await db.execute(
+        select(SpecialCaseRegistration).where(
+            SpecialCaseRegistration.patient_id == patient_id,
+            SpecialCaseRegistration.status != "cancelled",
+        )
+    )
+    registrations = result.scalars().all()
+
+    today = date.today()
+    active = [
+        r for r in registrations
+        if r.expires_at is None or r.expires_at >= today
+    ]
+    if not active:
+        return SpecialCaseResolution(special_code=None, needs_review=False)
+
+    def rate_of(reg: SpecialCaseRegistration) -> Decimal:
+        rate, _ = _SPECIAL_CASE_COPAY_RATE.get(reg.special_code, _UNKNOWN_SPECIAL_CODE_RATE)
+        return rate
+
+    chosen = min(active, key=rate_of)
+
+    _, needs_review = _SPECIAL_CASE_COPAY_RATE.get(chosen.special_code, _UNKNOWN_SPECIAL_CODE_RATE)
+    if needs_review:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"본인부담률 미확인 특정기호 적용: patient_id={patient_id}, special_code={chosen.special_code}"
+        )
+
+    return SpecialCaseResolution(special_code=chosen.special_code, needs_review=needs_review)
+
 
 async def create_claim(
     db: AsyncSession,
@@ -57,7 +129,7 @@ async def create_claim(
     medical_record_ids: list[UUID],
     claim_period_year: int,
     claim_period_month: int,
-    visit_type: str = "outpatient",
+    visit_type: str = "외래",  # "외래" 또는 "입원" (VisitType enum과 일치)
 ) -> Claim:
     # 환자 조회 및 권한 확인
     r_patient = await db.execute(
@@ -68,7 +140,7 @@ async def create_claim(
         raise HTTPException(status_code=404, detail="환자를 찾을 수 없습니다.")
     r_sub = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital_id))
     sub = r_sub.scalar_one_or_none()
-    tier = sub.tier if sub  else "basic"
+    tier = sub.tier if sub else "basic"
 
     if tier == "basic":
         from sqlalchemy import func
@@ -82,9 +154,10 @@ async def create_claim(
         count = count_result.scalar()
         if count >= 50:
             raise HTTPException(
-            status_code=403,
-            detail="베이직 플랜은 월 50건까지 청구 가능합니다. 프리미엄으로 업그레이드하세요."
-        )
+                status_code=403,
+                detail="베이직 플랜은 월 50건까지 청구 가능합니다. 프리미엄으로 업그레이드하세요."
+            )
+
     # 진료기록 조회
     r_records = await db.execute(
         select(MedicalRecord).where(
@@ -97,28 +170,33 @@ async def create_claim(
 
     if not records:
         raise HTTPException(status_code=404, detail="진료기록을 찾을 수 없습니다.")
+
     for record in records:
         if not record.kcd_code:
             raise HTTPException(
-            status_code=400,
-            detail=f"진료기록({record.id})에 상병코드(KCD)가 입력되지 않았습니다."
-        )
+                status_code=400,
+                detail=f"진료기록({record.id})에 상병코드(KCD)가 입력되지 않았습니다."
+            )
         r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
         kcd = r_kcd.scalar_one_or_none()
-        if kcd.sex_restriction:
+
+        # ── 남녀 상병 일치 체크 (sex_restriction 있는 코드만) ──────────────────
+        if kcd and kcd.sex_restriction:
             gender_map = {"남성": "M", "여성": "F", "남": "M", "여": "F"}
             patient_gender = gender_map.get(patient.gender or "", "")
             if patient_gender and patient_gender != kcd.sex_restriction:
                 raise HTTPException(
                     status_code=400,
                     detail=f"상병코드 {record.kcd_code}는 {'여성' if kcd.sex_restriction == 'F' else '남성'} 환자에게만 적용됩니다."
-        )
-            if kcd.is_notifiable:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(
-        f"법정감염병 상병코드 청구: record_id={record.id}, kcd={record.kcd_code}"
-    )
+                )
+
+        # ── 법정감염병 경고 (sex_restriction 유무와 무관하게 독립 실행) ──────────
+        if kcd and kcd.is_notifiable:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"법정감염병 상병코드 청구: record_id={record.id}, kcd={record.kcd_code}"
+            )
 
     # 시술 금액 합산
     r_procs = await db.execute(
@@ -129,13 +207,39 @@ async def create_claim(
     procedures = r_procs.scalars().all()
     benefit_total = sum(p.amount or 0 for p in procedures)
 
+    # ── 고시 기반 특정내역/청구 검증 (notice_rules.py) ──────────────────────────
+    # ※ validate_notice_rules()의 실제 파라미터명은 _records, _claim_period_year,
+    #   _claim_period_month (언더스코어 prefix = 함수 내부 미사용 파라미터).
+    #   과거 호출부가 records=, claim_period_year=, claim_period_month=로
+    #   잘못된 키워드명을 사용해 TypeError가 발생했던 버그를 수정함.
+    notice_errors = validate_notice_rules(
+        patient=patient,
+        _records=records,
+        procedures=procedures,
+        _claim_period_year=claim_period_year,
+        _claim_period_month=claim_period_month,
+    )
+
+    blocking_errors = [e for e in notice_errors if e["severity"] == "ERROR"]
+
+    if blocking_errors:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "고시 기준 필수 특정내역/청구 검증 오류가 있습니다.",
+                "errors": blocking_errors,
+            },
+        )
+
     # 본인부담금 계산
     insurance_type = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
+    special_case = await resolve_active_special_code(db, patient_id)
     billing_result = calculate_billing(BillingInput(
         insurance_type=insurance_type,
         visit_type=VisitType(visit_type),
         benefit_total=benefit_total,
         treatment_days=Decimal(len(records)),
+        special_code=special_case.special_code,
     ))
 
     # Claim 생성
@@ -159,6 +263,7 @@ async def create_claim(
 
     await db.commit()
     await db.refresh(claim)
+    claim.special_case_needs_review = special_case.needs_review  # DB 미저장, 응답 노출용 임시 속성
     return claim
 
 
@@ -271,6 +376,12 @@ async def generate_claim_edi(
     procedure_records = []
     special_records = []
 
+    # 의료급여 환자 여부 판정 (MT019 진료확인번호 부착 조건에 사용)
+    patient_insurance_type = _INSURANCE_MAP.get(
+        (patient.insurance_type if patient else None) or "health", InsuranceType.HEALTH
+    )
+    is_medical_aid_patient = patient_insurance_type == InsuranceType.MEDICAL_AID
+
     # MT050: 토요일·공휴일 근무현황 (병원 단위, 청구서당 1회만 기재 — 첫 명세서에 부착)
     # ※ 내용(content) 바이트 레이아웃은 공식 "명세서 작성요령" 문서를 확보하지 못한 상태의 추정값.
     #   MT008 실사례("YYMMDD/22/YYMMDD/20/...")의 슬래시 구분 표기를 따라
@@ -289,6 +400,28 @@ async def generate_claim_edi(
     staffing_rows = r_staff.scalars().all()
     mt050_content = "/".join(
         f"{row.work_date.strftime('%Y%m%d')}/{row.doctor_count:04.1f}" for row in staffing_rows
+    )
+
+    # MT008: 의사별 진료일수 (병원 단위, 청구서당 1회만 기재 — 첫 명세서에 부착)
+    # ※ HIRA 사례집(v089, 외래 사례1)에서 실제 확인된 형식:
+    #   "의사생년월일(YYMMDD)/실제진료일수" 쌍을 의사별로 슬래시(/) 연결.
+    #   예: "YYMMDD/22/YYMMDD/20/YYMMDD/12"
+    #   - 시간제·격일제 의사의 1/2 계산·4사5입·월 15일 상한 적용, "기타" 인력 제외 등은
+    #     DoctorWorkDays 테이블 입력 시점에 이미 반영된 최종값이라고 가정한다.
+    #     (현재 DoctorWorkDays를 채우는 입력 엔드포인트가 없어 확인 불가 — 추후 재검증 필요)
+    #   - 정렬 기준(의사 순서)을 명시한 스펙을 확보 못해 id(입력 순서) 기준으로 정렬한다.
+    r_work_days = await db.execute(
+        select(DoctorWorkDays)
+        .where(
+            DoctorWorkDays.hospital_id == hospital_id,
+            DoctorWorkDays.claim_period_year == claim.claim_period_year,
+            DoctorWorkDays.claim_period_month == claim.claim_period_month,
+        )
+        .order_by(DoctorWorkDays.id)
+    )
+    work_days_rows = r_work_days.scalars().all()
+    mt008_content = "/".join(
+        f"{row.doctor_birth_date}/{row.work_days}" for row in work_days_rows
     )
 
     for i, record in enumerate(medical_records):
@@ -323,6 +456,19 @@ async def generate_claim_edi(
                 content=record.recorded_at.strftime("%Y%m%d%H%M"),
             )))
 
+        # MT019: 진료확인번호 (명세서 단위) — 의료급여 환자이고 confirmation_no가 있을 때만 기재
+        # ※ HIRA 사례집(입원 사례 9-1~9-5, 전부 의료급여 1·2종)에서 실제 확인.
+        #   현재 confirmation_no를 채우는 API 엔드포인트가 없어(patients 라우터에 미구현),
+        #   Patient.confirmation_no 컬럼값을 그대로 사용한다고 가정 — 추후 재검증 필요.
+        if is_medical_aid_patient and patient and patient.confirmation_no:
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT019",
+                content=patient.confirmation_no,
+            )))
+
         # MT050: 토요일·공휴일 근무현황 (병원 단위 데이터라 청구서 내 첫 명세서에만 1회 부착)
         if i == 0 and mt050_content:
             special_records.append((serial, SpecialRecord(
@@ -331,6 +477,16 @@ async def generate_claim_edi(
                 record_ext_no=0,
                 special_code="MT050",
                 content=mt050_content,
+            )))
+
+        # MT008: 의사별 진료일수 (병원 단위 데이터라 청구서 내 첫 명세서에만 1회 부착)
+        if i == 0 and mt008_content:
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT008",
+                content=mt008_content,
             )))
 
         # DiagnosisRecord
