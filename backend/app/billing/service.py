@@ -67,10 +67,25 @@ _SPECIAL_CASE_COPAY_RATE: dict[str, tuple[Decimal, bool]] = {
     "V191": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요 (별표6 미확보)
     "V268": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요
     "V275": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요
-    "V192": (Decimal("0.19"), True),   # 심장 — 확인 필요
-    "F006": (Decimal("0.19"), True),   # 신체기능저하군 — 확인 필요
+    "V192": (Decimal("0.19"), True),   # 심장 — 확인 필요. 「본인일부부담금 산정특례에 관한
+                                        # 기준」 제4조 원문 확보 전까지 임시값 유지
+    "F006": (Decimal("0.40"), False),  # 신체기능저하군 — 확정 40%.
+                                        # 예외: 암환자 등 중증환자 동시해당 시 별도 규정이
+                                        # 우선하므로 그 경우는 _has_f006_concurrent_exception()에서
+                                        # needs_review=True로 강제 override (이번 스코프에서 별도 규정 미구현)
 }
 _UNKNOWN_SPECIAL_CODE_RATE = (Decimal("0.19"), True)  # 위 테이블에 없는 특정기호
+
+
+def _has_f006_concurrent_exception(active: list["SpecialCaseRegistration"]) -> bool:
+    """F006(신체기능저하군)이 다른 산정특례와 동시 활성인 경우.
+
+    암환자 등 중증환자가 F006과 동시해당하면 별도 규정이 우선 적용되어야 하는데,
+    이번 스코프에서는 그 규정을 구현하지 않았으므로 확정값(40%)을 그대로 믿지 않고
+    needs_review=True로 강제해 사람이 다시 확인하게 한다.
+    """
+    codes = {r.special_code for r in active}
+    return "F006" in codes and len(codes) > 1
 
 
 @dataclass
@@ -111,6 +126,8 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
     chosen = min(active, key=rate_of)
 
     _, needs_review = _SPECIAL_CASE_COPAY_RATE.get(chosen.special_code, _UNKNOWN_SPECIAL_CODE_RATE)
+    if _has_f006_concurrent_exception(active):
+        needs_review = True
     if needs_review:
         import logging
         logger = logging.getLogger(__name__)
