@@ -167,6 +167,11 @@ class SpecialCaseRegistration(Base):
     # 값이 있으면 EDI C2-08에 MT014 레코드를 추가.
     registration_number = Column(String(20), nullable=True)
 
+    # V810(중증치매 일반) 전용 사전승인번호. 형태: "구분(1자리)-차수별연도(2자리)-일련번호"
+    # V810 청구 시 registration_number 대신 이 값을 MT014에 기재.
+    # None이면 공단 사전승인 미완료 상태로 간주해 needs_review=True 강제.
+    prior_approval_number = Column(String(30), nullable=True)
+
     registered_at = Column(Date, nullable=False)
     expires_at = Column(Date, nullable=True)  # NULL 허용: 결핵 등 이벤트(완치/사망/진단변경) 기반 종료는 날짜로 못 정함
     status = Column(String(10), nullable=False, default="active")  # active / cancelled (수동 취소 전용. expired는 조회 시점에 expires_at으로 동적 판단)

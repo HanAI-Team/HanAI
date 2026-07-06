@@ -101,9 +101,10 @@ def _has_f006_concurrent_exception(active: list["SpecialCaseRegistration"]) -> b
 class SpecialCaseResolution:
     special_code: Optional[str] = None
     needs_review: bool = False
-    registration_number: Optional[str] = None   # MT014용 등록번호
+    registration_number: Optional[str] = None      # MT014용 등록번호 (V810 제외)
+    prior_approval_number: Optional[str] = None    # MT014용 사전승인번호 (V810 전용)
     registered_disease_code: Optional[str] = None  # MT028용 유사상병코드
-    disease_name: Optional[str] = None          # MT028용 실제상병명
+    disease_name: Optional[str] = None             # MT028용 실제상병명
 
 
 async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> SpecialCaseResolution:
@@ -140,6 +141,9 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
     _, needs_review = _SPECIAL_CASE_COPAY_RATE.get(chosen.special_code, _UNKNOWN_SPECIAL_CODE_RATE)
     if _has_f006_concurrent_exception(active):
         needs_review = True
+    # V810: 사전승인번호 없으면 공단 미승인 상태 — 담당자 확인 필요
+    if chosen.special_code == "V810" and not chosen.prior_approval_number:
+        needs_review = True
     if needs_review:
         import logging
         logger = logging.getLogger(__name__)
@@ -151,6 +155,7 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
         special_code=chosen.special_code,
         needs_review=needs_review,
         registration_number=chosen.registration_number,
+        prior_approval_number=chosen.prior_approval_number,
         registered_disease_code=chosen.registered_disease_code,
         disease_name=chosen.disease_name,
     )
@@ -535,14 +540,20 @@ async def generate_claim_edi(
                 content=special_case.special_code,
             )))
 
-            # MT014: 산정특례 등록번호 (건보공단 발급. 예: "01-24-00012345")
-            if special_case.registration_number:
+            # MT014: 산정특례 등록번호 또는 V810 사전승인번호
+            # V810(중증치매 일반)은 등록번호 대신 사전승인번호를 기재해야 함
+            # (가이드 2-10 — 연간 60일 제한, 공단 사전승인 후 번호 발급)
+            if special_case.special_code == "V810":
+                mt014_content = special_case.prior_approval_number
+            else:
+                mt014_content = special_case.registration_number
+            if mt014_content:
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     prescription_no=0,
                     record_ext_no=0,
                     special_code="MT014",
-                    content=special_case.registration_number,
+                    content=mt014_content,
                 )))
 
             # MT028: 세부상병명 (KCD 코드 없는 희귀질환용. 예: "D12.6/가족성선종성폴립증")
