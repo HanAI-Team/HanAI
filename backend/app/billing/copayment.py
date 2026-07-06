@@ -43,6 +43,15 @@ def _is_under_15(birth_date: Optional[date], ref: date) -> bool:
     return age < 15
 
 
+def _is_65_or_older(birth_date: Optional[date], ref: date) -> bool:
+    if not birth_date:
+        return False
+    age = ref.year - birth_date.year
+    if (ref.month, ref.day) < (birth_date.month, birth_date.day):
+        age -= 1
+    return age >= 65
+
+
 def _special_rate(special_code: str) -> Decimal:
     """산정특례 코드별 본인부담률."""
     RATES = {
@@ -109,6 +118,7 @@ class BillingResult:
     special_exception_copay: int = 0        # 산정특례
     work_injury_copay: int = 0              # 공상
     under_15_inpatient_copay: int = 0       # 15세 이하 입원
+    senior_outpatient_copay: int = 0        # 65세 이상 노인외래 정액 (의원급)
     disability_medical_cost: int = 0        # 장애인의료비 (의료급여)
     support_fund: int = 0                   # 지원금
 
@@ -202,11 +212,16 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
         else:
             # 건강보험 일반
             if inp.visit_type == VisitType.OUTPATIENT:
-                normal_total = max(total1 - inp.chuna_total, 0)
-                normal_copay = _ceil_won(Decimal(normal_total) * Decimal("0.30"))
-                chuna_copay  = _ceil_won(Decimal(inp.chuna_total) * Decimal("0.50"))
-                copay = normal_copay + chuna_copay
-                result.health_outpatient_copay = copay
+                if _is_65_or_older(inp.birth_date, ref_date) and total1 <= 15000:
+                    # 65세 이상 노인외래 정액제 (의원급, 시행령 별표2): 15,000원 이하 → 1,500원
+                    copay = min(1500, total1)
+                    result.senior_outpatient_copay = copay
+                else:
+                    normal_total = max(total1 - inp.chuna_total, 0)
+                    normal_copay = _ceil_won(Decimal(normal_total) * Decimal("0.30"))
+                    chuna_copay  = _ceil_won(Decimal(inp.chuna_total) * Decimal("0.50"))
+                    copay = normal_copay + chuna_copay
+                    result.health_outpatient_copay = copay
             else:
                 if _is_under_15(inp.birth_date, ref_date):
                     # 15세 미만 입원: 5%

@@ -103,6 +103,91 @@ def test_15세미만_입원_5퍼센트():
     assert result.copayment == 1000
 
 
+def test_노인외래_15000이하_1500원_정액():
+    # 65세 이상, 건강보험 외래, 총진료비 ≤ 15,000원 → 1,500원 정액
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=12000,
+        birth_date=date(1960, 1, 1),
+        treatment_date=date(2026, 7, 7),  # 만 66세
+    ))
+    assert result.senior_outpatient_copay == 1500
+    assert result.health_outpatient_copay == 0
+    assert result.copayment == 1500
+    assert result.claim_amount == 10500
+
+
+def test_노인외래_15000초과_일반30퍼센트():
+    # 65세 이상이어도 15,000원 초과이면 일반 30% 적용
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=20000,
+        birth_date=date(1960, 1, 1),
+        treatment_date=date(2026, 7, 7),  # 만 66세
+    ))
+    assert result.senior_outpatient_copay == 0
+    assert result.health_outpatient_copay == 6000  # ceil(20000*0.30)
+    assert result.copayment == 6000
+
+
+def test_노인외래_정확히_15000원_정액적용():
+    # 경계값: 총진료비 = 15,000원 정확히 → 1,500원 정액
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=15000,
+        birth_date=date(1960, 1, 1),
+        treatment_date=date(2026, 7, 7),
+    ))
+    assert result.senior_outpatient_copay == 1500
+    assert result.copayment == 1500
+
+
+def test_노인외래_진료비가_정액보다_적으면_진료비만():
+    # 총진료비 1,000원이면 1,500원 정액 적용 불가 → 1,000원으로 캡
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=1000,
+        birth_date=date(1960, 1, 1),
+        treatment_date=date(2026, 7, 7),
+    ))
+    assert result.senior_outpatient_copay == 1000
+    assert result.copayment == 1000
+    assert result.claim_amount == 0
+
+
+def test_64세는_노인정액제_미적용():
+    # 만 64세 → 일반 30% 적용
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=12000,
+        birth_date=date(1962, 7, 8),       # 2026-07-07 기준 아직 만 63세
+        treatment_date=date(2026, 7, 7),
+    ))
+    assert result.senior_outpatient_copay == 0
+    assert result.health_outpatient_copay == 3600  # ceil(12000*0.30)
+    assert result.copayment == 3600
+
+
+def test_65세이상_산정특례_있으면_산정특례_우선():
+    # V193(암 5%)와 65세 이상이 겹치면 산정특례 코드 분기가 먼저 처리되어 5% 적용
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=12000,
+        special_code="V193",
+        birth_date=date(1960, 1, 1),
+        treatment_date=date(2026, 7, 7),
+    ))
+    assert result.special_exception_copay == 600  # ceil(12000*0.05)
+    assert result.senior_outpatient_copay == 0
+    assert result.copayment == 600
+
+
 def test_chuna_total이_benefit_total보다_큰_경우_normal_total_음수방어():
     # chuna_total(20060) > benefit_total(5000) → normal_total은 음수가 아닌 0으로 방어
     result = calculate_billing(BillingInput(
