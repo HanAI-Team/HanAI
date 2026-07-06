@@ -86,13 +86,8 @@ async def test_create_claim_보훈국비환자_MT038_JT019_누락시_차단(
     필수이며, 현재 서비스 로직에는 이를 자동으로 채우는 부분이 없으므로
     항상 ERROR로 차단되어야 한다 (제2012-117호).
 
-    ※ notice_rules.py는 검사 대상 insurance_type을
-      {"BOHUN", "BOHUN_PUBLIC", "보훈", "보훈국비", "보험국비"} 로 판정하는데,
-      service.py의 _INSURANCE_MAP은 보훈을 "veterans"/"7"로 매핑한다.
-      두 모듈의 문자열 체계가 달라 실제 DB에 insurance_type="veterans"로
-      저장된 보훈 환자는 이 차단 로직에 전혀 걸리지 않을 수 있음
-      (별도 확인 필요 — 이 테스트는 notice_rules.py 자체 로직만 검증하기
-      위해 "BOHUN"을 직접 사용한다).
+    insurance_type은 service.py의 _INSURANCE_MAP이 실제로 저장하는 값인
+    "veterans"를 사용한다.
     """
     doctor, _ = approved_doctor
     hospital = await db.get(Hospital, doctor.hospital_id)
@@ -101,7 +96,7 @@ async def test_create_claim_보훈국비환자_MT038_JT019_누락시_차단(
         hospital_id=hospital.id,
         name="보훈환자",
         gender="남",
-        insurance_type="BOHUN",  # notice_rules.py가 검사하는 보훈국비 표기
+        insurance_type="veterans",  # _INSURANCE_MAP 기준 실제 저장값
     )
     db.add(patient)
     await db.flush()

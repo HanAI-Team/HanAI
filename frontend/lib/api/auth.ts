@@ -25,6 +25,13 @@ export async function getAccountHistories(): Promise<AccountHistory[]> {
   return apiCall('/api/auth/account-histories')
 }
 
+export async function updateMyProfile(data: { birth_date?: string }) {
+  return apiCall('/api/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
 export async function login(license_number: string, password: string) {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',

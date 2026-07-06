@@ -1,6 +1,7 @@
 import calendar
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -34,11 +35,13 @@ from app.core.models import (
     MedicalRecordProcedure,
     Patient,
     SaturdayHolidayStaffing,
+    SpecialCaseRegistration,
     Subscription,
 )
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 # Patient.insurance_type 문자열 → InsuranceType 매핑
 _INSURANCE_MAP = {
@@ -49,6 +52,90 @@ _INSURANCE_MAP = {
     "5": InsuranceType.MEDICAL_AID,
     "7": InsuranceType.VETERANS,
 }
+
+# 특정기호별 본인부담률 (산정특례 우선순위 산정용).
+# (rate, needs_review) — needs_review=True는 별표6_특정기호코드.csv를 확보하지
+# 못해 정확한 값을 확인 못한 항목. rate에는 일반 본인부담률(20%)보다는 낮지만
+# 정확하지 않은 임시값(19%)을 넣어, 확정된 값들보다는 항상 후순위로 밀리게 한다.
+_SPECIAL_CASE_COPAY_RATE: dict[str, tuple[Decimal, bool]] = {
+    "V193": (Decimal("0.05"), False),  # 암
+    "V000": (Decimal("0.00"), False),  # 결핵
+    "V010": (Decimal("0.00"), False),  # 잠복결핵
+    "V027": (Decimal("0.10"), False),  # 희귀난치성 (copayment.py._special_rate와 동일)
+    "V221": (Decimal("0.19"), True),   # 중증화상 — copayment.py._special_rate는 5%로 두지만
+                                        # 코드 주석/커밋 이력 어디에도 근거(고시 번호 등)가 없어 재분류
+    "V191": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요 (별표6 미확보)
+    "V268": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요
+    "V275": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요
+    "V192": (Decimal("0.19"), True),   # 심장 — 확인 필요. 「본인일부부담금 산정특례에 관한
+                                        # 기준」 제4조 원문 확보 전까지 임시값 유지
+    "F006": (Decimal("0.40"), False),  # 신체기능저하군 — 확정 40%.
+                                        # 예외: 암환자 등 중증환자 동시해당 시 별도 규정이
+                                        # 우선하므로 그 경우는 _has_f006_concurrent_exception()에서
+                                        # needs_review=True로 강제 override (이번 스코프에서 별도 규정 미구현)
+}
+_UNKNOWN_SPECIAL_CODE_RATE = (Decimal("0.19"), True)  # 위 테이블에 없는 특정기호
+
+
+def _has_f006_concurrent_exception(active: list["SpecialCaseRegistration"]) -> bool:
+    """F006(신체기능저하군)이 다른 산정특례와 동시 활성인 경우.
+
+    암환자 등 중증환자가 F006과 동시해당하면 별도 규정이 우선 적용되어야 하는데,
+    이번 스코프에서는 그 규정을 구현하지 않았으므로 확정값(40%)을 그대로 믿지 않고
+    needs_review=True로 강제해 사람이 다시 확인하게 한다.
+    """
+    codes = {r.special_code for r in active}
+    return "F006" in codes and len(codes) > 1
+
+
+@dataclass
+class SpecialCaseResolution:
+    special_code: Optional[str] = None
+    needs_review: bool = False
+
+
+async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> SpecialCaseResolution:
+    """환자의 활성 산정특례 등록 중 calculate_billing에 넘길 특정기호 하나를 정한다.
+
+    - status="cancelled"는 제외.
+    - expires_at이 있고 오늘보다 이전이면 만료로 간주해 제외 (동적 판단, 배치 없음).
+    - 여러 건이 동시에 활성 상태면 본인부담률이 가장 낮은 코드를 우선 적용한다
+      (산정특례 고시 — 면제/낮은 본인부담률 우선 적용 원칙).
+    - 해당하는 등록이 없으면 special_code=None을 반환한다 (기존과 동일하게 일반 본인부담률 적용).
+    """
+    result = await db.execute(
+        select(SpecialCaseRegistration).where(
+            SpecialCaseRegistration.patient_id == patient_id,
+            SpecialCaseRegistration.status != "cancelled",
+        )
+    )
+    registrations = result.scalars().all()
+
+    today = date.today()
+    active = [
+        r for r in registrations
+        if r.expires_at is None or r.expires_at >= today
+    ]
+    if not active:
+        return SpecialCaseResolution(special_code=None, needs_review=False)
+
+    def rate_of(reg: SpecialCaseRegistration) -> Decimal:
+        rate, _ = _SPECIAL_CASE_COPAY_RATE.get(reg.special_code, _UNKNOWN_SPECIAL_CODE_RATE)
+        return rate
+
+    chosen = min(active, key=rate_of)
+
+    _, needs_review = _SPECIAL_CASE_COPAY_RATE.get(chosen.special_code, _UNKNOWN_SPECIAL_CODE_RATE)
+    if _has_f006_concurrent_exception(active):
+        needs_review = True
+    if needs_review:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"본인부담률 미확인 특정기호 적용: patient_id={patient_id}, special_code={chosen.special_code}"
+        )
+
+    return SpecialCaseResolution(special_code=chosen.special_code, needs_review=needs_review)
 
 
 async def create_claim(
@@ -161,11 +248,13 @@ async def create_claim(
         )
     # 본인부담금 계산
     insurance_type = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
+    special_case = await resolve_active_special_code(db, patient_id)
     billing_result = calculate_billing(BillingInput(
         insurance_type=insurance_type,
         visit_type=VisitType(visit_type),
         benefit_total=benefit_total,
         treatment_days=Decimal(len(records)),
+        special_code=special_case.special_code,
     ))
 
     # Claim 생성
@@ -189,6 +278,7 @@ async def create_claim(
 
     await db.commit()
     await db.refresh(claim)
+    claim.special_case_needs_review = special_case.needs_review  # DB 미저장, 응답 노출용 임시 속성
     return claim
 
 

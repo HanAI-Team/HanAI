@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {updateHospital}  from '@/lib/api/hospitals'
+import { updateMyProfile } from '@/lib/api/auth'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -17,6 +18,11 @@ export default function GeneralTab() {
   const [hcLoading, setHcLoading] = useState(false)
   const [hcError, setHcError] = useState<string | null>(null)
   const [hcSuccess, setHcSuccess] = useState(false)
+
+  const [birthDate, setBirthDate] = useState('')
+  const [bdLoading, setBdLoading] = useState(false)
+  const [bdError, setBdError] = useState<string | null>(null)
+  const [bdSuccess, setBdSuccess] = useState(false)
 
   const handleChangePassword = async () => {
     if (pwForm.new_password !== pwForm.confirm) {
@@ -79,9 +85,28 @@ export default function GeneralTab() {
       .then((me) => {
         setHospitalId(me.hospital_id)
         setInstitutionCode(me.institution_code || '')
+        setBirthDate(me.birth_date || '')
       })
       .catch(() => {})
   }, [])
+
+  const handleSaveBirthDate = async () => {
+    if (!birthDate) {
+      setBdError('생년월일을 입력해주세요.')
+      return
+    }
+    setBdLoading(true)
+    setBdError(null)
+    try {
+      await updateMyProfile({ birth_date: birthDate })
+      setBdSuccess(true)
+      setTimeout(() => setBdSuccess(false), 3000)
+    } catch (e: any) {
+      setBdError(e.message || '생년월일 저장에 실패했습니다.')
+    } finally {
+      setBdLoading(false)
+    }
+  }
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -144,6 +169,30 @@ export default function GeneralTab() {
                 className="w-full bg-[#EF6600] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
               >
                 {hcSuccess ? '✓ 저장 완료' : hcLoading ? '저장중...' : '저장'}
+              </button>
+            </div>
+          </div>
+
+          {/* 원장 프로필 */}
+          <div className="bg-card border border-border rounded-2xl p-6">
+            <div className="text-sm font-medium text-text mb-5">원장 프로필</div>
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-xs text-subtext mb-1.5">생년월일</label>
+                <input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-[#EF6600]"
+                />
+              </div>
+              {bdError && <div className="text-red-500 text-sm">{bdError}</div>}
+              <button
+                onClick={handleSaveBirthDate}
+                disabled={bdLoading}
+                className="w-full bg-[#EF6600] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {bdSuccess ? '✓ 저장 완료' : bdLoading ? '저장중...' : '저장'}
               </button>
             </div>
           </div>

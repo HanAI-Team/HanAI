@@ -13,10 +13,10 @@
     "elbow": 40,
     "wrist": 55,
     "navel": 60,
-    "knee": 75,
-    "ankle": 90,
+    "knee": 73,
+    "ankle": 89,
     "sole": 100,
-    "hip": 65.25,
+    "hip": 64.55,
     "handEnd": 64
   },
   "points": [
@@ -699,8 +699,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 483
+      "x": 235,
+      "y": 478
     },
     {
       "code": "ST32",
@@ -710,8 +710,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 503
+      "x": 235,
+      "y": 498
     },
     {
       "code": "ST33",
@@ -721,8 +721,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 524
+      "x": 235,
+      "y": 518
     },
     {
       "code": "ST34",
@@ -732,8 +732,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 544
+      "x": 235,
+      "y": 538
     },
     {
       "code": "ST35",
@@ -743,8 +743,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 564
+      "x": 235,
+      "y": 558
     },
     {
       "code": "ST36",
@@ -754,8 +754,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 585
+      "x": 235,
+      "y": 578
     },
     {
       "code": "ST37",
@@ -765,8 +765,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 605
+      "x": 235,
+      "y": 598
     },
     {
       "code": "ST38",
@@ -776,8 +776,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 625
+      "x": 235,
+      "y": 618
     },
     {
       "code": "ST39",
@@ -787,8 +787,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 646
+      "x": 235,
+      "y": 638
     },
     {
       "code": "ST40",
@@ -798,8 +798,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 228,
-      "y": 666
+      "x": 235,
+      "y": 659
     },
     {
       "code": "ST41",
@@ -810,7 +810,7 @@
       "region": "foot",
       "side": "right",
       "x": 224,
-      "y": 666
+      "y": 659
     },
     {
       "code": "ST42",
@@ -821,7 +821,7 @@
       "region": "foot",
       "side": "right",
       "x": 224,
-      "y": 675
+      "y": 670
     },
     {
       "code": "ST43",
@@ -832,7 +832,7 @@
       "region": "foot",
       "side": "right",
       "x": 224,
-      "y": 685
+      "y": 681
     },
     {
       "code": "ST44",
@@ -843,7 +843,7 @@
       "region": "foot",
       "side": "right",
       "x": 224,
-      "y": 694
+      "y": 692
     },
     {
       "code": "ST45",
@@ -876,7 +876,7 @@
       "region": "foot",
       "side": "left",
       "x": 164,
-      "y": 694
+      "y": 692
     },
     {
       "code": "SP3",
@@ -887,7 +887,7 @@
       "region": "foot",
       "side": "left",
       "x": 164,
-      "y": 685
+      "y": 681
     },
     {
       "code": "SP4",
@@ -898,7 +898,7 @@
       "region": "foot",
       "side": "left",
       "x": 164,
-      "y": 675
+      "y": 670
     },
     {
       "code": "SP5",
@@ -909,7 +909,7 @@
       "region": "foot",
       "side": "left",
       "x": 164,
-      "y": 666
+      "y": 659
     },
     {
       "code": "SP6",
@@ -920,7 +920,7 @@
       "region": "leg",
       "side": null,
       "x": 168,
-      "y": 666
+      "y": 659
     },
     {
       "code": "SP7",
@@ -931,7 +931,7 @@
       "region": "leg",
       "side": null,
       "x": 168,
-      "y": 629
+      "y": 622
     },
     {
       "code": "SP8",
@@ -942,7 +942,7 @@
       "region": "leg",
       "side": null,
       "x": 168,
-      "y": 593
+      "y": 586
     },
     {
       "code": "SP9",
@@ -953,7 +953,7 @@
       "region": "leg",
       "side": null,
       "x": 168,
-      "y": 556
+      "y": 550
     },
     {
       "code": "SP10",
@@ -964,7 +964,7 @@
       "region": "leg",
       "side": null,
       "x": 168,
-      "y": 519
+      "y": 514
     },
     {
       "code": "SP11",
@@ -975,7 +975,7 @@
       "region": "leg",
       "side": null,
       "x": 168,
-      "y": 483
+      "y": 478
     },
     {
       "code": "SP12",
@@ -986,7 +986,7 @@
       "region": "abdomen",
       "side": null,
       "x": 135,
-      "y": 483
+      "y": 478
     },
     {
       "code": "SP13",
@@ -997,7 +997,7 @@
       "region": "abdomen",
       "side": null,
       "x": 135,
-      "y": 450
+      "y": 445
     },
     {
       "code": "SP14",
@@ -1008,7 +1008,7 @@
       "region": "abdomen",
       "side": null,
       "x": 135,
-      "y": 417
+      "y": 413
     },
     {
       "code": "SP15",
@@ -1019,7 +1019,7 @@
       "region": "abdomen",
       "side": null,
       "x": 135,
-      "y": 384
+      "y": 380
     },
     {
       "code": "SP16",
@@ -1030,7 +1030,7 @@
       "region": "abdomen",
       "side": null,
       "x": 135,
-      "y": 350
+      "y": 348
     },
     {
       "code": "SP17",
@@ -1041,7 +1041,7 @@
       "region": "abdomen",
       "side": null,
       "x": 135,
-      "y": 317
+      "y": 315
     },
     {
       "code": "SP18",
@@ -1052,7 +1052,7 @@
       "region": "abdomen",
       "side": null,
       "x": 135,
-      "y": 284
+      "y": 283
     },
     {
       "code": "SP19",
@@ -1063,7 +1063,7 @@
       "region": "abdomen",
       "side": null,
       "x": 135,
-      "y": 251
+      "y": 250
     },
     {
       "code": "SP20",
@@ -1558,7 +1558,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 222
+      "y": 221
     },
     {
       "code": "BL16",
@@ -1569,7 +1569,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 235
+      "y": 234
     },
     {
       "code": "BL17",
@@ -1580,7 +1580,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 248
+      "y": 247
     },
     {
       "code": "BL18",
@@ -1591,7 +1591,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 261
+      "y": 260
     },
     {
       "code": "BL19",
@@ -1602,7 +1602,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 274
+      "y": 273
     },
     {
       "code": "BL20",
@@ -1613,7 +1613,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 287
+      "y": 286
     },
     {
       "code": "BL21",
@@ -1624,7 +1624,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 300
+      "y": 298
     },
     {
       "code": "BL22",
@@ -1635,7 +1635,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 313
+      "y": 311
     },
     {
       "code": "BL23",
@@ -1646,7 +1646,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 327
+      "y": 324
     },
     {
       "code": "BL24",
@@ -1657,7 +1657,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 340
+      "y": 337
     },
     {
       "code": "BL25",
@@ -1668,7 +1668,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 353
+      "y": 350
     },
     {
       "code": "BL26",
@@ -1679,7 +1679,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 366
+      "y": 362
     },
     {
       "code": "BL27",
@@ -1690,7 +1690,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 379
+      "y": 375
     },
     {
       "code": "BL28",
@@ -1701,7 +1701,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 392
+      "y": 388
     },
     {
       "code": "BL29",
@@ -1712,7 +1712,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 405
+      "y": 401
     },
     {
       "code": "BL30",
@@ -1723,7 +1723,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 418
+      "y": 414
     },
     {
       "code": "BL31",
@@ -1734,7 +1734,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 431
+      "y": 426
     },
     {
       "code": "BL32",
@@ -1745,7 +1745,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 444
+      "y": 439
     },
     {
       "code": "BL33",
@@ -1756,7 +1756,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 457
+      "y": 452
     },
     {
       "code": "BL34",
@@ -1767,7 +1767,7 @@
       "region": "back",
       "side": null,
       "x": 150,
-      "y": 470
+      "y": 465
     },
     {
       "code": "BL35",
@@ -1778,7 +1778,7 @@
       "region": "back",
       "side": null,
       "x": 230,
-      "y": 483
+      "y": 478
     },
     {
       "code": "BL36",
@@ -1789,7 +1789,7 @@
       "region": "leg",
       "side": null,
       "x": 218,
-      "y": 483
+      "y": 478
     },
     {
       "code": "BL37",
@@ -1800,7 +1800,7 @@
       "region": "leg",
       "side": null,
       "x": 162,
-      "y": 501
+      "y": 493
     },
     {
       "code": "BL38",
@@ -1811,7 +1811,7 @@
       "region": "leg",
       "side": null,
       "x": 218,
-      "y": 519
+      "y": 509
     },
     {
       "code": "BL39",
@@ -1822,7 +1822,7 @@
       "region": "leg",
       "side": null,
       "x": 162,
-      "y": 537
+      "y": 525
     },
     {
       "code": "BL40",
@@ -1833,7 +1833,7 @@
       "region": "leg",
       "side": null,
       "x": 218,
-      "y": 555
+      "y": 540
     },
     {
       "code": "BL41",
@@ -1877,7 +1877,7 @@
       "region": "back",
       "side": null,
       "x": 125,
-      "y": 242
+      "y": 241
     },
     {
       "code": "BL45",
@@ -1888,7 +1888,7 @@
       "region": "back",
       "side": null,
       "x": 255,
-      "y": 266
+      "y": 265
     },
     {
       "code": "BL46",
@@ -1899,7 +1899,7 @@
       "region": "back",
       "side": null,
       "x": 125,
-      "y": 290
+      "y": 288
     },
     {
       "code": "BL47",
@@ -1910,7 +1910,7 @@
       "region": "back",
       "side": null,
       "x": 255,
-      "y": 315
+      "y": 312
     },
     {
       "code": "BL48",
@@ -1921,7 +1921,7 @@
       "region": "back",
       "side": null,
       "x": 125,
-      "y": 339
+      "y": 336
     },
     {
       "code": "BL49",
@@ -1932,7 +1932,7 @@
       "region": "back",
       "side": null,
       "x": 255,
-      "y": 363
+      "y": 359
     },
     {
       "code": "BL50",
@@ -1943,7 +1943,7 @@
       "region": "back",
       "side": null,
       "x": 125,
-      "y": 387
+      "y": 383
     },
     {
       "code": "BL51",
@@ -1954,7 +1954,7 @@
       "region": "back",
       "side": null,
       "x": 255,
-      "y": 411
+      "y": 407
     },
     {
       "code": "BL52",
@@ -1965,7 +1965,7 @@
       "region": "back",
       "side": null,
       "x": 125,
-      "y": 435
+      "y": 430
     },
     {
       "code": "BL53",
@@ -1976,7 +1976,7 @@
       "region": "back",
       "side": null,
       "x": 255,
-      "y": 459
+      "y": 454
     },
     {
       "code": "BL54",
@@ -1987,7 +1987,7 @@
       "region": "back",
       "side": null,
       "x": 125,
-      "y": 483
+      "y": 478
     },
     {
       "code": "BL55",
@@ -1998,7 +1998,7 @@
       "region": "leg",
       "side": null,
       "x": 222,
-      "y": 555
+      "y": 540
     },
     {
       "code": "BL56",
@@ -2009,7 +2009,7 @@
       "region": "leg",
       "side": null,
       "x": 158,
-      "y": 583
+      "y": 570
     },
     {
       "code": "BL57",
@@ -2020,7 +2020,7 @@
       "region": "leg",
       "side": null,
       "x": 222,
-      "y": 611
+      "y": 599
     },
     {
       "code": "BL58",
@@ -2031,7 +2031,7 @@
       "region": "leg",
       "side": null,
       "x": 158,
-      "y": 638
+      "y": 629
     },
     {
       "code": "BL59",
@@ -2042,7 +2042,7 @@
       "region": "leg",
       "side": null,
       "x": 222,
-      "y": 666
+      "y": 659
     },
     {
       "code": "BL60",
@@ -2053,7 +2053,7 @@
       "region": "foot",
       "side": "right",
       "x": 220,
-      "y": 666
+      "y": 659
     },
     {
       "code": "BL61",
@@ -2064,7 +2064,7 @@
       "region": "foot",
       "side": "left",
       "x": 160,
-      "y": 674
+      "y": 668
     },
     {
       "code": "BL62",
@@ -2075,7 +2075,7 @@
       "region": "foot",
       "side": "right",
       "x": 220,
-      "y": 683
+      "y": 678
     },
     {
       "code": "BL63",
@@ -2086,7 +2086,7 @@
       "region": "foot",
       "side": "left",
       "x": 160,
-      "y": 691
+      "y": 687
     },
     {
       "code": "BL64",
@@ -2097,7 +2097,7 @@
       "region": "foot",
       "side": "right",
       "x": 220,
-      "y": 700
+      "y": 697
     },
     {
       "code": "BL65",
@@ -2108,7 +2108,7 @@
       "region": "foot",
       "side": "left",
       "x": 160,
-      "y": 708
+      "y": 706
     },
     {
       "code": "BL66",
@@ -2119,7 +2119,7 @@
       "region": "foot",
       "side": "right",
       "x": 220,
-      "y": 717
+      "y": 716
     },
     {
       "code": "BL67",
@@ -2152,7 +2152,7 @@
       "region": "foot",
       "side": "left",
       "x": 152,
-      "y": 713
+      "y": 712
     },
     {
       "code": "KI3",
@@ -2163,7 +2163,7 @@
       "region": "foot",
       "side": "left",
       "x": 152,
-      "y": 702
+      "y": 699
     },
     {
       "code": "KI4",
@@ -2174,7 +2174,7 @@
       "region": "foot",
       "side": "left",
       "x": 152,
-      "y": 690
+      "y": 685
     },
     {
       "code": "KI5",
@@ -2185,7 +2185,7 @@
       "region": "foot",
       "side": "left",
       "x": 152,
-      "y": 678
+      "y": 672
     },
     {
       "code": "KI6",
@@ -2196,7 +2196,7 @@
       "region": "foot",
       "side": "left",
       "x": 152,
-      "y": 666
+      "y": 659
     },
     {
       "code": "KI7",
@@ -2206,7 +2206,7 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 162,
+      "x": 165,
       "y": 651
     },
     {
@@ -2217,8 +2217,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 162,
-      "y": 619
+      "x": 165,
+      "y": 614
     },
     {
       "code": "KI9",
@@ -2228,8 +2228,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 162,
-      "y": 587
+      "x": 165,
+      "y": 577
     },
     {
       "code": "KI10",
@@ -2239,8 +2239,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 162,
-      "y": 555
+      "x": 165,
+      "y": 540
     },
     {
       "code": "KI11",
@@ -3097,8 +3097,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 238,
-      "y": 483
+      "x": 240,
+      "y": 478
     },
     {
       "code": "GB30",
@@ -3108,8 +3108,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 142,
-      "y": 500
+      "x": 140,
+      "y": 495
     },
     {
       "code": "GB31",
@@ -3119,8 +3119,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 238,
-      "y": 517
+      "x": 240,
+      "y": 512
     },
     {
       "code": "GB32",
@@ -3130,8 +3130,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 142,
-      "y": 533
+      "x": 140,
+      "y": 530
     },
     {
       "code": "GB33",
@@ -3141,8 +3141,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 238,
-      "y": 550
+      "x": 240,
+      "y": 547
     },
     {
       "code": "GB34",
@@ -3152,8 +3152,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 142,
-      "y": 567
+      "x": 140,
+      "y": 564
     },
     {
       "code": "GB35",
@@ -3163,8 +3163,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 238,
-      "y": 584
+      "x": 240,
+      "y": 582
     },
     {
       "code": "GB36",
@@ -3174,8 +3174,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 142,
-      "y": 601
+      "x": 140,
+      "y": 599
     },
     {
       "code": "GB37",
@@ -3185,8 +3185,8 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 238,
-      "y": 618
+      "x": 240,
+      "y": 616
     },
     {
       "code": "GB38",
@@ -3196,7 +3196,7 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 142,
+      "x": 140,
       "y": 634
     },
     {
@@ -3207,7 +3207,7 @@
       "view": "back",
       "region": "leg",
       "side": null,
-      "x": 238,
+      "x": 240,
       "y": 651
     },
     {
@@ -3219,7 +3219,7 @@
       "region": "foot",
       "side": "right",
       "x": 234,
-      "y": 666
+      "y": 659
     },
     {
       "code": "GB41",
@@ -3230,7 +3230,7 @@
       "region": "foot",
       "side": "left",
       "x": 146,
-      "y": 681
+      "y": 675
     },
     {
       "code": "GB42",
@@ -3241,7 +3241,7 @@
       "region": "foot",
       "side": "right",
       "x": 234,
-      "y": 696
+      "y": 692
     },
     {
       "code": "GB43",
@@ -3252,7 +3252,7 @@
       "region": "foot",
       "side": "left",
       "x": 146,
-      "y": 710
+      "y": 709
     },
     {
       "code": "GB44",
@@ -3285,7 +3285,7 @@
       "region": "foot",
       "side": "left",
       "x": 148,
-      "y": 705
+      "y": 703
     },
     {
       "code": "LR3",
@@ -3296,7 +3296,7 @@
       "region": "foot",
       "side": "left",
       "x": 148,
-      "y": 686
+      "y": 681
     },
     {
       "code": "LR4",
@@ -3307,7 +3307,7 @@
       "region": "foot",
       "side": "left",
       "x": 148,
-      "y": 666
+      "y": 659
     },
     {
       "code": "LR5",
@@ -3317,7 +3317,7 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 156,
+      "x": 165,
       "y": 651
     },
     {
@@ -3328,8 +3328,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 156,
-      "y": 623
+      "x": 165,
+      "y": 622
     },
     {
       "code": "LR7",
@@ -3339,8 +3339,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 156,
-      "y": 595
+      "x": 165,
+      "y": 593
     },
     {
       "code": "LR8",
@@ -3350,8 +3350,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 156,
-      "y": 567
+      "x": 165,
+      "y": 564
     },
     {
       "code": "LR9",
@@ -3361,8 +3361,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 156,
-      "y": 539
+      "x": 165,
+      "y": 536
     },
     {
       "code": "LR10",
@@ -3372,8 +3372,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 156,
-      "y": 511
+      "x": 165,
+      "y": 507
     },
     {
       "code": "LR11",
@@ -3383,8 +3383,8 @@
       "view": "front",
       "region": "leg",
       "side": null,
-      "x": 156,
-      "y": 483
+      "x": 165,
+      "y": 478
     },
     {
       "code": "LR12",
@@ -3395,7 +3395,7 @@
       "region": "abdomen",
       "side": null,
       "x": 130,
-      "y": 483
+      "y": 478
     },
     {
       "code": "LR13",
@@ -3406,7 +3406,7 @@
       "region": "abdomen",
       "side": null,
       "x": 130,
-      "y": 360
+      "y": 357
     },
     {
       "code": "LR14",
@@ -3428,7 +3428,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 483
+      "y": 478
     },
     {
       "code": "GV2",
@@ -3439,7 +3439,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 459
+      "y": 454
     },
     {
       "code": "GV3",
@@ -3450,7 +3450,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 435
+      "y": 430
     },
     {
       "code": "GV4",
@@ -3461,7 +3461,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 411
+      "y": 407
     },
     {
       "code": "GV5",
@@ -3472,7 +3472,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 387
+      "y": 383
     },
     {
       "code": "GV6",
@@ -3483,7 +3483,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 363
+      "y": 359
     },
     {
       "code": "GV7",
@@ -3494,7 +3494,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 339
+      "y": 336
     },
     {
       "code": "GV8",
@@ -3505,7 +3505,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 315
+      "y": 312
     },
     {
       "code": "GV9",
@@ -3516,7 +3516,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 290
+      "y": 288
     },
     {
       "code": "GV10",
@@ -3527,7 +3527,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 266
+      "y": 265
     },
     {
       "code": "GV11",
@@ -3538,7 +3538,7 @@
       "region": "back",
       "side": null,
       "x": 190,
-      "y": 242
+      "y": 241
     },
     {
       "code": "GV12",
