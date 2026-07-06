@@ -139,7 +139,8 @@ class Patient(Base):
     phone = Column(String)
     memo = Column(Text)
     insurance_type = Column(String, default="health")
-    medical_aid_grade = Column(String(1), nullable=True)  # 의료급여 1종="1", 2종="2", 나머지 None
+    medical_aid_grade = Column(String(1), nullable=True)   # 의료급여 1종="1", 2종="2", 나머지 None
+    disability_grade = Column(String(1), nullable=True)    # 장애 등급 "1"~"6", None이면 비해당
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     rrn = Column(EncryptedString(500), nullable=True)
@@ -200,6 +201,9 @@ class Claim(Base):
     total_amount = Column(Integer, nullable=False, default=0)
     patient_copay = Column(Integer, nullable=False, default=0)
     claim_amount = Column(Integer, nullable=False, default=0)
+    non_benefit_total = Column(Integer, nullable=False, default=0)         # 비급여 총액 (C2-11 benefit_total_2 산출용)
+    disability_medical_aid = Column(Integer, nullable=False, default=0)  # C2-11 장애인의료비
+    support_fund = Column(Integer, nullable=False, default=0)             # C2-11 지원금
     differential_index = Column(Numeric(5, 2), default=1.0)
     status = Column(String, nullable=False, default="draft")
     submitted_at = Column(DateTime(timezone=True), nullable=True)
@@ -343,6 +347,7 @@ class MedicalRecordProcedure(Base):
     procedure_type = Column(String, nullable=False)
     details = Column(JSON, nullable=True)
     amount = Column(Integer, default=0)
+    is_non_benefit = Column(Boolean, nullable=False, default=False)  # 비급여이면 non_benefit_total에 합산
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # EDI 명세서진료내역 필수 필드
