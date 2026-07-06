@@ -439,6 +439,8 @@ async def generate_claim_edi(
         f"{row.doctor_birth_date}/{row.work_days}" for row in work_days_rows
     )
 
+    special_case = await resolve_active_special_code(db, claim.patient_id)
+
     for i, record in enumerate(medical_records):
         serial = i + 1
         rec_key = RecordKey(institution_code=inst_code, serial_no=serial, ext_no=0)
