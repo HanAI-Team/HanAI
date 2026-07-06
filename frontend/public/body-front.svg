@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 460">
+  <style>
+    .b { fill: #F4C9A0; fill-opacity: 0.16; stroke: var(--color-border-strong); stroke-width: 1.5; }
+  </style>
+  <!-- 머리 -->
+  <ellipse class="b" cx="100" cy="40" rx="25" ry="32" />
+  <!-- 목 -->
+  <path class="b" d="M88,70 L112,70 L116,86 L84,86 Z" />
+  <!-- 몸통 -->
+  <path class="b" d="M48,88 L152,88 L146,140 L132,195 L142,240 L58,240 L68,195 L54,140 Z" />
+  <!-- 왼팔 -->
+  <path class="b" d="M48,95 L14,165 L26,225 L36,222 L26,160 L58,100 Z" />
+  <ellipse class="b" cx="20" cy="235" rx="12" ry="16" />
+  <!-- 오른팔 -->
+  <path class="b" d="M152,95 L186,165 L174,225 L164,222 L174,160 L142,100 Z" />
+  <ellipse class="b" cx="180" cy="235" rx="12" ry="16" />
+  <!-- 왼다리 -->
+  <path class="b" d="M58,240 L50,345 L46,425 L64,423 L66,345 L84,240 Z" />
+  <path class="b" d="M46,425 L34,438 L38,450 L66,450 L66,428 Z" />
+  <!-- 오른다리 -->
+  <path class="b" d="M142,240 L150,345 L154,425 L136,423 L134,345 L116,240 Z" />
+  <path class="b" d="M154,425 L166,438 L162,450 L134,450 L134,428 Z" />
+</svg>
