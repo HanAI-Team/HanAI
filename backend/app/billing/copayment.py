@@ -45,14 +45,26 @@ def _is_under_15(birth_date: Optional[date], ref: date) -> bool:
 
 def _special_rate(special_code: str) -> Decimal:
     """산정특례 코드별 본인부담률."""
-    # V193: 암, V027: 희귀난치, V221: 중증화상 등
-    # 암·희귀난치 5~10%, 나머지 V코드는 10% 기본
     RATES = {
+        # V코드 — 별표6 특정기호코드 기준
         "V193": Decimal("0.05"),  # 암
         "V027": Decimal("0.10"),  # 희귀난치성
         "V221": Decimal("0.05"),  # 중증화상
+        "V247": Decimal("0.05"),  # 중증화상 (중증도기준1+체표면적기준1)
+        "V248": Decimal("0.05"),  # 중증화상 (중증도기준2+체표면적기준2)
+        "V250": Decimal("0.05"),  # 중증화상 (별표3 4호 상병)
+        "V305": Decimal("0.05"),  # 중증화상 (2021개정 — 국소부위 3도, 외래)
+        "V306": Decimal("0.05"),  # 중증화상 (2021개정 — 인체 3년내 입원수술)
         "V000": Decimal("0.00"),  # 결핵 (본인부담 면제)
         "V010": Decimal("0.00"),  # 잠복결핵감염 (본인부담 면제)
+        "V800": Decimal("0.00"),  # 중증치매 (희귀난치성격 — 본인부담 면제)
+        "V810": Decimal("0.10"),  # 중증치매 (일반 — 연간 60일)
+        "V811": Decimal("0.10"),  # 중증치매 (가정간호)
+        "V900": Decimal("0.10"),  # 극희귀질환
+        "V901": Decimal("0.10"),  # 기타염색체이상질환
+        "V999": Decimal("0.10"),  # 상세불명 희귀질환
+        # F코드 — 별표6 특정기호코드 기준
+        "F006": Decimal("0.40"),  # 신체기능저하군
     }
     prefix = special_code[:4] if len(special_code) >= 4 else special_code
     return RATES.get(prefix, Decimal("0.10"))
@@ -181,8 +193,8 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.10"))
                 result.near_poverty_2_inpatient_copay = copay
 
-        elif special.startswith("V"):
-            # 산정특례
+        elif special.startswith("V") or special.startswith("F"):
+            # 산정특례 (V코드: 별표6 특정기호, F코드: 신체기능저하군 등)
             rate = _special_rate(special)
             copay = _ceil_won(Decimal(total1) * rate)
             result.special_exception_copay = copay
