@@ -155,6 +155,42 @@ class FeeUpdate(BaseModel):
     expired_date: Optional[date] = None
 
 
+class DoctorWorkDaysItem(BaseModel):
+    id: int
+    claim_period_year: int
+    claim_period_month: int
+    doctor_birth_date: str
+    work_days: int
+
+
+class DoctorWorkDaysCreate(BaseModel):
+    claim_period_year: int = Field(..., ge=2000, le=2100)
+    claim_period_month: int = Field(..., ge=1, le=12)
+    doctor_birth_date: str = Field(
+        ..., min_length=6, max_length=6, description="의사 생년월일 YYMMDD (6자리)"
+    )
+    work_days: int = Field(..., ge=0, le=31, description="해당 월 실제 진료일수")
+
+    @field_validator("doctor_birth_date")
+    @classmethod
+    def validate_doctor_birth_date(cls, v: str) -> str:
+        if not v.isdigit():
+            raise ValueError("doctor_birth_date는 숫자 6자리(YYMMDD)여야 합니다.")
+        return v
+
+
+class DoctorWorkDaysUpdate(BaseModel):
+    doctor_birth_date: Optional[str] = Field(None, min_length=6, max_length=6)
+    work_days: Optional[int] = Field(None, ge=0, le=31)
+
+    @field_validator("doctor_birth_date")
+    @classmethod
+    def validate_doctor_birth_date(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.isdigit():
+            raise ValueError("doctor_birth_date는 숫자 6자리(YYMMDD)여야 합니다.")
+        return v
+
+
 class BillingCalcResponse(BaseModel):
     special_code: Optional[str] = None
     benefit_total_1: int
