@@ -78,6 +78,35 @@ def test_의료급여_2종_외래_15퍼센트():
     assert result.copayment == 1500
 
 
+def test_의료급여_2종_장애인_외래_5퍼센트_경감():
+    # 의료급여 2종 장애인 외래: 15% → 5%, 차액(10%)은 disability_medical_cost
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.MEDICAL_AID,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=10000,
+        medical_aid_grade=MedicalAidGrade.GRADE_2,
+        has_disability=True,
+    ))
+    assert result.medical_aid_outpatient_copay == 500   # ceil(10000*0.05)
+    assert result.copayment == 500
+    assert result.disability_medical_cost == 1000       # ceil(10000*0.15) - ceil(10000*0.05)
+    assert result.claim_amount == 9500                  # 10000 - 500
+
+
+def test_의료급여_2종_장애인_입원은_경감_미적용():
+    # 장애인 경감은 외래만 적용, 입원은 일반 2종(10%) 유지
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.MEDICAL_AID,
+        visit_type=VisitType.INPATIENT,
+        benefit_total=10000,
+        medical_aid_grade=MedicalAidGrade.GRADE_2,
+        has_disability=True,
+    ))
+    assert result.medical_aid_inpatient_copay == 1000   # ceil(10000*0.10)
+    assert result.copayment == 1000
+    assert result.disability_medical_cost == 0
+
+
 def test_보훈_본인부담_없음_전액청구():
     result = calculate_billing(BillingInput(
         insurance_type=InsuranceType.VETERANS,
