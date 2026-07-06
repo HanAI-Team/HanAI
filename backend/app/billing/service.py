@@ -61,14 +61,23 @@ _SPECIAL_CASE_COPAY_RATE: dict[str, tuple[Decimal, bool]] = {
     "V193": (Decimal("0.05"), False),  # 암
     "V000": (Decimal("0.00"), False),  # 결핵
     "V010": (Decimal("0.00"), False),  # 잠복결핵
-    "V027": (Decimal("0.10"), False),  # 희귀난치성 (copayment.py._special_rate와 동일)
-    "V221": (Decimal("0.19"), True),   # 중증화상 — copayment.py._special_rate는 5%로 두지만
-                                        # 코드 주석/커밋 이력 어디에도 근거(고시 번호 등)가 없어 재분류
-    "V191": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요 (별표6 미확보)
-    "V268": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요
-    "V275": (Decimal("0.19"), True),   # 뇌혈관 — 확인 필요
-    "V192": (Decimal("0.19"), True),   # 심장 — 확인 필요. 「본인일부부담금 산정특례에 관한
-                                        # 기준」 제4조 원문 확보 전까지 임시값 유지
+    "V027": (Decimal("0.10"), False),  # 희귀난치성
+    "V221": (Decimal("0.05"), False),  # 중증화상 — 별표6 확보, 5% 확정
+    "V247": (Decimal("0.05"), False),  # 중증화상 (중증도기준1+체표면적기준1)
+    "V248": (Decimal("0.05"), False),  # 중증화상 (중증도기준2+체표면적기준2)
+    "V250": (Decimal("0.05"), False),  # 중증화상 (별표3 4호 상병)
+    "V305": (Decimal("0.05"), False),  # 중증화상 (2021개정 — 외래)
+    "V306": (Decimal("0.05"), False),  # 중증화상 (2021개정 — 수술)
+    "V800": (Decimal("0.00"), False),  # 중증치매 (희귀난치성격 — 면제)
+    "V810": (Decimal("0.10"), False),  # 중증치매 (일반 — 연간 60일)
+    "V811": (Decimal("0.10"), False),  # 중증치매 (가정간호)
+    "V900": (Decimal("0.10"), False),  # 극희귀질환
+    "V901": (Decimal("0.10"), False),  # 기타염색체이상질환
+    "V999": (Decimal("0.10"), False),  # 상세불명 희귀질환
+    "V191": (Decimal("0.05"), False),  # 뇌혈관 (수술O) — 입원 전제, 한의원 적용 희귀
+    "V268": (Decimal("0.05"), False),  # 뇌혈관 (중증뇌출혈, 급성기) — 입원 전제
+    "V275": (Decimal("0.05"), False),  # 뇌경색 — 입원 전제
+    "V192": (Decimal("0.05"), False),  # 심장 — 수술/약제투여 전제
     "F006": (Decimal("0.40"), False),  # 신체기능저하군 — 확정 40%.
                                         # 예외: 암환자 등 중증환자 동시해당 시 별도 규정이
                                         # 우선하므로 그 경우는 _has_f006_concurrent_exception()에서
@@ -92,6 +101,9 @@ def _has_f006_concurrent_exception(active: list["SpecialCaseRegistration"]) -> b
 class SpecialCaseResolution:
     special_code: Optional[str] = None
     needs_review: bool = False
+    registration_number: Optional[str] = None   # MT014용 등록번호
+    registered_disease_code: Optional[str] = None  # MT028용 유사상병코드
+    disease_name: Optional[str] = None          # MT028용 실제상병명
 
 
 async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> SpecialCaseResolution:
@@ -135,7 +147,13 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
             f"본인부담률 미확인 특정기호 적용: patient_id={patient_id}, special_code={chosen.special_code}"
         )
 
-    return SpecialCaseResolution(special_code=chosen.special_code, needs_review=needs_review)
+    return SpecialCaseResolution(
+        special_code=chosen.special_code,
+        needs_review=needs_review,
+        registration_number=chosen.registration_number,
+        registered_disease_code=chosen.registered_disease_code,
+        disease_name=chosen.disease_name,
+    )
 
 
 async def create_claim(
@@ -223,7 +241,6 @@ async def create_claim(
     )
     procedures = r_procs.scalars().all()
     benefit_total = sum(p.amount or 0 for p in procedures)
-
     # ── 고시 기반 특정내역/청구 검증 (notice_rules.py) ──────────────────────────
     # ※ validate_notice_rules()의 실제 파라미터명은 _records, _claim_period_year,
     #   _claim_period_month (언더스코어 prefix = 함수 내부 미사용 파라미터).
@@ -247,7 +264,6 @@ async def create_claim(
                 "errors": blocking_errors,
             },
         )
-
     # 본인부담금 계산
     insurance_type = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
     special_case = await resolve_active_special_code(db, patient_id)
@@ -441,6 +457,8 @@ async def generate_claim_edi(
         f"{row.doctor_birth_date}/{row.work_days}" for row in work_days_rows
     )
 
+    special_case = await resolve_active_special_code(db, claim.patient_id)
+
     for i, record in enumerate(medical_records):
         serial = i + 1
         rec_key = RecordKey(institution_code=inst_code, serial_no=serial, ext_no=0)
@@ -505,6 +523,37 @@ async def generate_claim_edi(
                 special_code="MT008",
                 content=mt008_content,
             )))
+
+        # MT002: 산정특례 특정기호 (명세서 단위 — 별표6 ③항 기준)
+        # 근거: 청구방법 작성요령 별첨2 ⅱ.1.나.(7) — 의료구분='8', 발생단위구분='1', 특정내역구분='MT002'
+        if special_case.special_code and special_case.special_code.startswith("V"):
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT002",
+                content=special_case.special_code,
+            )))
+
+            # MT014: 산정특례 등록번호 (건보공단 발급. 예: "01-24-00012345")
+            if special_case.registration_number:
+                special_records.append((serial, SpecialRecord(
+                    key=rec_key,
+                    prescription_no=0,
+                    record_ext_no=0,
+                    special_code="MT014",
+                    content=special_case.registration_number,
+                )))
+
+            # MT028: 세부상병명 (KCD 코드 없는 희귀질환용. 예: "D12.6/가족성선종성폴립증")
+            if special_case.disease_name and special_case.registered_disease_code:
+                special_records.append((serial, SpecialRecord(
+                    key=rec_key,
+                    prescription_no=0,
+                    record_ext_no=0,
+                    special_code="MT028",
+                    content=f"{special_case.registered_disease_code}/{special_case.disease_name}",
+                )))
 
         # DiagnosisRecord
         if record.chart_structured and record.kcd_code:

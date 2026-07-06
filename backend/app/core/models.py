@@ -157,7 +157,15 @@ class SpecialCaseRegistration(Base):
 
     special_code = Column(String(4), nullable=False)  # 특정기호. V193=암, V027=희귀난치, V221=중증화상 등
     category = Column(String(20), nullable=False)     # 암 / 결핵 / 뇌혈관 / 심장 / 신체기능저하군
-    registered_disease_code = Column(String(10), nullable=True)  # 등록 상병코드 (KCD/ICD)
+    registered_disease_code = Column(String(10), nullable=True)  # 등록 상병코드 (KCD/ICD). MT028 기재 시 '유사상병코드' 역할
+
+    # MT028: KCD 코드가 없는 희귀질환 등의 실제 상병명 (예: "가족성선종성폴립증").
+    # 값이 있으면 EDI C2-08에 MT028 레코드를 추가하며, 내용은 "<registered_disease_code>/<disease_name>" 형태.
+    disease_name = Column(String(100), nullable=True)
+
+    # MT014: 건보공단 발급 산정특례 등록번호 (예: "01-24-00012345").
+    # 값이 있으면 EDI C2-08에 MT014 레코드를 추가.
+    registration_number = Column(String(20), nullable=True)
 
     registered_at = Column(Date, nullable=False)
     expires_at = Column(Date, nullable=True)  # NULL 허용: 결핵 등 이벤트(완치/사망/진단변경) 기반 종료는 날짜로 못 정함
