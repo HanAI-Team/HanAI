@@ -131,6 +131,21 @@ async def test_확인필요항목만_있어도_반환되고_플래그_켜짐(db)
     hospital = await _make_hospital(db)
     patient = await _make_patient(db, hospital)
     db.add(SpecialCaseRegistration(
+        patient_id=patient.id, special_code="V192", category="심장",
+        registered_at=date(2026, 1, 1),
+    ))
+    await db.commit()
+
+    result = await resolve_active_special_code(db, patient.id)
+    assert result.special_code == "V192"
+    assert result.needs_review is True
+
+
+async def test_F006_단독등록시_확정_40퍼센트(db):
+    """F006(신체기능저하군)은 단독 등록이면 확정값(40%)으로 처리되고 needs_review=False."""
+    hospital = await _make_hospital(db)
+    patient = await _make_patient(db, hospital)
+    db.add(SpecialCaseRegistration(
         patient_id=patient.id, special_code="F006", category="신체기능저하군",
         registered_at=date(2026, 1, 1),
     ))
@@ -138,7 +153,31 @@ async def test_확인필요항목만_있어도_반환되고_플래그_켜짐(db)
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "F006"
-    assert result.needs_review is True
+    assert result.needs_review is False
+
+
+async def test_F006과_암_동시활성시_예외로_needs_review_강제(db):
+    """F006 + 암(V193) 동시 활성 — 별도 규정 미구현 상태라 needs_review=True로 강제.
+    (본인부담률만 보면 V193의 5%가 F006의 40%보다 낮아 V193이 선택되지만,
+    F006 동시해당 예외 자체를 이번 스코프에서 구현하지 않았으므로 confident하게
+    반환하면 안 된다.)"""
+    hospital = await _make_hospital(db)
+    patient = await _make_patient(db, hospital)
+    db.add_all([
+        SpecialCaseRegistration(
+            patient_id=patient.id, special_code="F006", category="신체기능저하군",
+            registered_at=date(2026, 1, 1),
+        ),
+        SpecialCaseRegistration(
+            patient_id=patient.id, special_code="V193", category="암",
+            registered_at=date(2026, 1, 1),
+        ),
+    ])
+    await db.commit()
+
+    result = await resolve_active_special_code(db, patient.id)
+    assert result.special_code == "V193"  # 본인부담률만으로는 여전히 V193이 최저값
+    assert result.needs_review is True   # 하지만 F006 동시해당 예외 때문에 확신할 수 없음
 
 
 async def test_V221_근거없어_확인필요로_분류됨(db):
