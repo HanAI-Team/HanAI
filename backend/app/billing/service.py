@@ -246,7 +246,8 @@ async def create_claim(
         )
     )
     procedures = r_procs.scalars().all()
-    benefit_total = sum(p.amount or 0 for p in procedures)
+    benefit_total = sum(p.amount or 0 for p in procedures if not p.is_non_benefit)
+    non_benefit_total = sum(p.amount or 0 for p in procedures if p.is_non_benefit)
     # ── 고시 기반 특정내역/청구 검증 (notice_rules.py) ──────────────────────────
     # ※ validate_notice_rules()의 실제 파라미터명은 _records, _claim_period_year,
     #   _claim_period_month (언더스코어 prefix = 함수 내부 미사용 파라미터).
@@ -277,6 +278,7 @@ async def create_claim(
         insurance_type=insurance_type,
         visit_type=VisitType(visit_type),
         benefit_total=benefit_total,
+        non_benefit_total=non_benefit_total,
         treatment_days=Decimal(len(records)),
         special_code=special_case.special_code,
         birth_date=patient.birth_date,
@@ -294,6 +296,9 @@ async def create_claim(
         total_amount=billing_result.benefit_total_1,
         patient_copay=billing_result.copayment,
         claim_amount=billing_result.claim_amount,
+        non_benefit_total=non_benefit_total,
+        disability_medical_aid=billing_result.disability_medical_cost,
+        support_fund=billing_result.support_fund,
         status="draft",
     )
     db.add(claim)
@@ -484,19 +489,15 @@ async def generate_claim_edi(
             benefit_total_1=claim.total_amount,
             copayment=claim.patient_copay,
             claim_amount=claim.claim_amount,
-            # 비급여 미추적이므로 benefit_total_2 = benefit_total_1 (100분의100 본인부담 = 0)
-            benefit_total_2=claim.total_amount,
-            full_price_copay_total=0,
-            # 100분의100미만 = 전액이 급여이므로 총액/본인부담/청구액 동일
+            benefit_total_2=claim.total_amount + claim.non_benefit_total,
+            full_price_copay_total=claim.non_benefit_total,
             under_full_total=claim.total_amount,
             under_full_copay=claim.patient_copay,
             under_full_claim=claim.claim_amount,
-            # 보훈: 환자 본인부담 없음, 청구액 전액이 보훈청구액
             veterans_copay=0,
             under_full_veterans_claim=claim.claim_amount if is_veterans else 0,
-            # 장애인의료비·지원금: 별도 추적 미구현, 0 유지
-            deferred_or_disability=0,
-            support_fund=0,
+            deferred_or_disability=claim.disability_medical_aid,
+            support_fund=claim.support_fund,
             # 보완·추가청구(claim_type)일 때만 당초 접수번호/명일련/사유코드를 채워 넣는다.
             receipt_no=claim.original_receipt_no or 0,
             record_serial=claim.original_record_serial or 0,
