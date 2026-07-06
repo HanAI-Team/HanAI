@@ -139,7 +139,8 @@ class Patient(Base):
     phone = Column(String)
     memo = Column(Text)
     insurance_type = Column(String, default="health")
-    
+    medical_aid_grade = Column(String(1), nullable=True)  # 의료급여 1종="1", 2종="2", 나머지 None
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     rrn = Column(EncryptedString(500), nullable=True)
     confirmation_no = Column(String(13), nullable=True)
