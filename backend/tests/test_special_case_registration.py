@@ -107,12 +107,14 @@ async def test_여러건_활성시_본인부담률_최저값_우선(db):
     assert result.needs_review is False
 
 
-async def test_확인필요항목보다_확정된_낮은값_우선(db):
+async def test_낮은본인부담률_우선선택(db):
+    """별표6 확보 후 V191(뇌혈관, 5%)과 V027(희귀난치, 10%)이 동시 활성이면
+    본인부담률이 낮은 V191이 선택된다."""
     hospital = await _make_hospital(db)
     patient = await _make_patient(db, hospital)
     db.add_all([
         SpecialCaseRegistration(
-            patient_id=patient.id, special_code="V191", category="뇌혈관",  # 확인 필요, 19%
+            patient_id=patient.id, special_code="V191", category="뇌혈관",  # 확정 5%
             registered_at=date(2026, 1, 1),
         ),
         SpecialCaseRegistration(
@@ -123,11 +125,12 @@ async def test_확인필요항목보다_확정된_낮은값_우선(db):
     await db.commit()
 
     result = await resolve_active_special_code(db, patient.id)
-    assert result.special_code == "V027"
+    assert result.special_code == "V191"
     assert result.needs_review is False
 
 
-async def test_확인필요항목만_있어도_반환되고_플래그_켜짐(db):
+async def test_V192_별표6_확보로_확정값_반환(db):
+    """별표6 확보 후 V192(심장, 5%)는 확정값으로 처리되어 needs_review=False."""
     hospital = await _make_hospital(db)
     patient = await _make_patient(db, hospital)
     db.add(SpecialCaseRegistration(
@@ -138,7 +141,7 @@ async def test_확인필요항목만_있어도_반환되고_플래그_켜짐(db)
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V192"
-    assert result.needs_review is True
+    assert result.needs_review is False
 
 
 async def test_F006_단독등록시_확정_40퍼센트(db):
@@ -180,9 +183,9 @@ async def test_F006과_암_동시활성시_예외로_needs_review_강제(db):
     assert result.needs_review is True   # 하지만 F006 동시해당 예외 때문에 확신할 수 없음
 
 
-async def test_V221_근거없어_확인필요로_분류됨(db):
-    """copayment.py._special_rate는 V221=5%로 두지만 근거(고시 번호 등)가
-    코드/커밋 이력에 없어 needs_review 대상으로 재분류했다."""
+async def test_V221_별표6_확보로_5퍼센트_확정됨(db):
+    """별표6_특정기호코드.csv 확보 후 V221(중증화상)의 본인부담률 5%가 확정되어
+    needs_review=False로 반환된다."""
     hospital = await _make_hospital(db)
     patient = await _make_patient(db, hospital)
     db.add(SpecialCaseRegistration(
@@ -193,7 +196,7 @@ async def test_V221_근거없어_확인필요로_분류됨(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V221"
-    assert result.needs_review is True
+    assert result.needs_review is False
 
 
 async def test_create_claim_활성_산정특례_있으면_낮은본인부담률_적용(db, approved_doctor, kcd_codes):
@@ -260,7 +263,7 @@ async def test_create_claim_확인필요_산정특례는_플래그_노출(db, ap
         visit_type="외래",
     )
 
-    assert claim.special_case_needs_review is True
+    assert claim.special_case_needs_review is False
 
 
 async def test_calculate_엔드포인트_patient_id_있으면_DB조회값이_body_special_code보다_우선(
