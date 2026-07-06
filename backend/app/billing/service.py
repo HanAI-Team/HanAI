@@ -504,6 +504,17 @@ async def generate_claim_edi(
                 content=mt008_content,
             )))
 
+        # MT002: 산정특례 특정기호 (명세서 단위 — 별표6 ③항 기준)
+        # 근거: 청구방법 작성요령 별첨2 ⅱ.1.나.(7) — 의료구분='8', 발생단위구분='1', 특정내역구분='MT002'
+        if special_case.special_code and special_case.special_code.startswith("V"):
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT002",
+                content=special_case.special_code,
+            )))
+
         # DiagnosisRecord
         if record.chart_structured and record.kcd_code:
             diagnosis_records.append((serial, DiagnosisRecord(
