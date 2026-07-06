@@ -223,7 +223,6 @@ async def create_claim(
     )
     procedures = r_procs.scalars().all()
     benefit_total = sum(p.amount or 0 for p in procedures)
-
     # ── 고시 기반 특정내역/청구 검증 (notice_rules.py) ──────────────────────────
     # ※ validate_notice_rules()의 실제 파라미터명은 _records, _claim_period_year,
     #   _claim_period_month (언더스코어 prefix = 함수 내부 미사용 파라미터).
@@ -247,7 +246,6 @@ async def create_claim(
                 "errors": blocking_errors,
             },
         )
-
     # 본인부담금 계산
     insurance_type = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
     special_case = await resolve_active_special_code(db, patient_id)
@@ -441,6 +439,8 @@ async def generate_claim_edi(
         f"{row.doctor_birth_date}/{row.work_days}" for row in work_days_rows
     )
 
+    special_case = await resolve_active_special_code(db, claim.patient_id)
+
     for i, record in enumerate(medical_records):
         serial = i + 1
         rec_key = RecordKey(institution_code=inst_code, serial_no=serial, ext_no=0)
@@ -504,6 +504,17 @@ async def generate_claim_edi(
                 record_ext_no=0,
                 special_code="MT008",
                 content=mt008_content,
+            )))
+
+        # MT002: 산정특례 특정기호 (명세서 단위 — 별표6 ③항 기준)
+        # 근거: 청구방법 작성요령 별첨2 ⅱ.1.나.(7) — 의료구분='8', 발생단위구분='1', 특정내역구분='MT002'
+        if special_case.special_code and special_case.special_code.startswith("V"):
+            special_records.append((serial, SpecialRecord(
+                key=rec_key,
+                prescription_no=0,
+                record_ext_no=0,
+                special_code="MT002",
+                content=special_case.special_code,
             )))
 
         # DiagnosisRecord

@@ -51,6 +51,8 @@ def _special_rate(special_code: str) -> Decimal:
         "V193": Decimal("0.05"),  # 암
         "V027": Decimal("0.10"),  # 희귀난치성
         "V221": Decimal("0.05"),  # 중증화상
+        "V000": Decimal("0.00"),  # 결핵 (본인부담 면제)
+        "V010": Decimal("0.00"),  # 잠복결핵감염 (본인부담 면제)
     }
     prefix = special_code[:4] if len(special_code) >= 4 else special_code
     return RATES.get(prefix, Decimal("0.10"))
