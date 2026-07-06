@@ -9,6 +9,14 @@ def _get(obj: Any, key: str, default=None):
     return getattr(obj, key, default)
 
 
+def _item_metadata(item: Any) -> dict:
+    """procedures 항목의 부가 플래그 딕셔너리.
+    MedicalRecordProcedure 등 ORM 객체는 Base.metadata(SQLAlchemy MetaData)를
+    상속하고 있어 _get(item, "metadata", {})가 dict가 아닌 값을 돌려줄 수 있다."""
+    value = _get(item, "metadata", {})
+    return value if isinstance(value, dict) else {}
+
+
 def _age_at(birth_date: str | date, base_date: str | date) -> int:
     if isinstance(birth_date, str):
         birth_date = datetime.fromisoformat(birth_date).date()
@@ -47,7 +55,7 @@ def validate_notice_rules(
 
     # 1) MT038 / JT019 - 보훈국비환자 특정내역
     insurance_type = str(_get(patient, "insurance_type") or "") if patient else ""
-    if insurance_type.upper() in {"BOHUN", "BOHUN_PUBLIC", "보훈", "보훈국비", "보험국비"}:
+    if insurance_type in {"veterans", "7"}:
         results.append({
             "rule_id": "NOTICE_2012_117_MT038",
             "notice_no": "제2012-117호",
@@ -65,7 +73,7 @@ def validate_notice_rules(
 
     # 2) 이화학처방 / 촉탁의처방 검증
     for item in items:
-        metadata = _get(item, "metadata", {}) or {}
+        metadata = _item_metadata(item)
         text = _item_text(item)
 
         is_physicochemical_rx = (
@@ -95,7 +103,7 @@ def validate_notice_rules(
         if len(duplicated_items) < 2:
             continue
         has_reason = any(
-            (_get(item, "metadata", {}) or {}).get("duplicate_prescription_reason")
+            _item_metadata(item).get("duplicate_prescription_reason")
             for item in duplicated_items
         )
         if not has_reason:
@@ -109,7 +117,7 @@ def validate_notice_rules(
 
     # 4) 자락침/지각침 특정내역
     for item in items:
-        metadata = _get(item, "metadata", {}) or {}
+        metadata = _item_metadata(item)
         text = _item_text(item)
 
         is_bloodletting = (
@@ -135,7 +143,7 @@ def validate_notice_rules(
 
     # 5) 공휴일 물리치료 가산 누락 확인
     for item in items:
-        metadata = _get(item, "metadata", {}) or {}
+        metadata = _item_metadata(item)
         category = str(_get(item, "category", "") or "").upper()
         text = _item_text(item)
 
@@ -169,7 +177,7 @@ def validate_notice_rules(
             except Exception:
                 continue
 
-            metadata = _get(item, "metadata", {}) or {}
+            metadata = _item_metadata(item)
             if age < 6 and not metadata.get("under_six_surcharge_applied"):
                 results.append({
                     "rule_id": "NOTICE_2007_127_UNDER_SIX_SURCHARGE",
@@ -188,7 +196,7 @@ def validate_notice_rules(
     ) if patient else ""
 
     for item in items:
-        metadata = _get(item, "metadata", {}) or {}
+        metadata = _item_metadata(item)
         category = str(_get(item, "category", "") or "").upper()
         text = _item_text(item)
 

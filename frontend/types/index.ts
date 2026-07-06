@@ -46,3 +46,12 @@ export interface Hospital {
   phone?: string
   institution_code?: string
 }
+
+export interface DoctorWorkDays {
+  id: number
+  doctor_id: string | null
+  claim_period_year: number
+  claim_period_month: number
+  doctor_birth_date: string
+  work_days: number
+}

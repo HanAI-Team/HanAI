@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
@@ -122,6 +122,10 @@ class ChangePasswordRequest(BaseModel):
             raise ValueError("/".join(errors))
         return v
 
+
+
+class DoctorProfileUpdate(BaseModel):
+    birth_date: Optional[date] = None
 
 
 class VerifyInitResponse(BaseModel):

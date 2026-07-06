@@ -4,7 +4,14 @@ from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import Doctor
 from app.hospitals import service
-from app.hospitals.schema import HospitalResponse, HospitalUpdate, StaffingCreate, StaffingResponse
+from app.hospitals.schema import (
+    DoctorWorkDaysCreate,
+    DoctorWorkDaysResponse,
+    HospitalResponse,
+    HospitalUpdate,
+    StaffingCreate,
+    StaffingResponse,
+)
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,3 +56,27 @@ async def list_staffing(
     doctor: Doctor = Depends(get_current_doctor),
 ):
     return await service.list_staffing(db, doctor, hospital_id)
+
+
+@router.post("/{hospital_id}/doctor-work-days", response_model=DoctorWorkDaysResponse)
+async def create_doctor_work_days(
+    hospital_id: UUID,
+    data: DoctorWorkDaysCreate,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    if doctor.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="근무일수 등록 권한이 없습니다."
+        )
+
+    return await service.create_doctor_work_days(db, doctor, hospital_id, data)
+
+
+@router.get("/{hospital_id}/doctor-work-days", response_model=list[DoctorWorkDaysResponse])
+async def list_doctor_work_days(
+    hospital_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    return await service.list_doctor_work_days(db, doctor, hospital_id)

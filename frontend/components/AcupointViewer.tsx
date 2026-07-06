@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { X } from "lucide-react";
-import type { AcupointRecord, AcupointsFile, AcupointRegion, AcupointView } from "@/lib/acupoints";
+import type { AcupointRecord, AcupointsFile, AcupointView } from "@/lib/acupoints";
 
 export interface AcupointSelection {
   code: string;
@@ -10,10 +10,6 @@ export interface AcupointSelection {
 }
 
 type View = AcupointView;
-type RegionKey = AcupointRegion;
-type Side = "left" | "right";
-/** 손/발처럼 좌우 구분이 있는 부위 */
-type SidedRegion = "hand" | "foot";
 
 interface AcupointViewerProps {
   /** 자동 하이라이트할 혈위 코드 (진단 결과 연동용). 클릭 선택과 별개로 항상 빨간 점+pulse로 표시됨 */
@@ -30,57 +26,103 @@ const VIEW_W = 380;
 const VIEW_H = 740;
 
 const VIEW_IMAGE_URL: Record<View, string> = {
-  front: "/body-front.png",
-  back: "/body-back.png",
-};
-
-const REGION_LABELS: Record<RegionKey, string> = {
-  head: "머리",
-  hand: "손",
-  foot: "발",
-  leg: "다리",
-  back: "등",
-  abdomen: "복부",
-};
-
-const SIDE_LABELS: Record<SidedRegion, Record<Side, string>> = {
-  hand: { right: "오른손", left: "왼손" },
-  foot: { right: "오른발", left: "왼발" },
-};
-
-function isSidedRegion(key: RegionKey): key is SidedRegion {
-  return key === "hand" || key === "foot";
-}
-
-// 클릭 시 해당 부위가 존재하는 면으로 강제 전환 (등=뒷면, 복부=앞면). 나머지는 현재 탭 유지
-const REGION_FORCED_VIEW: Partial<Record<RegionKey, View>> = {
-  back: "back",
-  abdomen: "front",
-};
-
-// 부위 확대 시 중심으로 삼을 좌표와 배율 (손/발 제외). transform은 이 중심을 뷰박스 정중앙으로 이동시키며 확대한다
-const REGION_ZOOM: Record<Exclude<RegionKey, SidedRegion>, { cx: number; cy: number; scale: number }> = {
-  head: { cx: 190, cy: 64, scale: 3.0 },
-  leg: { cx: 190, cy: 531, scale: 1.6 },
-  back: { cx: 190, cy: 265, scale: 1.6 },
-  abdomen: { cx: 190, cy: 290, scale: 2.0 },
-};
-
-// 손/발은 좌우 서브탭에 따라 확대 중심이 달라진다 (한쪽 손·발만 크게 확대)
-const SIDED_ZOOM: Record<SidedRegion, Record<Side, { cx: number; cy: number; scale: number }>> = {
-  hand: {
-    right: { cx: 314, cy: 278, scale: 2.6 },
-    left: { cx: 67, cy: 278, scale: 2.6 },
-  },
-  foot: {
-    right: { cx: 285, cy: 700, scale: 3.4 },
-    left: { cx: 95, cy: 700, scale: 3.4 },
-  },
+  front: "/front.svg",
+  back: "/back.svg",
 };
 
 // 361개 혈위 좌표는 public/acupoints.json에서 fetch로 불러온다 (WHO 표준 비율 기반 생성,
 // 실제 취혈 위치와 정확히 일치하지 않는 시각적 참고용 근사치). 실측 데이터로 교체할 때는
 // 이 파일만 같은 shape(lib/acupoints.ts의 AcupointsFile)로 바꿔치기하면 된다.
+
+// AI 진단 결과의 point_code 표기 관례(LV=간경, REN=임맥)를 acupoints.json 코드 체계로 변환
+const CODE_PREFIX_ALIASES: Record<string, string> = {
+  LV: "LR",
+  REN: "CV",
+};
+
+// 한자 혈명 -> acupoints.json 한글명. 兪/俞처럼 뜻이 같은 이체자는 NFC로 통일되지 않으므로 각각 등록
+const HANJA_NAME_ALIASES: Record<string, string> = {
+  "三陰交": "삼음교",
+  "合谷": "합곡",
+  "足三里": "족삼리",
+  "氣海": "기해",
+  "關元": "관원",
+  "命門": "명문",
+  "太溪": "태계",
+  "曲池": "곡지",
+  "內關": "내관",
+  "太衝": "태충",
+  "中渚": "중저",
+  "翳風": "예풍",
+  "風池": "풍지",
+  "陽陵泉": "양릉천",
+  "委中": "위중",
+  "腎俞": "신유",
+  "腎兪": "신유",
+  "膀胱俞": "방광유",
+  "陰陵泉": "음릉천",
+  "氣海俞": "기해유",
+  "崑崙": "곤륜",
+  "孔最": "공최",
+  "百會": "백회",
+  "中脘": "중완",
+  "陽池": "양지",
+  "外關": "외관",
+  "地倉": "지창",
+  "頰車": "협거",
+  "人中": "인중",
+  "陰谷": "음곡",
+};
+
+// 한글 이표기(背兪穴의 유/수 혼용 등) -> acupoints.json 정식 한글명
+const HANGUL_NAME_ALIASES: Record<string, string> = {
+  "비수": "비유",
+  "위수": "위유",
+  "신수": "신유",
+  "격수": "격유",
+  "견외수": "견외유",
+};
+
+const SUFFIX_STRIP_RE = /[穴혈]$/;
+
+/**
+ * highlightedPoints 원문 하나를 acupoints.json의 code로 정규화한다.
+ * 순서: (a) code 완전일치 -> (b) 한글명 완전일치 -> (c) 별칭 테이블(한자/한글 이표기)
+ * -> (d) 접두어 별칭(LV/REN) -> (e) 접미사(穴/혈) 제거 후 재시도.
+ * (e)는 (a)~(d)가 모두 실패한 뒤에만 실행되어 "氣海俞"가 "氣海"로 오인되는 것을 막는다.
+ * 최종 실패 시 null을 반환하며, 호출부에서 console.warn으로 원문을 남긴다.
+ */
+function resolveAcupointCode(
+  rawInput: string,
+  codeSet: Set<string>,
+  nameToCode: Map<string, string>,
+): string | null {
+  const raw = rawInput.normalize("NFC").trim();
+
+  if (codeSet.has(raw)) return raw;
+  if (nameToCode.has(raw)) return nameToCode.get(raw)!;
+
+  const aliasName = HANJA_NAME_ALIASES[raw] ?? HANGUL_NAME_ALIASES[raw];
+  if (aliasName && nameToCode.has(aliasName)) return nameToCode.get(aliasName)!;
+
+  const prefixMatch = raw.match(/^([A-Za-z]+)(\d+)$/);
+  if (prefixMatch) {
+    const aliasPrefix = CODE_PREFIX_ALIASES[prefixMatch[1].toUpperCase()];
+    if (aliasPrefix) {
+      const aliasCode = `${aliasPrefix}${prefixMatch[2]}`;
+      if (codeSet.has(aliasCode)) return aliasCode;
+    }
+  }
+
+  if (SUFFIX_STRIP_RE.test(raw)) {
+    const stripped = raw.replace(SUFFIX_STRIP_RE, "");
+    if (stripped && stripped !== raw) {
+      return resolveAcupointCode(stripped, codeSet, nameToCode);
+    }
+  }
+
+  return null;
+}
 
 export function AcupointViewer({
   highlightedPoints = [],
@@ -89,8 +131,6 @@ export function AcupointViewer({
   className = "",
 }: AcupointViewerProps) {
   const [view, setView] = useState<View>("front");
-  const [region, setRegion] = useState<RegionKey | null>(null);
-  const [subSide, setSubSide] = useState<Side>("right");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [hovered, setHovered] = useState<string | null>(null);
   const [acupointsFile, setAcupointsFile] = useState<AcupointsFile | null>(null);
@@ -111,7 +151,36 @@ export function AcupointViewer({
   const viewBoxW = acupointsFile?.viewBox.width ?? VIEW_W;
   const viewBoxH = acupointsFile?.viewBox.height ?? VIEW_H;
 
-  const highlightedSet = useMemo(() => new Set(highlightedPoints), [highlightedPoints]);
+  const codeSet = useMemo(() => new Set(acupoints.map((p) => p.code)), [acupoints]);
+  const nameToCode = useMemo(() => {
+    // acupoints.json에는 같은 한글명을 쓰는 서로 다른 혈이 있다(예: 견정=SI9/GB21).
+    // 이런 이름은 임의로 하나를 고르지 않고 매핑에서 제외해 미해결(null)로 남긴다.
+    const map = new Map<string, string>();
+    const ambiguous = new Set<string>();
+    for (const p of acupoints) {
+      if (ambiguous.has(p.name)) continue;
+      if (map.has(p.name)) {
+        map.delete(p.name);
+        ambiguous.add(p.name);
+        continue;
+      }
+      map.set(p.name, p.code);
+    }
+    return map;
+  }, [acupoints]);
+
+  const highlightedSet = useMemo(() => {
+    const resolved = new Set<string>();
+    for (const raw of highlightedPoints) {
+      const code = resolveAcupointCode(raw, codeSet, nameToCode);
+      if (code) {
+        resolved.add(code);
+      } else {
+        console.warn(`[AcupointViewer] 혈위 코드 매칭 실패: "${raw}"`);
+      }
+    }
+    return resolved;
+  }, [highlightedPoints, codeSet, nameToCode]);
 
   useEffect(() => {
     if (!onSelectionChange) return;
@@ -131,31 +200,9 @@ export function AcupointViewer({
     });
   }
 
-  function handleRegionClick(key: RegionKey) {
-    if (region === key) {
-      setRegion(null);
-      return;
-    }
-    setRegion(key);
-    setSubSide("right");
-    const forced = REGION_FORCED_VIEW[key];
-    if (forced) setView(forced);
-  }
-
-  const sidedRegion = region && isSidedRegion(region) ? region : null;
-  const zoom = !region
-    ? { cx: VIEW_W / 2, cy: VIEW_H / 2, scale: 1 }
-    : isSidedRegion(region)
-      ? SIDED_ZOOM[region][subSide]
-      : REGION_ZOOM[region];
-  // translate는 %로 계산해 이미지의 실제 렌더링 픽셀 크기와 무관하게 동일한 확대/이동 효과를 낸다
-  const txPct = ((VIEW_W / 2 - zoom.scale * zoom.cx) / VIEW_W) * 100;
-  const tyPct = ((VIEW_H / 2 - zoom.scale * zoom.cy) / VIEW_H) * 100;
-  const transform = `translate(${txPct}%, ${tyPct}%) scale(${zoom.scale})`;
-
   const visiblePoints = acupoints.filter((p) => {
     if (p.view !== view) return false;
-    if (sidedRegion && p.region === sidedRegion) return p.side === subSide;
+    if (readOnly) return highlightedSet.has(p.code);
     return true;
   });
   const selectedPoints = acupoints.filter((p) => selected.has(p.code));
@@ -177,98 +224,50 @@ export function AcupointViewer({
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {(Object.keys(REGION_LABELS) as RegionKey[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => handleRegionClick(key)}
-            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-              region === key
-                ? "border-[#EF6600] text-[#EF6600] bg-[#EF6600]/10"
-                : "border-border text-subtext hover:text-text"
-            }`}
-          >
-            {REGION_LABELS[key]}
-          </button>
-        ))}
-        {region && (
-          <button
-            type="button"
-            onClick={() => setRegion(null)}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border border-border text-subtext hover:text-text"
-          >
-            <X className="w-3 h-3" /> 초기화
-          </button>
-        )}
-      </div>
-
-      {sidedRegion && (
-        <div className="flex gap-1 bg-fill border border-border rounded-md p-1 w-fit">
-          {(["right", "left"] as Side[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setSubSide(s)}
-              className={`px-3 py-1 text-xs rounded transition-colors ${
-                subSide === s ? "bg-[#EF6600] text-white" : "text-subtext hover:text-text"
-              }`}
-            >
-              {SIDE_LABELS[sidedRegion][s]}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div className="relative bg-bg border border-border rounded-lg overflow-hidden mx-auto w-full max-w-[460px] min-h-[500px]" style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}>
-        <div
-          className="absolute inset-0"
-          style={{ transform, transformOrigin: "0 0", transition: "transform 300ms ease-out" }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={VIEW_IMAGE_URL[view]}
-            alt={view === "front" ? "인체 앞면" : "인체 뒷면"}
-            draggable={false}
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none dark:[filter:invert(0.85)]"
-          />
-          {visiblePoints.map((p) => {
-            const isSelected = selected.has(p.code);
-            const isHighlighted = highlightedSet.has(p.code);
-            const isActive = isSelected || isHighlighted;
-            const showLabel = isActive || hovered === p.code;
-            const label = `${p.name}(${p.code})`;
-            return (
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={VIEW_IMAGE_URL[view]}
+          alt={view === "front" ? "인체 앞면" : "인체 뒷면"}
+          draggable={false}
+          className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none dark:[filter:invert(0.85)]"
+        />
+        {visiblePoints.map((p) => {
+          const isSelected = selected.has(p.code);
+          const isHighlighted = highlightedSet.has(p.code);
+          const isActive = isSelected || isHighlighted;
+          const showLabel = isActive || hovered === p.code;
+          const label = `${p.name}(${p.code})`;
+          return (
+            <div
+              key={p.code}
+              className="absolute"
+              style={{ left: `${(p.x / viewBoxW) * 100}%`, top: `${(p.y / viewBoxH) * 100}%` }}
+            >
               <div
-                key={p.code}
-                className="absolute"
-                style={{ left: `${(p.x / viewBoxW) * 100}%`, top: `${(p.y / viewBoxH) * 100}%` }}
+                className={`relative -translate-x-1/2 -translate-y-1/2 p-1.5 -m-1.5 ${readOnly ? "" : "cursor-pointer"}`}
+                onMouseEnter={() => setHovered(p.code)}
+                onMouseLeave={() => setHovered((h) => (h === p.code ? null : h))}
+                onClick={() => togglePoint(p)}
               >
-                <div
-                  className={`relative -translate-x-1/2 -translate-y-1/2 p-1.5 -m-1.5 ${readOnly ? "" : "cursor-pointer"}`}
-                  onMouseEnter={() => setHovered(p.code)}
-                  onMouseLeave={() => setHovered((h) => (h === p.code ? null : h))}
-                  onClick={() => togglePoint(p)}
-                >
-                  <span
-                    className={`block rounded-full border border-white ${isHighlighted ? "animate-pulse" : ""}`}
-                    style={{
-                      width: isActive ? 11 : 5,
-                      height: isActive ? 11 : 5,
-                      backgroundColor: isActive ? "#DC2626" : "var(--color-muted)",
-                      opacity: isActive ? 1 : 0.5,
-                    }}
-                  />
-                  {showLabel && (
-                    <span className="absolute left-1/2 bottom-full mb-1 -translate-x-1/2 whitespace-nowrap rounded bg-[#1f2937] px-1.5 py-0.5 text-[9px] text-white opacity-95">
-                      {label}
-                    </span>
-                  )}
-                </div>
+                <span
+                  className={`block rounded-full border border-white ${isHighlighted ? "animate-pulse" : ""}`}
+                  style={{
+                    width: isActive ? 11 : 5,
+                    height: isActive ? 11 : 5,
+                    backgroundColor: isActive ? "#DC2626" : "var(--color-muted)",
+                    opacity: isActive ? 1 : 0.5,
+                  }}
+                />
+                {showLabel && (
+                  <span className="absolute left-1/2 bottom-full mb-1 -translate-x-1/2 whitespace-nowrap rounded bg-[#1f2937] px-1.5 py-0.5 text-[9px] text-white opacity-95">
+                    {label}
+                  </span>
+                )}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
 
       {!readOnly && (
@@ -297,6 +296,6 @@ export function AcupointViewer({
 /** "합곡(LI4)" 형태의 침 처방 문자열 목록에서 혈위 코드만 추출 (진단 결과 자동 하이라이트 연동용) */
 export function parseAcupointCodes(entries: string[]): string[] {
   return entries
-    .map((entry) => entry.match(/\(([^)]+)\)/)?.[1]?.trim())
+    .map((entry) => entry.match(/\(([^)]+)\)/)?.[1]?.normalize("NFC").trim())
     .filter((code): code is string => !!code);
 }

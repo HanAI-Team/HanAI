@@ -32,7 +32,12 @@ from app.billing.schema import (
     PrescriptionCheckResponse,
     ViolationItem,
 )
-from app.billing.service import create_claim, generate_claim_edi, update_claim_resubmission
+from app.billing.service import (
+    create_claim,
+    generate_claim_edi,
+    resolve_active_special_code,
+    update_claim_resubmission,
+)
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import Claim, ClaimLineItem, DoctorWorkDays, FeeMaster, MedicalRecord, Patient
@@ -70,6 +75,7 @@ class ClaimCreateResponse(BaseModel):
     total_amount: int
     patient_copay: int
     claim_amount: int
+    needs_review: bool = False
 
 
 class BulkEdiRequest(BaseModel):
@@ -99,6 +105,7 @@ async def create_new_claim(
         total_amount=claim.total_amount,
         patient_copay=claim.patient_copay,
         claim_amount=claim.claim_amount,
+        needs_review=getattr(claim, "special_case_needs_review", False),
     )
 
 
@@ -296,18 +303,30 @@ async def check_prescription(
 async def calculate_copayment(
     body: BillingCalcRequest,
     current_doctor=Depends(get_current_doctor),
+    db: AsyncSession = Depends(get_db),
 ):
     """본인부담금 및 청구액 산정 (심사청구서 C2-00 금액 필드 30개).
 
     보험자종별구분에 따라 해당하는 본인부담금 항목만 값이 채워지고
     나머지 항목은 0으로 반환된다.
+
+    patient_id가 주어지면 활성 산정특례 등록을 조회해 body.special_code보다
+    우선 적용한다 (등록이 없으면 body.special_code 그대로 사용).
     """
+    needs_review = False
+    special_code = body.special_code
+    if body.patient_id is not None:
+        resolved = await resolve_active_special_code(db, body.patient_id)
+        if resolved.special_code is not None:
+            special_code = resolved.special_code
+            needs_review = resolved.needs_review
+
     inp = BillingInput(
         insurance_type=InsuranceType(body.insurance_type),
         visit_type=VisitType(body.visit_type),
         benefit_total=body.benefit_total,
         non_benefit_total=body.non_benefit_total,
-        special_code=body.special_code,
+        special_code=special_code,
         medical_aid_grade=MedicalAidGrade(body.medical_aid_grade) if body.medical_aid_grade else None,
         birth_date=body.birth_date,
         treatment_date=body.treatment_date,
@@ -318,7 +337,7 @@ async def calculate_copayment(
         graduated_fee_index=body.graduated_fee_index,
     )
     result = calculate_billing(inp)
-    return BillingCalcResponse(special_code=body.special_code, **result.__dict__)
+    return BillingCalcResponse(special_code=special_code, needs_review=needs_review, **result.__dict__)
 
 
 @router.get("/insurance-types")

@@ -35,3 +35,22 @@ class StaffingResponse(BaseModel):
     id: UUID
     work_date: date
     doctor_count: Decimal
+
+
+class DoctorWorkDaysCreate(BaseModel):
+    """MT008(의사별 진료일수) 산출용 청구월별 의사 근무일수 등록."""
+    doctor_id: UUID
+    claim_period_year: int
+    claim_period_month: int
+    work_days: int
+
+
+class DoctorWorkDaysResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    doctor_id: Optional[UUID] = None
+    claim_period_year: int
+    claim_period_month: int
+    doctor_birth_date: str
+    work_days: int

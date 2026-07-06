@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from typing import Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -72,8 +73,11 @@ class BillingCalcRequest(BaseModel):
     visit_type: Literal["외래", "입원"]
     benefit_total: int = Field(..., ge=0, description="요양급여비용 총액1 (급여 진료비, 원)")
     non_benefit_total: int = Field(0, ge=0, description="비급여(100분의100) 총액 (원)")
+    patient_id: Optional[UUID] = Field(
+        None, description="환자 ID. 있으면 활성 산정특례 등록을 조회해 special_code보다 우선 적용"
+    )
     special_code: Optional[str] = Field(
-        None, description="특정기호. 산정특례(V027 등), 차상위(C001/C002)"
+        None, description="특정기호. 산정특례(V027 등), 차상위(C001/C002). patient_id 조회 결과가 있으면 그 값으로 대체됨"
     )
     medical_aid_grade: Optional[Literal["1", "2"]] = Field(
         None, description="의료급여 종. 보험자종별=5일 때 필수"
@@ -193,6 +197,7 @@ class DoctorWorkDaysUpdate(BaseModel):
 
 class BillingCalcResponse(BaseModel):
     special_code: Optional[str] = None
+    needs_review: bool = False
     benefit_total_1: int
     benefit_total_2: int
     copayment: int
