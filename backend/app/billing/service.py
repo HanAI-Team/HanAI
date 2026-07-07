@@ -137,7 +137,6 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
 
     return SpecialCaseResolution(special_code=chosen.special_code, needs_review=needs_review)
 
-
 async def create_claim(
     db: AsyncSession,
     hospital_id: UUID,
@@ -271,6 +270,7 @@ async def create_claim(
         patient_copay=billing_result.copayment,
         claim_amount=billing_result.claim_amount,
         status="draft",
+        special_case_needs_review=special_case.needs_review,
     )
     db.add(claim)
 
@@ -280,7 +280,6 @@ async def create_claim(
 
     await db.commit()
     await db.refresh(claim)
-    claim.special_case_needs_review = special_case.needs_review  # DB 미저장, 응답 노출용 임시 속성
     return claim
 
 
