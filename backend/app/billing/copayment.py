@@ -43,14 +43,37 @@ def _is_under_15(birth_date: Optional[date], ref: date) -> bool:
     return age < 15
 
 
+def _is_65_or_older(birth_date: Optional[date], ref: date) -> bool:
+    if not birth_date:
+        return False
+    age = ref.year - birth_date.year
+    if (ref.month, ref.day) < (birth_date.month, birth_date.day):
+        age -= 1
+    return age >= 65
+
+
 def _special_rate(special_code: str) -> Decimal:
     """산정특례 코드별 본인부담률."""
-    # V193: 암, V027: 희귀난치, V221: 중증화상 등
-    # 암·희귀난치 5~10%, 나머지 V코드는 10% 기본
     RATES = {
+        # V코드 — 별표6 특정기호코드 기준
         "V193": Decimal("0.05"),  # 암
         "V027": Decimal("0.10"),  # 희귀난치성
         "V221": Decimal("0.05"),  # 중증화상
+        "V247": Decimal("0.05"),  # 중증화상 (중증도기준1+체표면적기준1)
+        "V248": Decimal("0.05"),  # 중증화상 (중증도기준2+체표면적기준2)
+        "V250": Decimal("0.05"),  # 중증화상 (별표3 4호 상병)
+        "V305": Decimal("0.05"),  # 중증화상 (2021개정 — 국소부위 3도, 외래)
+        "V306": Decimal("0.05"),  # 중증화상 (2021개정 — 인체 3년내 입원수술)
+        "V000": Decimal("0.00"),  # 결핵 (본인부담 면제)
+        "V010": Decimal("0.00"),  # 잠복결핵감염 (본인부담 면제)
+        "V800": Decimal("0.00"),  # 중증치매 (희귀난치성격 — 본인부담 면제)
+        "V810": Decimal("0.10"),  # 중증치매 (일반 — 연간 60일)
+        "V811": Decimal("0.10"),  # 중증치매 (가정간호)
+        "V900": Decimal("0.10"),  # 극희귀질환
+        "V901": Decimal("0.10"),  # 기타염색체이상질환
+        "V999": Decimal("0.10"),  # 상세불명 희귀질환
+        # F코드 — 별표6 특정기호코드 기준
+        "F006": Decimal("0.40"),  # 신체기능저하군
     }
     prefix = special_code[:4] if len(special_code) >= 4 else special_code
     return RATES.get(prefix, Decimal("0.10"))
@@ -67,7 +90,7 @@ class BillingInput:
     birth_date: Optional[date] = None
     treatment_date: Optional[date] = None           # 진료일 (15세 이하 판단 기준)
     work_injury: bool = False                       # 공상 여부
-    disability_medical_cost: int = 0               # 장애인의료비 (의료급여)
+    has_disability: bool = False                    # 장애인 등록 여부 (의료급여 2종 외래 15%→5% 경감)
     support_fund: int = 0                          # 지원금
     treatment_days: Decimal = field(default_factory=lambda: Decimal("0"))
     graduated_fee_index: Decimal = field(default_factory=lambda: Decimal("0"))
@@ -95,6 +118,7 @@ class BillingResult:
     special_exception_copay: int = 0        # 산정특례
     work_injury_copay: int = 0              # 공상
     under_15_inpatient_copay: int = 0       # 15세 이하 입원
+    senior_outpatient_copay: int = 0        # 65세 이상 노인외래 정액 (의원급)
     disability_medical_cost: int = 0        # 장애인의료비 (의료급여)
     support_fund: int = 0                   # 지원금
 
@@ -129,7 +153,6 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
     result.benefit_total_2 = total1 + non_benefit
     result.full_price_copay_total = non_benefit
     result.under_full_total = total1
-    result.disability_medical_cost = inp.disability_medical_cost
     result.support_fund = inp.support_fund
     result.treatment_days = inp.treatment_days
     result.graduated_index = inp.graduated_fee_index
@@ -153,6 +176,11 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
         if inp.visit_type == VisitType.OUTPATIENT:
             if inp.medical_aid_grade == MedicalAidGrade.GRADE_1:
                 copay = 1000  # 1종 외래: 1,000원 정액 (의원급)
+            elif inp.has_disability:
+                # 2종 장애인 외래: 5% 경감 (의료급여법 시행령 별표1)
+                copay = _ceil_won(Decimal(total1) * Decimal("0.05"))
+                normal_copay = _ceil_won(Decimal(total1) * Decimal("0.15"))
+                result.disability_medical_cost = normal_copay - copay
             else:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.15"))
             result.medical_aid_outpatient_copay = copay
@@ -179,8 +207,8 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.10"))
                 result.near_poverty_2_inpatient_copay = copay
 
-        elif special.startswith("V"):
-            # 산정특례
+        elif special.startswith("V") or special.startswith("F"):
+            # 산정특례 (V코드: 별표6 특정기호, F코드: 신체기능저하군 등)
             rate = _special_rate(special)
             copay = _ceil_won(Decimal(total1) * rate)
             result.special_exception_copay = copay
@@ -188,11 +216,16 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
         else:
             # 건강보험 일반
             if inp.visit_type == VisitType.OUTPATIENT:
-                normal_total = max(total1 - inp.chuna_total, 0)
-                normal_copay = _ceil_won(Decimal(normal_total) * Decimal("0.30"))
-                chuna_copay  = _ceil_won(Decimal(inp.chuna_total) * Decimal("0.50"))
-                copay = normal_copay + chuna_copay
-                result.health_outpatient_copay = copay
+                if _is_65_or_older(inp.birth_date, ref_date) and total1 <= 15000:
+                    # 65세 이상 노인외래 정액제 (의원급, 시행령 별표2): 15,000원 이하 → 1,500원
+                    copay = min(1500, total1)
+                    result.senior_outpatient_copay = copay
+                else:
+                    normal_total = max(total1 - inp.chuna_total, 0)
+                    normal_copay = _ceil_won(Decimal(normal_total) * Decimal("0.30"))
+                    chuna_copay  = _ceil_won(Decimal(inp.chuna_total) * Decimal("0.50"))
+                    copay = normal_copay + chuna_copay
+                    result.health_outpatient_copay = copay
             else:
                 if _is_under_15(inp.birth_date, ref_date):
                     # 15세 미만 입원: 5%

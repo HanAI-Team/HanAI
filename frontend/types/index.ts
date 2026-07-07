@@ -7,6 +7,9 @@ export interface Patient {
   birth_date?: string
   memo?: string
   created_at: string
+  insurance_type?: string
+  disability_grade?: string
+  medical_aid_grade?: string
 }
 
 export interface DiagnosisResult {
