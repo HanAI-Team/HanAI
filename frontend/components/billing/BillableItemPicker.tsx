@@ -6,14 +6,15 @@ import type { BillableItem, ClaimSummary, SelectedBillableItem } from "@/types/b
 
 interface BillableItemPickerProps {
   medicalRecordId: string;
+  visitType?: "outpatient" | "inpatient";
   onConfirmed?: (claim: ClaimSummary) => void;
 }
 
-const CATEGORY_ORDER = ["진찰료", "침술", "뜸", "부항", "전기/온열", "추나/도수", "검사", "한약", "비급여"];
+const CATEGORY_ORDER = ["진찰료", "침술", "뜸", "부항", "전기/온열", "추나", "검사", "한약", "비급여"];
 
 type SelectedEntry = { item: BillableItem; hyeolmyeong: string[]; isNonBenefit: boolean };
 
-export function BillableItemPicker({ medicalRecordId, onConfirmed }: BillableItemPickerProps) {
+export function BillableItemPicker({ medicalRecordId, visitType = "outpatient", onConfirmed }: BillableItemPickerProps) {
   const [catalog, setCatalog] = useState<BillableItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("진찰료");
   const [selected, setSelected] = useState<Map<string, SelectedEntry>>(new Map());
@@ -89,7 +90,7 @@ export function BillableItemPicker({ medicalRecordId, onConfirmed }: BillableIte
       const payload: SelectedBillableItem[] = Array.from(selected.entries()).map(
         ([itemId, { hyeolmyeong, isNonBenefit }]) => ({ itemId, hyeolmyeongNames: hyeolmyeong, isNonBenefit })
       );
-      const claim = await submitLineItems(medicalRecordId, payload);
+      const claim = await submitLineItems(medicalRecordId, payload, visitType);
       setConfirmedClaim(claim);
       onConfirmed?.(claim);
     } catch {

@@ -10,7 +10,7 @@ from app.billing.copayment import (
 from app.billing.pediatric_dosage import get_max_allowed_ratio
 from decimal import Decimal
 
-from app.billing.catalog import BILLABLE_CATALOG, get_catalog_item
+from app.billing.catalog import BILLABLE_CATALOG, CHUNA_CODES, get_catalog_item
 from app.billing.schema import (
     INSURANCE_TYPE_CHOICES,
     MEDICAL_AID_GRADE_CHOICES,
@@ -33,6 +33,7 @@ from app.billing.schema import (
     ViolationItem,
 )
 from app.billing.service import (
+    _INSURANCE_MAP,
     create_claim,
     generate_claim_edi,
     resolve_active_special_code,
@@ -652,6 +653,47 @@ async def add_line_items(
 
     claim.total_amount = (claim.total_amount or 0) + added_amount
     claim.non_benefit_total = (claim.non_benefit_total or 0) + added_non_benefit
+
+    # MedicalRecord를 이 claim에 연결
+    if record.claim_id != claim.id:
+        record.claim_id = claim.id
+
+    # 본인부담금 / 청구액 재계산
+    patient = await db.get(Patient, record.patient_id)
+    if patient:
+        ins = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
+        aid_grade = None
+        if patient.medical_aid_grade == "1":
+            aid_grade = MedicalAidGrade.GRADE_1
+        elif patient.medical_aid_grade == "2":
+            aid_grade = MedicalAidGrade.GRADE_2
+        special_case = await resolve_active_special_code(db, patient.id)
+
+        # 추나 본인부담률(50%) 분리 적용을 위해 추나 합계 계산
+        await db.flush()
+        chuna_rows = await db.execute(
+            select(ClaimLineItem.amount).where(
+                ClaimLineItem.claim_id == claim.id,
+                ClaimLineItem.is_non_benefit == False,
+                ClaimLineItem.code.in_(CHUNA_CODES),
+            )
+        )
+        chuna_total = sum(r.amount or 0 for r in chuna_rows)
+
+        billing_result = calculate_billing(BillingInput(
+            insurance_type=ins,
+            visit_type=VisitType(payload.visit_type),
+            benefit_total=claim.total_amount - claim.non_benefit_total,
+            medical_aid_grade=aid_grade,
+            has_disability=bool(patient.disability_grade),
+            birth_date=patient.birth_date,
+            special_code=special_case.special_code,
+            chuna_total=chuna_total,
+        ))
+        claim.patient_copay = billing_result.copayment
+        claim.claim_amount = billing_result.claim_amount
+        claim.disability_medical_aid = billing_result.disability_medical_cost
+
     await db.commit()
     await db.refresh(claim)
 

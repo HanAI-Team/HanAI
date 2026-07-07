@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
+from app.billing.catalog import CHUNA_CODES
 from app.billing.notice_rules import validate_notice_rules
 
 from app.billing.copayment import (
@@ -248,6 +249,7 @@ async def create_claim(
     procedures = r_procs.scalars().all()
     benefit_total = sum(p.amount or 0 for p in procedures if not p.is_non_benefit)
     non_benefit_total = sum(p.amount or 0 for p in procedures if p.is_non_benefit)
+    chuna_total = sum(p.amount or 0 for p in procedures if not p.is_non_benefit and p.fee_master_code in CHUNA_CODES)
     # ── 고시 기반 특정내역/청구 검증 (notice_rules.py) ──────────────────────────
     # ※ validate_notice_rules()의 실제 파라미터명은 _records, _claim_period_year,
     #   _claim_period_month (언더스코어 prefix = 함수 내부 미사용 파라미터).
@@ -284,6 +286,7 @@ async def create_claim(
         birth_date=patient.birth_date,
         medical_aid_grade=MedicalAidGrade(patient.medical_aid_grade) if patient.medical_aid_grade else None,
         has_disability=bool(patient.disability_grade),
+        chuna_total=chuna_total,
     ))
 
     # Claim 생성
