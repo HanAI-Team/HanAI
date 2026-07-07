@@ -101,6 +101,8 @@ export async function updatePatient(
     memo?: string;
     insurance_type?: string;
     rrn?: string;
+    disability_grade?: string | null;
+    medical_aid_grade?: string | null;
   },
 ) {
   const res = await fetch(`${BASE_URL}/api/patients/${id}`, {

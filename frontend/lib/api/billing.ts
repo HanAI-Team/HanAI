@@ -102,20 +102,7 @@ export async function getBillableCatalog(): Promise<BillableItem[]> {
   return apiCall("/api/billing/catalog");
 }
 
-export async function submitLineItems(
-  medicalRecordId: string,
-  items: SelectedBillableItem[]
-): Promise<ClaimSummary> {
-  const raw = await apiCall(`/api/billing/medical-records/${medicalRecordId}/line-items`, {
-    method: "POST",
-    body: JSON.stringify({
-      medical_record_id: medicalRecordId,
-      items: items.map((i) => ({
-        item_id: i.itemId,
-        hyeolmyeong_names: i.hyeolmyeongNames,
-      })),
-    }),
-  });
+function mapClaimSummary(raw: any): ClaimSummary {
   return {
     id: raw.id,
     patientId: raw.patient_id,
@@ -128,6 +115,36 @@ export async function submitLineItems(
       code: li.code,
       amount: li.amount,
       hyeolmyeongNames: li.hyeolmyeong_names ?? undefined,
+      isNonBenefit: li.is_non_benefit ?? false,
     })),
   };
+}
+
+export async function submitLineItems(
+  medicalRecordId: string,
+  items: SelectedBillableItem[]
+): Promise<ClaimSummary> {
+  const raw = await apiCall(`/api/billing/medical-records/${medicalRecordId}/line-items`, {
+    method: "POST",
+    body: JSON.stringify({
+      medical_record_id: medicalRecordId,
+      items: items.map((i) => ({
+        item_id: i.itemId,
+        hyeolmyeong_names: i.hyeolmyeongNames,
+        is_non_benefit: i.isNonBenefit ?? false,
+      })),
+    }),
+  });
+  return mapClaimSummary(raw);
+}
+
+export async function updateClaimSupportFund(
+  claimId: string,
+  supportFund: number,
+): Promise<ClaimSummary> {
+  const raw = await apiCall(`/api/billing/claims/${claimId}/support-fund`, {
+    method: "PATCH",
+    body: JSON.stringify({ support_fund: supportFund }),
+  });
+  return mapClaimSummary(raw);
 }
