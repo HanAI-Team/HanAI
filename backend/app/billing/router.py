@@ -626,6 +626,7 @@ async def add_line_items(
         await db.flush()
 
     added_amount = 0
+    added_non_benefit = 0
     for line in payload.items:
         catalog_item = get_catalog_item(line.item_id)
         amount = int(Decimal(str(catalog_item.unit_price)))
@@ -642,11 +643,15 @@ async def add_line_items(
             days=1,
             amount=amount,
             hyeolmyeong_names=line.hyeolmyeong_names or None,
+            is_non_benefit=line.is_non_benefit,
         )
         db.add(line_item)
         added_amount += amount
+        if line.is_non_benefit:
+            added_non_benefit += amount
 
     claim.total_amount = (claim.total_amount or 0) + added_amount
+    claim.non_benefit_total = (claim.non_benefit_total or 0) + added_non_benefit
     await db.commit()
     await db.refresh(claim)
 
@@ -668,6 +673,51 @@ async def add_line_items(
                 code=i.code,
                 amount=i.amount,
                 hyeolmyeong_names=i.hyeolmyeong_names,
+                is_non_benefit=i.is_non_benefit,
+            )
+            for i in all_items
+        ],
+    )
+
+
+class SupportFundBody(BaseModel):
+    support_fund: int
+
+
+@router.patch("/claims/{claim_id}/support-fund", response_model=ClaimSummaryResponse)
+async def update_support_fund(
+    claim_id: UUID,
+    body: SupportFundBody,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await db.get(Claim, claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구를 찾을 수 없습니다.")
+    claim.support_fund = body.support_fund
+    await db.commit()
+    await db.refresh(claim)
+
+    items_result = await db.execute(
+        select(ClaimLineItem).where(ClaimLineItem.claim_id == claim.id)
+    )
+    all_items = items_result.scalars().all()
+    year, month = claim.claim_period_year, claim.claim_period_month
+
+    return ClaimSummaryResponse(
+        id=str(claim.id),
+        patient_id=str(claim.patient_id),
+        billing_month=f"{year}-{month:02d}",
+        status=claim.status,
+        total_amount=claim.total_amount,
+        line_items=[
+            ClaimLineItemResponse(
+                id=str(i.id),
+                name=i.name,
+                code=i.code,
+                amount=i.amount,
+                hyeolmyeong_names=i.hyeolmyeong_names,
+                is_non_benefit=i.is_non_benefit,
             )
             for i in all_items
         ],

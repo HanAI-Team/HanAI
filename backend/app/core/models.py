@@ -248,6 +248,7 @@ class ClaimLineItem(Base):
     amount = Column(Integer, nullable=False, default=0)
 
     hyeolmyeong_names = Column(JSON, nullable=True)  # 침술일 때 경혈명 목록
+    is_non_benefit = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

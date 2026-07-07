@@ -241,6 +241,7 @@ class BillableItemResponse(BaseModel):
 class LineItemInput(BaseModel):
     item_id: str
     hyeolmyeong_names: list[str] = Field(default_factory=list)
+    is_non_benefit: bool = False
 
 
 class AddLineItemsRequest(BaseModel):
@@ -254,6 +255,7 @@ class ClaimLineItemResponse(BaseModel):
     code: str
     amount: int
     hyeolmyeong_names: list[str] | None = None
+    is_non_benefit: bool = False
 
     class Config:
         from_attributes = True

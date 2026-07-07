@@ -14,6 +14,7 @@ export interface ClaimLineItem {
   code: string;
   amount: number;
   hyeolmyeongNames?: string[];
+  isNonBenefit?: boolean;
 }
 
 export interface ClaimSummary {
@@ -28,4 +29,5 @@ export interface ClaimSummary {
 export interface SelectedBillableItem {
   itemId: string;
   hyeolmyeongNames: string[];
+  isNonBenefit?: boolean;
 }

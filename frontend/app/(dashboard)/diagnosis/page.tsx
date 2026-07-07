@@ -150,7 +150,7 @@ export default function DiagnosisPage() {
   const [showSavedModal, setShowSavedModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editPatient, setEditPatient] = useState<Patient | null>(null);
-  const [editForm, setEditForm] = useState({ phone: "", memo: "", rrn: "" });
+  const [editForm, setEditForm] = useState({ phone: "", memo: "", rrn: "", insurance_type: "", disability_grade: "", medical_aid_grade: "" });
   const [editLoading, setEditLoading] = useState(false);
   const [feedbackAvailable, setFeedbackAvailable] = useState(false);
   const [feedbackHelpful, setFeedbackHelpful] = useState<boolean | null>(null);
@@ -720,7 +720,11 @@ ${blocks.join("\n\n")}
     setEditLoading(true);
     try {
       const { rrn, ...rest } = editForm;
-      await updatePatient(editPatient.id, rrn.trim() ? { ...rest, rrn: rrn.trim() } : rest);
+      const payload: Parameters<typeof updatePatient>[1] = { ...rest };
+      if (rrn.trim()) payload.rrn = rrn.trim();
+      if (!rest.disability_grade) payload.disability_grade = null;
+      if (!rest.medical_aid_grade) payload.medical_aid_grade = null;
+      await updatePatient(editPatient.id, payload);
       setPatients((prev) =>
         prev.map((p) => (p.id === editPatient.id ? { ...p, ...rest } : p)),
       );
@@ -1279,6 +1283,9 @@ ${historyLine}
                       phone: patient.phone || "",
                       memo: patient.memo || "",
                       rrn: "",
+                      insurance_type: patient.insurance_type || "",
+                      disability_grade: patient.disability_grade || "",
+                      medical_aid_grade: patient.medical_aid_grade || "",
                     });
                   }}
                   className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-border transition-all flex-shrink-0"
@@ -2754,6 +2761,58 @@ ${historyLine}
               </button>
             </div>
             <div className="p-5 flex flex-col gap-3">
+              <div>
+                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
+                  보험 종별
+                </label>
+                <select
+                  value={editForm.insurance_type}
+                  onChange={(e) => setEditForm((f) => ({ ...f, insurance_type: e.target.value, medical_aid_grade: "", disability_grade: "" }))}
+                  className="w-full border border-border-strong rounded-md px-3 py-2.5 text-sm outline-none focus:border-[#EF6600] bg-card"
+                >
+                  <option value="">선택 안 함</option>
+                  <option value="health">건강보험</option>
+                  <option value="medical_aid">의료급여</option>
+                  <option value="veterans">보훈</option>
+                  <option value="self">자비</option>
+                </select>
+              </div>
+              {editForm.insurance_type === "medical_aid" && (
+                <div>
+                  <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
+                    의료급여 종
+                  </label>
+                  <select
+                    value={editForm.medical_aid_grade}
+                    onChange={(e) => setEditForm((f) => ({ ...f, medical_aid_grade: e.target.value }))}
+                    className="w-full border border-border-strong rounded-md px-3 py-2.5 text-sm outline-none focus:border-[#EF6600] bg-card"
+                  >
+                    <option value="">선택 안 함</option>
+                    <option value="1">1종</option>
+                    <option value="2">2종</option>
+                  </select>
+                </div>
+              )}
+              {editForm.insurance_type === "medical_aid" && editForm.medical_aid_grade === "2" && (
+                <div>
+                  <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
+                    장애 등급 (의료급여 2종 경감)
+                  </label>
+                  <select
+                    value={editForm.disability_grade}
+                    onChange={(e) => setEditForm((f) => ({ ...f, disability_grade: e.target.value }))}
+                    className="w-full border border-border-strong rounded-md px-3 py-2.5 text-sm outline-none focus:border-[#EF6600] bg-card"
+                  >
+                    <option value="">해당 없음</option>
+                    <option value="1">1급</option>
+                    <option value="2">2급</option>
+                    <option value="3">3급</option>
+                    <option value="4">4급</option>
+                    <option value="5">5급</option>
+                    <option value="6">6급</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
                   전화번호
