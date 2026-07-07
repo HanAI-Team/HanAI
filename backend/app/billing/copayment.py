@@ -53,12 +53,39 @@ def _is_65_or_older(birth_date: Optional[date], ref: date) -> bool:
 
 
 def _special_rate(special_code: str) -> Decimal:
-    """산정특례 코드별 본인부담률."""
+    """산정특례 코드별 본인부담률.
+
+    2026-07-07 재검증 (law.go.kr 별표4/별표4의2 원문 + HIRA 별표6 종합 코드표
+    직접 대조 완료):
+      - V221: 5% → 10%로 정정. "중증화상" 코드가 아니라 별표4(희귀질환자
+        산정특례 대상) 소속 "레쉬-니한증후군(E79.1)" 코드였음. 중증화상 코드는
+        아래 V247/V248/V250/V305/V306 5개뿐 (별표3·별표6 Ⅲ장 원문 확인).
+      - V800: 0% → 10%로 정정. 별표4의2 구분6(조기발병 알츠하이머 등)에는
+        별도 면제 조항이 없고, 제5조 일반원칙(10%)이 그대로 적용됨.
+        V810과 마찬가지로 10%이며, 차이는 적용기간(V800=등록일로부터 5년
+        일수제한 없음 / V810=연 60일, 요건 충족 시 60일 추가)뿐.
+      - V027: 삭제. "미등록 암환자" 코드였으나 HIRA 고시 제2020-191호
+        (2020-09-01 시행)로 특정기호 코드 자체가 공식 폐지됨. 별표6
+        종합 코드표(Ⅰ~Ⅷ장) 전체에도 더 이상 존재하지 않음이 확인됨.
+        신규로 이 코드가 들어올 일은 없어야 하며, 혹시 들어오면 fallback
+        (10%)이 적용된다 — 우연히 희귀난치성 요율과 같아 안전하지만,
+        발생 시 반드시 사람이 확인해야 함 (개발 단계 DB 조회 결과 기존
+        등록 데이터 없음, 2026-07-07 확인).
+      - V191/V268/V275(뇌혈관)/V192(심장)/V273(중증외상): law.go.kr
+        별표3 원문으로 이미 확정(5%)돼 있었으나 이 파일(RATES)에는 실제
+        반영이 안 돼 있던 것을 뒤늦게 발견해 추가함. service.py의
+        `_SPECIAL_CASE_COPAY_RATE`에는 V191/V268/V275/V192는 있었지만
+        V273은 거기도 빠져 있어 같이 추가함 (2026-07-07).
+    """
     RATES = {
-        # V코드 — 별표6 특정기호코드 기준
+        # V코드 — law.go.kr 별표3/별표4/별표4의2 + HIRA 별표6 원문 대조 완료
         "V193": Decimal("0.05"),  # 암
-        "V027": Decimal("0.10"),  # 희귀난치성
-        "V221": Decimal("0.05"),  # 중증화상
+        "V191": Decimal("0.05"),  # 뇌혈관 (수술O) — 최대 30일
+        "V268": Decimal("0.05"),  # 뇌혈관 (중증뇌출혈, 수술없이 급성기 입원) — 최대 30일
+        "V275": Decimal("0.05"),  # 뇌경색증 (NIHSS≥5, 수술없음) — 최대 30일
+        "V192": Decimal("0.05"),  # 심장 (수술/약제투여) — 최대 30일(예외 60일)
+        "V273": Decimal("0.05"),  # 중증외상 (ISS≥15, 권역외상센터 입원) — 최대 30일
+        "V221": Decimal("0.10"),  # 레쉬-니한증후군 (희귀질환, 별표4)
         "V247": Decimal("0.05"),  # 중증화상 (중증도기준1+체표면적기준1)
         "V248": Decimal("0.05"),  # 중증화상 (중증도기준2+체표면적기준2)
         "V250": Decimal("0.05"),  # 중증화상 (별표3 4호 상병)
@@ -66,13 +93,13 @@ def _special_rate(special_code: str) -> Decimal:
         "V306": Decimal("0.05"),  # 중증화상 (2021개정 — 인체 3년내 입원수술)
         "V000": Decimal("0.00"),  # 결핵 (본인부담 면제)
         "V010": Decimal("0.00"),  # 잠복결핵감염 (본인부담 면제)
-        "V800": Decimal("0.00"),  # 중증치매 (희귀난치성격 — 본인부담 면제)
-        "V810": Decimal("0.10"),  # 중증치매 (일반 — 연간 60일)
-        "V811": Decimal("0.10"),  # 중증치매 (가정간호)
+        "V800": Decimal("0.10"),  # 중증치매 (별표4의2 구분6 — 5년, 일수제한 없음)
+        "V810": Decimal("0.10"),  # 중증치매 (별표4의2 구분7 — 연간 60일)
+        "V811": Decimal("0.10"),  # 중증치매 (V810의 가정간호 버전)
         "V900": Decimal("0.10"),  # 극희귀질환
         "V901": Decimal("0.10"),  # 기타염색체이상질환
         "V999": Decimal("0.10"),  # 상세불명 희귀질환
-        # F코드 — 별표6 특정기호코드 기준
+        # F코드 — HIRA 별표6 Ⅷ장 원문 확인
         "F006": Decimal("0.40"),  # 신체기능저하군
     }
     prefix = special_code[:4] if len(special_code) >= 4 else special_code
@@ -81,7 +108,7 @@ def _special_rate(special_code: str) -> Decimal:
 
 @dataclass
 class BillingInput:
-    insurance_type: InsuranceType 
+    insurance_type: InsuranceType
     visit_type: VisitType
     benefit_total: int                              # 요양급여비용 총액1 (원)
     non_benefit_total: int = 0                      # 비급여(100분의100) 총액
@@ -94,7 +121,8 @@ class BillingInput:
     support_fund: int = 0                          # 지원금
     treatment_days: Decimal = field(default_factory=lambda: Decimal("0"))
     graduated_fee_index: Decimal = field(default_factory=lambda: Decimal("0"))
-    chuna_total : int = 0
+    chuna_total: int = 0
+
 
 @dataclass
 class BillingResult:
@@ -208,7 +236,7 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                 result.near_poverty_2_inpatient_copay = copay
 
         elif special.startswith("V") or special.startswith("F"):
-            # 산정특례 (V코드: 별표6 특정기호, F코드: 신체기능저하군 등)
+            # 산정특례 (V코드: 별표3/4/4의2 특정기호, F코드: 신체기능저하군 등)
             rate = _special_rate(special)
             copay = _ceil_won(Decimal(total1) * rate)
             result.special_exception_copay = copay
@@ -223,7 +251,7 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                 else:
                     normal_total = max(total1 - inp.chuna_total, 0)
                     normal_copay = _ceil_won(Decimal(normal_total) * Decimal("0.30"))
-                    chuna_copay  = _ceil_won(Decimal(inp.chuna_total) * Decimal("0.50"))
+                    chuna_copay = _ceil_won(Decimal(inp.chuna_total) * Decimal("0.50"))
                     copay = normal_copay + chuna_copay
                     result.health_outpatient_copay = copay
             else:

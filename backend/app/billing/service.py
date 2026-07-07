@@ -55,22 +55,39 @@ _INSURANCE_MAP = {
 }
 
 # 특정기호별 본인부담률 (산정특례 우선순위 산정용).
-# (rate, needs_review) — needs_review=True는 별표6_특정기호코드.csv를 확보하지
-# 못해 정확한 값을 확인 못한 항목. rate에는 일반 본인부담률(20%)보다는 낮지만
-# 정확하지 않은 임시값(19%)을 넣어, 확정된 값들보다는 항상 후순위로 밀리게 한다.
+# (rate, needs_review) — needs_review=True는 값을 확인 못한 항목.
+# rate에는 일반 본인부담률(20%)보다는 낮지만 정확하지 않은 임시값(19%)을
+# 넣어, 확정된 값들보다는 항상 후순위로 밀리게 한다.
+#
+# 2026-07-07 재검증 (law.go.kr 별표4/별표4의2 원문 + HIRA 별표6 종합
+# 코드표 직접 대조 완료, copayment.py._special_rate와 동일하게 반영):
+#   - V221: 5% → 10%로 정정. "중증화상"이 아니라 별표4(희귀질환자
+#     산정특례 대상) 소속 "레쉬-니한증후군(E79.1)" 코드였음. 지난 세션에서
+#     "copayment.py(5%) vs 여기(19%, needs_review) 불일치"로 지적됐던 건
+#     한 차례 5%로 통일됐었으나, 그 5%라는 값 자체가 틀렸던 것으로 확인됨.
+#   - V800: 0% → 10%로 정정. 별표4의2 구분6에 별도 면제 조항 없음, 제5조
+#     일반원칙(10%) 적용. V810과 동일 요율이며 차이는 적용기간뿐.
+#   - V027: 삭제. "미등록 암환자" 코드였으나 HIRA 고시 제2020-191호
+#     (2020-09-01 시행)로 공식 폐지됨. 별표6 Ⅰ~Ⅷ장 전체에도 더 이상
+#     존재하지 않음. 개발 단계 DB 조회 결과 기존 등록 데이터 없음
+#     (2026-07-07 확인). 혹시 이 코드로 등록된 데이터가 생기면
+#     _UNKNOWN_SPECIAL_CODE_RATE(19%, needs_review=True)로 자동
+#     처리되어 반드시 사람이 확인하게 된다 — 의도한 동작.
+#   - V273(중증외상): law.go.kr 별표3 원문으로 이미 확정(5%)돼 있었으나
+#     이 테이블에 실제 반영이 안 돼 있던 것을 뒤늦게 발견해 추가함
+#     (copayment.py._special_rate에도 동일하게 누락돼 있어 같이 추가).
 _SPECIAL_CASE_COPAY_RATE: dict[str, tuple[Decimal, bool]] = {
     "V193": (Decimal("0.05"), False),  # 암
     "V000": (Decimal("0.00"), False),  # 결핵
     "V010": (Decimal("0.00"), False),  # 잠복결핵
-    "V027": (Decimal("0.10"), False),  # 희귀난치성
-    "V221": (Decimal("0.05"), False),  # 중증화상 — 별표6 확보, 5% 확정
+    "V221": (Decimal("0.10"), False),  # 레쉬-니한증후군 (희귀질환, 별표4)
     "V247": (Decimal("0.05"), False),  # 중증화상 (중증도기준1+체표면적기준1)
     "V248": (Decimal("0.05"), False),  # 중증화상 (중증도기준2+체표면적기준2)
     "V250": (Decimal("0.05"), False),  # 중증화상 (별표3 4호 상병)
     "V305": (Decimal("0.05"), False),  # 중증화상 (2021개정 — 외래)
     "V306": (Decimal("0.05"), False),  # 중증화상 (2021개정 — 수술)
-    "V800": (Decimal("0.00"), False),  # 중증치매 (희귀난치성격 — 면제)
-    "V810": (Decimal("0.10"), False),  # 중증치매 (일반 — 연간 60일)
+    "V800": (Decimal("0.10"), False),  # 중증치매 (별표4의2 구분6 — 일수제한 없음)
+    "V810": (Decimal("0.10"), False),  # 중증치매 (별표4의2 구분7 — 연간 60일)
     "V811": (Decimal("0.10"), False),  # 중증치매 (가정간호)
     "V900": (Decimal("0.10"), False),  # 극희귀질환
     "V901": (Decimal("0.10"), False),  # 기타염색체이상질환
@@ -79,6 +96,7 @@ _SPECIAL_CASE_COPAY_RATE: dict[str, tuple[Decimal, bool]] = {
     "V268": (Decimal("0.05"), False),  # 뇌혈관 (중증뇌출혈, 급성기) — 입원 전제
     "V275": (Decimal("0.05"), False),  # 뇌경색 — 입원 전제
     "V192": (Decimal("0.05"), False),  # 심장 — 수술/약제투여 전제
+    "V273": (Decimal("0.05"), False),  # 중증외상 (ISS≥15, 권역외상센터 입원) — 입원 전제, 한의원 적용 희귀
     "F006": (Decimal("0.40"), False),  # 신체기능저하군 — 확정 40%.
                                         # 예외: 암환자 등 중증환자 동시해당 시 별도 규정이
                                         # 우선하므로 그 경우는 _has_f006_concurrent_exception()에서
@@ -548,7 +566,7 @@ async def generate_claim_edi(
                 content=mt008_content,
             )))
 
-        # MT002: 산정특례 특정기호 (명세서 단위 — 별표6 ③항 기준)
+        # MT002: 산정특례 특정기호 (명세서 단위 — HIRA 별표6 Ⅰ~Ⅳ장 기준)
         # 근거: 청구방법 작성요령 별첨2 ⅱ.1.나.(7) — 의료구분='8', 발생단위구분='1', 특정내역구분='MT002'
         if special_case.special_code and special_case.special_code.startswith("V"):
             special_records.append((serial, SpecialRecord(
