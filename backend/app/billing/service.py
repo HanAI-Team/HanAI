@@ -359,6 +359,7 @@ async def generate_claim_edi(
     db: AsyncSession,
     hospital_id: UUID,
     claim_id: UUID,
+    test_mode: bool = False,
 ) -> bytes:
     # 1. 데이터 조회
     result = await db.execute(select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id))
@@ -408,7 +409,7 @@ async def generate_claim_edi(
         treatment_ym=f"{claim.claim_period_year}{claim.claim_period_month:02d}",
         claim_date=datetime.now().strftime("%Y%m%d"),
         claimer=doctor.name if doctor else "",
-        writer=doctor.name if doctor else "",
+        writer="상시점검" if test_mode else (doctor.name if doctor else ""),
         writer_rrn="0000000000000",
         claim_count=len(medical_records),
         benefit_total_1=claim.total_amount,
