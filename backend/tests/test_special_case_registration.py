@@ -199,6 +199,39 @@ async def test_V221_별표6_확보로_5퍼센트_확정됨(db):
     assert result.needs_review is False
 
 
+async def test_V810_사전승인번호_없으면_needs_review(db):
+    """V810(중증치매 일반)은 공단 사전승인번호 없이 등록되면 needs_review=True."""
+    hospital = await _make_hospital(db)
+    patient = await _make_patient(db, hospital)
+    db.add(SpecialCaseRegistration(
+        patient_id=patient.id, special_code="V810", category="중증치매",
+        registered_at=date(2026, 1, 1),
+        prior_approval_number=None,
+    ))
+    await db.commit()
+
+    result = await resolve_active_special_code(db, patient.id)
+    assert result.special_code == "V810"
+    assert result.needs_review is True
+
+
+async def test_V810_사전승인번호_있으면_정상(db):
+    """V810(중증치매 일반)에 사전승인번호가 있으면 needs_review=False."""
+    hospital = await _make_hospital(db)
+    patient = await _make_patient(db, hospital)
+    db.add(SpecialCaseRegistration(
+        patient_id=patient.id, special_code="V810", category="중증치매",
+        registered_at=date(2026, 1, 1),
+        prior_approval_number="1-26-00000001",
+    ))
+    await db.commit()
+
+    result = await resolve_active_special_code(db, patient.id)
+    assert result.special_code == "V810"
+    assert result.needs_review is False
+    assert result.prior_approval_number == "1-26-00000001"
+
+
 async def test_create_claim_활성_산정특례_있으면_낮은본인부담률_적용(db, approved_doctor, kcd_codes):
     """create_claim()이 resolve_active_special_code()를 실제로 반영하는지 확인 (기존 공백 메꿈)."""
     doctor, _ = approved_doctor

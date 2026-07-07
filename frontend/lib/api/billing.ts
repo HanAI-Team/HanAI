@@ -54,27 +54,28 @@ export async function getClaims(params?: { month?: string; status?: string }): P
   return res.json();
 }
 
-export async function downloadEdi(claimId: string): Promise<void> {
+export async function downloadEdi(claimId: string, testMode = false): Promise<void> {
   const token = localStorage.getItem("token");
-  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/edi`, {
+  const endpoint = `${BASE_URL}/api/billing/claims/${claimId}/edi${testMode ? "?test=true" : ""}`;
+  const res = await fetch(endpoint, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error("EDI 생성 실패");
 
   const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+  const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = `claim_${claimId}.edi`;
+  a.href = objectUrl;
+  a.download = testMode ? `claim_${claimId}_TEST.edi` : `claim_${claimId}.edi`;
   a.click();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(objectUrl);
 }
 
-export async function bulkDownloadEdi(ids: string[]): Promise<void> {
+export async function bulkDownloadEdi(ids: string[], testMode = false): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/billing/claims/bulk-edi`, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify({ ids, test_mode: testMode }),
   });
   if (!res.ok) throw new Error("일괄 EDI 생성 실패");
 
@@ -82,7 +83,7 @@ export async function bulkDownloadEdi(ids: string[]): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "claims_edi.zip";
+  a.download = testMode ? "claims_edi_TEST.zip" : "claims_edi.zip";
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -102,20 +103,7 @@ export async function getBillableCatalog(): Promise<BillableItem[]> {
   return apiCall("/api/billing/catalog");
 }
 
-export async function submitLineItems(
-  medicalRecordId: string,
-  items: SelectedBillableItem[]
-): Promise<ClaimSummary> {
-  const raw = await apiCall(`/api/billing/medical-records/${medicalRecordId}/line-items`, {
-    method: "POST",
-    body: JSON.stringify({
-      medical_record_id: medicalRecordId,
-      items: items.map((i) => ({
-        item_id: i.itemId,
-        hyeolmyeong_names: i.hyeolmyeongNames,
-      })),
-    }),
-  });
+function mapClaimSummary(raw: any): ClaimSummary {
   return {
     id: raw.id,
     patientId: raw.patient_id,
@@ -128,6 +116,36 @@ export async function submitLineItems(
       code: li.code,
       amount: li.amount,
       hyeolmyeongNames: li.hyeolmyeong_names ?? undefined,
+      isNonBenefit: li.is_non_benefit ?? false,
     })),
   };
+}
+
+export async function submitLineItems(
+  medicalRecordId: string,
+  items: SelectedBillableItem[]
+): Promise<ClaimSummary> {
+  const raw = await apiCall(`/api/billing/medical-records/${medicalRecordId}/line-items`, {
+    method: "POST",
+    body: JSON.stringify({
+      medical_record_id: medicalRecordId,
+      items: items.map((i) => ({
+        item_id: i.itemId,
+        hyeolmyeong_names: i.hyeolmyeongNames,
+        is_non_benefit: i.isNonBenefit ?? false,
+      })),
+    }),
+  });
+  return mapClaimSummary(raw);
+}
+
+export async function updateClaimSupportFund(
+  claimId: string,
+  supportFund: number,
+): Promise<ClaimSummary> {
+  const raw = await apiCall(`/api/billing/claims/${claimId}/support-fund`, {
+    method: "PATCH",
+    body: JSON.stringify({ support_fund: supportFund }),
+  });
+  return mapClaimSummary(raw);
 }

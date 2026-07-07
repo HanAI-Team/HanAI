@@ -139,7 +139,9 @@ class Patient(Base):
     phone = Column(String)
     memo = Column(Text)
     insurance_type = Column(String, default="health")
-    
+    medical_aid_grade = Column(String(1), nullable=True)   # 의료급여 1종="1", 2종="2", 나머지 None
+    disability_grade = Column(String(1), nullable=True)    # 장애 등급 "1"~"6", None이면 비해당
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     rrn = Column(EncryptedString(500), nullable=True)
     confirmation_no = Column(String(13), nullable=True)
@@ -166,6 +168,11 @@ class SpecialCaseRegistration(Base):
     # MT014: 건보공단 발급 산정특례 등록번호 (예: "01-24-00012345").
     # 값이 있으면 EDI C2-08에 MT014 레코드를 추가.
     registration_number = Column(String(20), nullable=True)
+
+    # V810(중증치매 일반) 전용 사전승인번호. 형태: "구분(1자리)-차수별연도(2자리)-일련번호"
+    # V810 청구 시 registration_number 대신 이 값을 MT014에 기재.
+    # None이면 공단 사전승인 미완료 상태로 간주해 needs_review=True 강제.
+    prior_approval_number = Column(String(30), nullable=True)
 
     registered_at = Column(Date, nullable=False)
     expires_at = Column(Date, nullable=True)  # NULL 허용: 결핵 등 이벤트(완치/사망/진단변경) 기반 종료는 날짜로 못 정함
@@ -194,8 +201,12 @@ class Claim(Base):
     total_amount = Column(Integer, nullable=False, default=0)
     patient_copay = Column(Integer, nullable=False, default=0)
     claim_amount = Column(Integer, nullable=False, default=0)
+    non_benefit_total = Column(Integer, nullable=False, default=0)         # 비급여 총액 (C2-11 benefit_total_2 산출용)
+    disability_medical_aid = Column(Integer, nullable=False, default=0)  # C2-11 장애인의료비
+    support_fund = Column(Integer, nullable=False, default=0)             # C2-11 지원금
     differential_index = Column(Numeric(5, 2), default=1.0)
     status = Column(String, nullable=False, default="draft")
+    special_case_needs_review = Column(Boolean, nullable=False, default=False, server_default="false")
     submitted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -238,6 +249,7 @@ class ClaimLineItem(Base):
     amount = Column(Integer, nullable=False, default=0)
 
     hyeolmyeong_names = Column(JSON, nullable=True)  # 침술일 때 경혈명 목록
+    is_non_benefit = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -337,6 +349,7 @@ class MedicalRecordProcedure(Base):
     procedure_type = Column(String, nullable=False)
     details = Column(JSON, nullable=True)
     amount = Column(Integer, default=0)
+    is_non_benefit = Column(Boolean, nullable=False, default=False)  # 비급여이면 non_benefit_total에 합산
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # EDI 명세서진료내역 필수 필드

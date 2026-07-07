@@ -28,6 +28,8 @@ class PatientUpdate(BaseModel):
     memo: Optional[str] = None
     insurance_type: Optional[str] = None
     rrn: Optional[str] = None
+    disability_grade: Optional[str] = None
+    medical_aid_grade: Optional[str] = None
 
 
 class PatientResponse(BaseModel):
@@ -40,6 +42,9 @@ class PatientResponse(BaseModel):
     phone: Optional[str] = None
     memo: Optional[str] = None
     created_at: datetime
+    insurance_type: Optional[str] = None
+    disability_grade: Optional[str] = None
+    medical_aid_grade: Optional[str] = None
 
 
 class PatientListResponse(BaseModel):

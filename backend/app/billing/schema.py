@@ -85,7 +85,7 @@ class BillingCalcRequest(BaseModel):
     birth_date: Optional[date] = Field(None, description="환자 생년월일 (15세 이하 입원 판단용)")
     treatment_date: Optional[date] = Field(None, description="진료일 (미입력 시 오늘)")
     work_injury: bool = Field(False, description="공상(산재) 여부")
-    disability_medical_cost: int = Field(0, ge=0, description="장애인의료비 (원, 의료급여)")
+    has_disability: bool = Field(False, description="장애인 등록 여부 (의료급여 2종 외래 15%→5% 경감)")
     support_fund: int = Field(0, ge=0, description="지원금 (원)")
     treatment_days: Decimal = Field(Decimal("0"), description="진료(조제)일수")
     graduated_fee_index: Decimal = Field(
@@ -241,6 +241,7 @@ class BillableItemResponse(BaseModel):
 class LineItemInput(BaseModel):
     item_id: str
     hyeolmyeong_names: list[str] = Field(default_factory=list)
+    is_non_benefit: bool = False
 
 
 class AddLineItemsRequest(BaseModel):
@@ -254,6 +255,7 @@ class ClaimLineItemResponse(BaseModel):
     code: str
     amount: int
     hyeolmyeong_names: list[str] | None = None
+    is_non_benefit: bool = False
 
     class Config:
         from_attributes = True

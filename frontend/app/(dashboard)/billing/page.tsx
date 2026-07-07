@@ -30,6 +30,7 @@ export default function BillingPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
   const [resubmitTarget, setResubmitTarget] = useState<ClaimListItem | null>(null);
+  const [testMode, setTestMode] = useState(false);
 
   function reload() {
     setLoading(true);
@@ -67,7 +68,7 @@ export default function BillingPage() {
   async function handleDownload(id: string) {
     setDownloading(id);
     try {
-      await downloadEdi(id);
+      await downloadEdi(id, testMode);
     } catch {
       alert("EDI 다운로드에 실패했습니다.");
     } finally {
@@ -79,7 +80,7 @@ export default function BillingPage() {
     if (selected.size === 0) return;
     setDownloading("bulk");
     try {
-      await bulkDownloadEdi([...selected]);
+      await bulkDownloadEdi([...selected], testMode);
     } catch {
       alert("일괄 EDI 다운로드에 실패했습니다.");
     } finally {
@@ -181,10 +182,32 @@ export default function BillingPage() {
   return (
     <div className="p-6 md:p-8 max-w-[1100px] mx-auto">
       {/* 헤더 */}
-      <div className="mb-6">
-        <h1 className="font-serif text-2xl text-text">보험 청구</h1>
-        <p className="text-xs text-subtext mt-1">EDI 파일 생성 및 다운로드</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-2xl text-text">보험 청구</h1>
+          <p className="text-xs text-subtext mt-1">EDI 파일 생성 및 다운로드</p>
+        </div>
+        <button
+          onClick={() => setTestMode((v) => !v)}
+          className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
+            testMode
+              ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100"
+              : "border-border text-subtext hover:text-text"
+          }`}
+        >
+          {testMode ? "테스트 모드 ON" : "테스트 모드"}
+        </button>
       </div>
+
+      {/* 테스트 모드 배너 */}
+      {testMode && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3">
+          <span className="text-sm font-semibold text-amber-700">⚠ 테스트 모드</span>
+          <span className="text-xs text-amber-700">
+            다운로드되는 EDI 파일의 작성자란에 <strong>「상시점검」</strong>이 기재됩니다. 심평원 인증에 영향 없이 레이아웃 오류만 검증합니다.
+          </span>
+        </div>
+      )}
 
       {/* 요약 카드 */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">

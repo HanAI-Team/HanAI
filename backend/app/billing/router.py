@@ -80,6 +80,7 @@ class ClaimCreateResponse(BaseModel):
 
 class BulkEdiRequest(BaseModel):
     ids: list[str]
+    test_mode: bool = False
 
 
 @router.post("/claims", response_model=ClaimCreateResponse, status_code=201)
@@ -184,14 +185,16 @@ async def bulk_download_edi(
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for claim_id_str in body.ids:
-            edi_bytes = await generate_claim_edi(db, current_user.hospital_id, UUID(claim_id_str))
-            zf.writestr(f"claim_{claim_id_str}.edi", edi_bytes)
+            edi_bytes = await generate_claim_edi(db, current_user.hospital_id, UUID(claim_id_str), test_mode=body.test_mode)
+            suffix = "_TEST" if body.test_mode else ""
+            zf.writestr(f"claim_{claim_id_str}{suffix}.edi", edi_bytes)
     buf.seek(0)
 
+    filename = "claims_edi_TEST.zip" if body.test_mode else "claims_edi.zip"
     return Response(
         content=buf.read(),
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=claims_edi.zip"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 # 심평원 기준 상수 (성인 기준)
@@ -331,7 +334,7 @@ async def calculate_copayment(
         birth_date=body.birth_date,
         treatment_date=body.treatment_date,
         work_injury=body.work_injury,
-        disability_medical_cost=body.disability_medical_cost,
+        has_disability=body.has_disability,
         support_fund=body.support_fund,
         treatment_days=body.treatment_days,
         graduated_fee_index=body.graduated_fee_index,
@@ -556,15 +559,16 @@ async def delete_doctor_work_days(
 @router.get("/claims/{claim_id}/edi")
 async def download_claim_edi(
     claim_id: UUID,
+    test: bool = Query(False, description="True이면 작성자란에 '상시점검' 기재한 테스트 SAM FILE 생성"),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    edi_bytes = await generate_claim_edi(db, current_user.hospital_id, claim_id)
-    
+    edi_bytes = await generate_claim_edi(db, current_user.hospital_id, claim_id, test_mode=test)
+    suffix = "_TEST" if test else ""
     return Response(
         content=edi_bytes,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f"attachment; filename=claim_{claim_id}.edi"},
+        headers={"Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}.edi"},
     )
 
 @router.get("/catalog", response_model=list[BillableItemResponse])
@@ -626,6 +630,7 @@ async def add_line_items(
         await db.flush()
 
     added_amount = 0
+    added_non_benefit = 0
     for line in payload.items:
         catalog_item = get_catalog_item(line.item_id)
         amount = int(Decimal(str(catalog_item.unit_price)))
@@ -642,11 +647,15 @@ async def add_line_items(
             days=1,
             amount=amount,
             hyeolmyeong_names=line.hyeolmyeong_names or None,
+            is_non_benefit=line.is_non_benefit,
         )
         db.add(line_item)
         added_amount += amount
+        if line.is_non_benefit:
+            added_non_benefit += amount
 
     claim.total_amount = (claim.total_amount or 0) + added_amount
+    claim.non_benefit_total = (claim.non_benefit_total or 0) + added_non_benefit
     await db.commit()
     await db.refresh(claim)
 
@@ -668,6 +677,51 @@ async def add_line_items(
                 code=i.code,
                 amount=i.amount,
                 hyeolmyeong_names=i.hyeolmyeong_names,
+                is_non_benefit=i.is_non_benefit,
+            )
+            for i in all_items
+        ],
+    )
+
+
+class SupportFundBody(BaseModel):
+    support_fund: int
+
+
+@router.patch("/claims/{claim_id}/support-fund", response_model=ClaimSummaryResponse)
+async def update_support_fund(
+    claim_id: UUID,
+    body: SupportFundBody,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await db.get(Claim, claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구를 찾을 수 없습니다.")
+    claim.support_fund = body.support_fund
+    await db.commit()
+    await db.refresh(claim)
+
+    items_result = await db.execute(
+        select(ClaimLineItem).where(ClaimLineItem.claim_id == claim.id)
+    )
+    all_items = items_result.scalars().all()
+    year, month = claim.claim_period_year, claim.claim_period_month
+
+    return ClaimSummaryResponse(
+        id=str(claim.id),
+        patient_id=str(claim.patient_id),
+        billing_month=f"{year}-{month:02d}",
+        status=claim.status,
+        total_amount=claim.total_amount,
+        line_items=[
+            ClaimLineItemResponse(
+                id=str(i.id),
+                name=i.name,
+                code=i.code,
+                amount=i.amount,
+                hyeolmyeong_names=i.hyeolmyeong_names,
+                is_non_benefit=i.is_non_benefit,
             )
             for i in all_items
         ],
