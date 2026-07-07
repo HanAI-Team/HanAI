@@ -80,6 +80,7 @@ class ClaimCreateResponse(BaseModel):
 
 class BulkEdiRequest(BaseModel):
     ids: list[str]
+    test_mode: bool = False
 
 
 @router.post("/claims", response_model=ClaimCreateResponse, status_code=201)
@@ -184,14 +185,16 @@ async def bulk_download_edi(
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for claim_id_str in body.ids:
-            edi_bytes = await generate_claim_edi(db, current_user.hospital_id, UUID(claim_id_str))
-            zf.writestr(f"claim_{claim_id_str}.edi", edi_bytes)
+            edi_bytes = await generate_claim_edi(db, current_user.hospital_id, UUID(claim_id_str), test_mode=body.test_mode)
+            suffix = "_TEST" if body.test_mode else ""
+            zf.writestr(f"claim_{claim_id_str}{suffix}.edi", edi_bytes)
     buf.seek(0)
 
+    filename = "claims_edi_TEST.zip" if body.test_mode else "claims_edi.zip"
     return Response(
         content=buf.read(),
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=claims_edi.zip"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 # 심평원 기준 상수 (성인 기준)
@@ -556,15 +559,16 @@ async def delete_doctor_work_days(
 @router.get("/claims/{claim_id}/edi")
 async def download_claim_edi(
     claim_id: UUID,
+    test: bool = Query(False, description="True이면 작성자란에 '상시점검' 기재한 테스트 SAM FILE 생성"),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    edi_bytes = await generate_claim_edi(db, current_user.hospital_id, claim_id)
-    
+    edi_bytes = await generate_claim_edi(db, current_user.hospital_id, claim_id, test_mode=test)
+    suffix = "_TEST" if test else ""
     return Response(
         content=edi_bytes,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f"attachment; filename=claim_{claim_id}.edi"},
+        headers={"Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}.edi"},
     )
 
 @router.get("/catalog", response_model=list[BillableItemResponse])

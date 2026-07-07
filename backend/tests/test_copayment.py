@@ -107,6 +107,18 @@ def test_의료급여_2종_장애인_입원은_경감_미적용():
     assert result.disability_medical_cost == 0
 
 
+def test_건강보험_입원_성인_20퍼센트():
+    # 건강보험 입원 성인 기본 20%
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.INPATIENT,
+        benefit_total=50000,
+    ))
+    assert result.health_inpatient_copay == 10000  # ceil(50000*0.20)
+    assert result.copayment == 10000
+    assert result.claim_amount == 40000
+
+
 def test_보훈_본인부담_없음_전액청구():
     result = calculate_billing(BillingInput(
         insurance_type=InsuranceType.VETERANS,

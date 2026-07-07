@@ -54,27 +54,28 @@ export async function getClaims(params?: { month?: string; status?: string }): P
   return res.json();
 }
 
-export async function downloadEdi(claimId: string): Promise<void> {
+export async function downloadEdi(claimId: string, testMode = false): Promise<void> {
   const token = localStorage.getItem("token");
-  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/edi`, {
+  const endpoint = `${BASE_URL}/api/billing/claims/${claimId}/edi${testMode ? "?test=true" : ""}`;
+  const res = await fetch(endpoint, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error("EDI 생성 실패");
 
   const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+  const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = `claim_${claimId}.edi`;
+  a.href = objectUrl;
+  a.download = testMode ? `claim_${claimId}_TEST.edi` : `claim_${claimId}.edi`;
   a.click();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(objectUrl);
 }
 
-export async function bulkDownloadEdi(ids: string[]): Promise<void> {
+export async function bulkDownloadEdi(ids: string[], testMode = false): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/billing/claims/bulk-edi`, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify({ ids, test_mode: testMode }),
   });
   if (!res.ok) throw new Error("일괄 EDI 생성 실패");
 
@@ -82,7 +83,7 @@ export async function bulkDownloadEdi(ids: string[]): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "claims_edi.zip";
+  a.download = testMode ? "claims_edi_TEST.zip" : "claims_edi.zip";
   a.click();
   URL.revokeObjectURL(url);
 }
