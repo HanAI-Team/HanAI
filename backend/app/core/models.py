@@ -179,6 +179,7 @@ class SpecialCaseRegistration(Base):
     status = Column(String(10), nullable=False, default="active")  # active / cancelled (수동 취소 전용. expired는 조회 시점에 expires_at으로 동적 판단)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
     patient = relationship("Patient", back_populates="special_case_registrations")
 
