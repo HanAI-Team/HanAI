@@ -331,7 +331,7 @@ async def calculate_copayment(
         birth_date=body.birth_date,
         treatment_date=body.treatment_date,
         work_injury=body.work_injury,
-        disability_medical_cost=body.disability_medical_cost,
+        has_disability=body.has_disability,
         support_fund=body.support_fund,
         treatment_days=body.treatment_days,
         graduated_fee_index=body.graduated_fee_index,

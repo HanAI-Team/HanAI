@@ -77,7 +77,7 @@ def _calc(
     medical_aid_grade: str | None = None,
     birth_date: date | None = None,
     work_injury: bool = False,
-    disability_medical_cost: int = 0,
+    has_disability: bool = False,
     support_fund: int = 0,
     treatment_days: Decimal = Decimal("0"),
     graduated_fee_index: Decimal = Decimal("0"),
@@ -92,7 +92,7 @@ def _calc(
         birth_date=birth_date,
         treatment_date=_REF_DATE,
         work_injury=work_injury,
-        disability_medical_cost=disability_medical_cost,
+        has_disability=has_disability,
         support_fund=support_fund,
         treatment_days=treatment_days,
         graduated_fee_index=graduated_fee_index,
@@ -295,19 +295,20 @@ class TestS04c_의료급여2종_입원:
 class TestS05_의료급여2종_외래_장애인:
     def setup_method(self):
         self.r = _calc("5", "외래", benefit_total=10000, medical_aid_grade="2",
-                       disability_medical_cost=3000)
+                       has_disability=True)
 
     def test_항목17_의료급여_외래_본인부담(self):
-        # 15% → ceil(10000*0.15) = 1500
-        assert self.r.medical_aid_outpatient_copay == 1500
+        # 2종 장애인 5% → ceil(10000*0.05) = 500
+        assert self.r.medical_aid_outpatient_copay == 500
 
     def test_항목19_장애인의료비(self):
-        assert self.r.disability_medical_cost == 3000
+        # 경감분: ceil(10000*0.15) - ceil(10000*0.05) = 1500 - 500 = 1000
+        assert self.r.disability_medical_cost == 1000
 
     def test_C2_11_장애인의료비_바이트202_211(self):
         # 0-indexed 202-211: 대불금/장애인의료비 9(10)
         raw = _c2_11_bytes(self.r, medical_aid_type="2")
-        assert raw[202:212].decode("euc-kr") == "0000003000"
+        assert raw[202:212].decode("euc-kr") == "0000001000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -90,7 +90,7 @@ class BillingInput:
     birth_date: Optional[date] = None
     treatment_date: Optional[date] = None           # 진료일 (15세 이하 판단 기준)
     work_injury: bool = False                       # 공상 여부
-    disability_medical_cost: int = 0               # 장애인의료비 (의료급여)
+    has_disability: bool = False                    # 장애인 등록 여부 (의료급여 2종 외래 15%→5% 경감)
     support_fund: int = 0                          # 지원금
     treatment_days: Decimal = field(default_factory=lambda: Decimal("0"))
     graduated_fee_index: Decimal = field(default_factory=lambda: Decimal("0"))
@@ -153,7 +153,6 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
     result.benefit_total_2 = total1 + non_benefit
     result.full_price_copay_total = non_benefit
     result.under_full_total = total1
-    result.disability_medical_cost = inp.disability_medical_cost
     result.support_fund = inp.support_fund
     result.treatment_days = inp.treatment_days
     result.graduated_index = inp.graduated_fee_index
@@ -177,6 +176,11 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
         if inp.visit_type == VisitType.OUTPATIENT:
             if inp.medical_aid_grade == MedicalAidGrade.GRADE_1:
                 copay = 1000  # 1종 외래: 1,000원 정액 (의원급)
+            elif inp.has_disability:
+                # 2종 장애인 외래: 5% 경감 (의료급여법 시행령 별표1)
+                copay = _ceil_won(Decimal(total1) * Decimal("0.05"))
+                normal_copay = _ceil_won(Decimal(total1) * Decimal("0.15"))
+                result.disability_medical_cost = normal_copay - copay
             else:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.15"))
             result.medical_aid_outpatient_copay = copay

@@ -283,6 +283,7 @@ async def create_claim(
         special_code=special_case.special_code,
         birth_date=patient.birth_date,
         medical_aid_grade=MedicalAidGrade(patient.medical_aid_grade) if patient.medical_aid_grade else None,
+        has_disability=bool(patient.disability_grade),
     ))
 
     # Claim 생성
