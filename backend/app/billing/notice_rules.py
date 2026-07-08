@@ -59,9 +59,6 @@ def validate_notice_rules(
     안에서 직접 계산하지 않는다 (이 함수는 순수 함수로 유지). 호출부
     (service.create_claim)가 미리 계산해서 넘겨준다. None이면 해당 검증은
     스킵한다 (예: 이번 청구에 추나 항목이 아예 없는 경우).
-
-    doctor는 추나요법 사전교육 이수여부(chuna_training_certified) 확인용.
-    dict/ORM 객체 둘 다 받을 수 있게 _get()으로 접근한다.
     """
 
     results: list[dict[str, Any]] = []
