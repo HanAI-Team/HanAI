@@ -2392,8 +2392,8 @@ ${historyLine}
                 {kcdCode ? (
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-sm text-text">
-                      <span className="font-medium text-[#EF6600]">{kcdCode.code}</span>{" "}
-                      {kcdCode.korean_name}
+                      <span className="font-medium text-[#EF6600]">{kcdCode.code}</span>
+                      {kcdCode.korean_name ? <span> {kcdCode.korean_name}</span> : null}
                     </div>
                     <button
                       type="button"
@@ -2413,7 +2413,7 @@ ${historyLine}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && kcdQuery.trim()) {
                           const match = kcdResults[0];
-                          const code = match ?? { code: kcdQuery.trim().toUpperCase(), korean_name: kcdQuery.trim() };
+                          const code = match ?? { code: kcdQuery.trim().toUpperCase(), korean_name: "" };
                           setKcdCode(code);
                           setKcdQuery("");
                           setKcdResults([]);
@@ -2442,7 +2442,7 @@ ${historyLine}
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
-                              setKcdCode({ code: kcdQuery.trim().toUpperCase(), korean_name: kcdQuery.trim() });
+                              setKcdCode({ code: kcdQuery.trim().toUpperCase(), korean_name: "" });
                               setKcdQuery("");
                               setKcdResults([]);
                               setKcdDropdownOpen(false);
