@@ -93,6 +93,24 @@ def test_의료급여_2종_장애인_외래_5퍼센트_경감():
     assert result.claim_amount == 9500                  # 10000 - 500
 
 
+def test_의료급여_2종_장애인_추나_disability_medical_cost_제외():
+    # 추나 항목은 15% 그대로, 비추나 항목만 5% 경감 → 추나 본인부담은 disability_medical_cost 미포함
+    # benefit_total=20000 (비추나 10000 + 추나 10000)
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.MEDICAL_AID,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=20000,
+        medical_aid_grade=MedicalAidGrade.GRADE_2,
+        has_disability=True,
+        chuna_total=10000,   # 의료급여에서도 추나_total로 구분
+    ))
+    # 비추나 10000 → 5% = 500, 추나 10000 → 15% = 1500 → copay = 2000
+    assert result.copayment == 2000
+    # disability_medical_cost = 비추나 15% - 비추나 5% = 1500 - 500 = 1000
+    assert result.disability_medical_cost == 1000
+    assert result.claim_amount == 18000
+
+
 def test_의료급여_2종_장애인_입원은_경감_미적용():
     # 장애인 경감은 외래만 적용, 입원은 일반 2종(10%) 유지
     result = calculate_billing(BillingInput(
