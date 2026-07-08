@@ -68,6 +68,8 @@ async def get_stats(
         if patient:
             recent.append(
                 {
+                    "patient_id": str(patient.id),
+                    "record_id": str(rec.id),
                     "patient_name": patient.name,
                     "recorded_at": rec.recorded_at,
                     "chart_structured": rec.chart_structured,

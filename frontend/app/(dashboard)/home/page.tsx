@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 interface Stats {
   total_patients: number;
   today_records: number;
-  recent_records: { patient_name: string; recorded_at: string | null; chart_structured: string | null }[];
+  recent_records: { patient_id: string; record_id: string; patient_name: string; recorded_at: string | null; chart_structured: string | null }[];
 }
 
 function parseDiagSummary(chart: string | null): string {
@@ -128,7 +128,11 @@ export default function HomePage() {
             ) : (
               <div className="flex flex-col gap-2">
                 {stats.recent_records.map((rec, i) => (
-                  <div key={i} className="py-2 border-b border-border last:border-none">
+                  <div
+                    key={i}
+                    onClick={() => router.push(`/diagnosis?patientId=${rec.patient_id}`)}
+                    className="py-2 border-b border-border last:border-none cursor-pointer hover:bg-bg -mx-2 px-2 rounded transition-colors"
+                  >
                     <div className="text-sm font-medium text-text">{rec.patient_name}</div>
                     <div className="text-xs text-subtext mt-0.5">
                       {parseDiagSummary(rec.chart_structured)}
