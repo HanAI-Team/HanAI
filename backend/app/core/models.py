@@ -207,7 +207,7 @@ class Claim(Base):
     support_fund = Column(Integer, nullable=False, default=0)             # C2-11 지원금
     differential_index = Column(Numeric(5, 2), default=1.0)
     status = Column(String, nullable=False, default="draft")
-    special_case_needs_review = Column(Boolean, nullable=False, default=False, server_default="false")
+    special_case_review_reason = Column(String(100), nullable=True)
     submitted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
