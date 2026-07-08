@@ -39,8 +39,14 @@ class BillableItemDef:
     requires_hyeolmyeong: bool = False
 
 
-# 추나 코드 집합 — 본인부담률 50% 별도 적용 대상
+# 추나 코드 전체 집합 — 연간/일일 횟수 집계 등에서 "추나요법인지 여부"만 판단할 때 사용.
 CHUNA_CODES: frozenset[str] = frozenset({"40710", "40720", "40721", "40730"})
+
+# 본인부담률 50% 대상 (단순추나/복잡추나-일반/특수(탈구)추나)
+CHUNA_50_CODES: frozenset[str] = frozenset({"40710", "40720", "40730"})
+
+# 본인부담률 80% 대상 — 복잡추나 중 디스크·협착증 외 근골격계 질환
+CHUNA_80_CODES: frozenset[str] = frozenset({"40721"})
 
 
 BILLABLE_CATALOG: list[BillableItemDef] = [

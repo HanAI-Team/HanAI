@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
-from app.billing.catalog import CHUNA_CODES
+from app.billing.catalog import CHUNA_50_CODES, CHUNA_80_CODES, CHUNA_CODES
 from app.billing.notice_rules import validate_notice_rules
 
 from app.billing.copayment import (
@@ -358,7 +358,39 @@ async def create_claim(
     procedures = r_procs.scalars().all()
     benefit_total = sum(p.amount or 0 for p in procedures if not p.is_non_benefit)
     non_benefit_total = sum(p.amount or 0 for p in procedures if p.is_non_benefit)
-    chuna_total = sum(p.amount or 0 for p in procedures if not p.is_non_benefit and p.fee_master_code in CHUNA_CODES)
+    # 추나 본인부담률은 코드에 따라 50%/80%로 갈린다 (2026-07-07 확정, catalog.py 참고)
+    chuna_total = sum(
+        p.amount or 0 for p in procedures
+        if not p.is_non_benefit and p.fee_master_code in CHUNA_50_CODES
+    )
+    chuna_80_total = sum(
+        p.amount or 0 for p in procedures
+        if not p.is_non_benefit and p.fee_master_code in CHUNA_80_CODES
+    )
+
+    # ── 추나요법 연간 20회 / 1일 18명 한도 확인 (이번 청구에 추나 항목이 있을 때만) ──
+    chuna_annual_count = None
+    chuna_daily_doctor_count = None
+    has_chuna = any((p.fee_master_code in CHUNA_CODES) for p in procedures if not p.is_non_benefit)
+    if has_chuna:
+        this_claim_record_ids = {r.id for r in records}
+        prior_annual = await _count_annual_chuna_sessions(
+            db, patient_id, claim_period_year, exclude_medical_record_ids=this_claim_record_ids
+        )
+        this_claim_chuna_records = {
+            p.medical_record_id for p in procedures
+            if not p.is_non_benefit and p.fee_master_code in CHUNA_CODES
+        }
+        chuna_annual_count = prior_annual + len(this_claim_chuna_records)
+
+        recorded_dates = [r.recorded_at.date() for r in records if r.recorded_at]
+        if recorded_dates:
+            target_date = min(recorded_dates)
+            prior_daily = await _count_daily_chuna_patients(
+                db, doctor_id, target_date, exclude_patient_id=patient_id
+            )
+            chuna_daily_doctor_count = prior_daily + 1
+
     # ── 고시 기반 특정내역/청구 검증 (notice_rules.py) ──────────────────────────
     # ※ validate_notice_rules()의 실제 파라미터명은 _records, _claim_period_year,
     #   _claim_period_month (언더스코어 prefix = 함수 내부 미사용 파라미터).
@@ -401,6 +433,7 @@ async def create_claim(
         medical_aid_grade=MedicalAidGrade(patient.medical_aid_grade) if patient.medical_aid_grade else None,
         has_disability=bool(patient.disability_grade),
         chuna_total=chuna_total,
+        chuna_80_total=chuna_80_total,
     ))
 
     # Claim 생성
