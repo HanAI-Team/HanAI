@@ -21,6 +21,7 @@ import {
   saveRecord,
   updatePatient,
 } from "@/lib/api/patients";
+import { checkinPatient, getTodayQueue, QueueItem, updateQueueStatus } from "@/lib/api/queue";
 import { DiagnosisResult, Patient } from "@/types";
 import {
   Check,
@@ -63,6 +64,18 @@ const ASK_SAVE_FIELDS: { key: string; label: string }[] = [
   { key: "prescription", label: "한약 처방" },
   { key: "acupuncture", label: "침 처방" },
 ];
+
+const QUEUE_STATUS_LABEL: Record<string, string> = {
+  waiting: "대기",
+  in_progress: "진료중",
+  done: "완료",
+};
+
+const QUEUE_STATUS_CLASS: Record<string, string> = {
+  waiting: "bg-muted/20 text-muted",
+  in_progress: "bg-[#EF6600]/15 text-[#EF6600]",
+  done: "bg-green-500/15 text-green-500",
+};
 
 export default function DiagnosisPage() {
   const router = useRouter();
@@ -164,6 +177,8 @@ export default function DiagnosisPage() {
   const [historyMemoOpenIds, setHistoryMemoOpenIds] = useState<Set<string>>(
     new Set(),
   );
+  const [todayQueue, setTodayQueue] = useState<QueueItem[]>([]);
+  const [queueLoading, setQueueLoading] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const secondsRef = useRef(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
@@ -174,6 +189,12 @@ export default function DiagnosisPage() {
   const filtered = patients.filter((p) => p.name.includes(search));
   const displayedPatients = filtered.slice(0, page * PAGE_SIZE);
   const hasMore = filtered.length > page * PAGE_SIZE;
+  const sortedQueue = [...todayQueue].sort((a, b) => {
+    const aDone = a.status === "done" ? 1 : 0;
+    const bDone = b.status === "done" ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    return new Date(a.checked_in_at).getTime() - new Date(b.checked_in_at).getTime();
+  });
   const isOverviewTab = ["result", "history", "billing"].includes(activeTab);
   const recordsLoading =
     isOverviewTab &&
@@ -192,6 +213,13 @@ export default function DiagnosisPage() {
       .then(setPatients)
       .catch(console.error)
       .finally(() => setPatientsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    getTodayQueue()
+      .then(setTodayQueue)
+      .catch(console.error)
+      .finally(() => setQueueLoading(false));
   }, []);
 
   useEffect(() => {
@@ -1219,6 +1247,80 @@ ${historyLine}
     <div className="flex h-[calc(100vh-52px)] overflow-hidden">
       {/* 왼쪽 환자 패널 */}
       <div className="hidden sm:flex w-[260px] flex-shrink-0 bg-card border-r border-border flex-col">
+        {/* 섹션 1: 오늘 접수 */}
+        <div className="p-3 border-b border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="text-xs font-medium text-text uppercase tracking-wide">
+              오늘 접수
+            </div>
+            <span className="text-xs text-muted bg-fill rounded-full px-1.5 py-0.5">
+              {todayQueue.length}
+            </span>
+          </div>
+          {queueLoading ? (
+            <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto py-2" />
+          ) : sortedQueue.length === 0 ? (
+            <div className="text-xs text-muted text-center py-4">
+              오늘 접수된 환자가 없습니다
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto">
+              {sortedQueue.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    const patient = patients.find((p) => p.id === item.patient_id);
+                    if (!patient) return;
+                    setSelectedPatient(patient);
+                    setResult(null);
+                    setRecordsLastFetchedFor(null);
+                    setSavedSymptomText(undefined);
+                    setActiveTab("record");
+                    setMemoEditing(false);
+                    setMemoSectionOpen(false);
+                    setMemo(patient.memo || "");
+                    setRecordMedicalHistory({ hasHistory: false, text: "" });
+                  }}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all ${
+                    selectedPatient?.id === item.patient_id ? "bg-bg" : "hover:bg-bg"
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-text truncate">{item.patient_name}</div>
+                    <div className="text-xs text-muted">
+                      {new Date(item.checked_in_at).toLocaleTimeString("ko-KR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${QUEUE_STATUS_CLASS[item.status]}`}
+                  >
+                    {QUEUE_STATUS_LABEL[item.status]}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateQueueStatus(item.id, "done")
+                        .then((updated) => {
+                          setTodayQueue((prev) =>
+                            prev.map((q) => (q.id === updated.id ? updated : q)),
+                          );
+                        })
+                        .catch(console.error);
+                    }}
+                    className="text-[10px] text-subtext hover:text-[#EF6600] border border-border rounded px-1.5 py-0.5 flex-shrink-0 transition-all"
+                  >
+                    완료
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 섹션 2: 환자 검색 */}
         <div className="p-3 border-b border-border">
           <div className="text-xs font-medium text-text uppercase tracking-wide mb-2">
             환자 목록
@@ -1231,7 +1333,7 @@ ${historyLine}
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="이름 검색..."
+              placeholder="검색 후 접수 추가..."
               className="flex-1 bg-transparent text-xs text-text outline-none"
             />
           </div>
@@ -1253,6 +1355,16 @@ ${historyLine}
                     : "border-l-transparent hover:bg-bg"
                 }`}
                 onClick={() => {
+                  checkinPatient(patient.id)
+                    .then((item) => {
+                      setTodayQueue((prev) => {
+                        const exists = prev.some((q) => q.id === item.id);
+                        return exists
+                          ? prev.map((q) => (q.id === item.id ? item : q))
+                          : [...prev, item];
+                      });
+                    })
+                    .catch(console.error);
                   setSelectedPatient(patient);
                   setResult(null);
                   setRecordsLastFetchedFor(null);
