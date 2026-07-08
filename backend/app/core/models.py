@@ -478,3 +478,20 @@ class PasswordHistory(Base):
     account_id = Column(UUID(as_uuid=True), nullable=False)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+
+class DailyQueue(Base):
+    __tablename__ = "daily_queue"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
+    queue_date = Column(Date, nullable=False)
+    checked_in_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    status = Column(String(20), nullable=False, default="waiting")
+    source = Column(String(20), nullable=False, default="manual")
+    # UniqueConstraint 없음
+    
+    patient = relationship("Patient", lazy="raise")
