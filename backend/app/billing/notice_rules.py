@@ -51,6 +51,7 @@ def validate_notice_rules(
     _claim_period_month=None,
     chuna_annual_count: int | None = None,
     chuna_daily_doctor_count: int | None = None,
+    doctor=None,
 ) -> list[dict[str, Any]]:
     """고시 기반 누락/중복/특정내역 검증.
 
