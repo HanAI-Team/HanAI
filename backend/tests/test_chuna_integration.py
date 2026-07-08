@@ -107,7 +107,7 @@ async def test_추나_연간_20회_이하는_needs_review_안뜸(db, approved_do
         medical_record_ids=[new_record.id],
         claim_period_year=this_year, claim_period_month=6, visit_type="외래",
     )
-    assert claim.special_case_needs_review is False
+    assert claim.special_case_review_reason is None
 
 
 async def test_추나_연간_20회_초과시_needs_review_뜸(db, approved_doctor, chuna_fee_codes):
@@ -136,7 +136,7 @@ async def test_추나_연간_20회_초과시_needs_review_뜸(db, approved_docto
         medical_record_ids=[new_record.id],
         claim_period_year=this_year, claim_period_month=6, visit_type="외래",
     )
-    assert claim.special_case_needs_review is True
+    assert claim.special_case_review_reason is not None
 
 
 async def test_추나_1일_18명_초과시_needs_review_뜸(db, approved_doctor, chuna_fee_codes):
@@ -163,7 +163,7 @@ async def test_추나_1일_18명_초과시_needs_review_뜸(db, approved_doctor,
         medical_record_ids=[new_record.id],
         claim_period_year=target_date.year, claim_period_month=target_date.month, visit_type="외래",
     )
-    assert claim.special_case_needs_review is True
+    assert claim.special_case_review_reason is not None
 
 
 async def test_추나_없는_청구는_DB_카운트_쿼리_아예_안_타고_정상동작(db, approved_doctor):
@@ -192,4 +192,4 @@ async def test_추나_없는_청구는_DB_카운트_쿼리_아예_안_타고_정
         claim_period_year=date.today().year, claim_period_month=date.today().month, visit_type="외래",
     )
     assert claim.patient_copay == 3000  # ceil(10000*0.30), 산정특례/추나 없는 일반 케이스
-    assert claim.special_case_needs_review is False
+    assert claim.special_case_review_reason is None

@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
-import { MessageCircle } from "lucide-react";
 import { publicAskStream } from "@/lib/api/diagnosis";
+import { MessageCircle } from "lucide-react";
+import { useState } from "react";
 
 interface AskItem {
   question: string;
@@ -41,7 +41,7 @@ export default function PublicSearchPage() {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
       <div className="h-[52px] bg-[#232323] flex items-center px-6 flex-shrink-0">
-        <div className="font-serif text-[19px] text-white">Zinmac 한의학 검색</div>
+        <div className="text-[19px] text-white">Zinmac 한의학 검색</div>
       </div>
 
       <div className="bg-[#FFF3CD] text-[#856404] text-xs text-center py-2 px-4 flex-shrink-0">

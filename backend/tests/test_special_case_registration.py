@@ -54,7 +54,7 @@ async def test_등록없으면_None(db):
     await db.commit()
 
     result = await resolve_active_special_code(db, patient.id)
-    assert result == SpecialCaseResolution(special_code=None, needs_review=False)
+    assert result == SpecialCaseResolution(special_code=None, review_reason=None)
 
 
 async def test_단일_활성등록_반환(db):
@@ -68,7 +68,7 @@ async def test_단일_활성등록_반환(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V193"
-    assert result.needs_review is False
+    assert result.review_reason is None
 
 
 async def test_cancelled_제외(db):
@@ -109,7 +109,7 @@ async def test_expires_at_없으면_계속_활성(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V000"
-    assert result.needs_review is False
+    assert result.review_reason is None
 
 
 async def test_여러건_활성시_본인부담률_최저값_우선(db):
@@ -130,7 +130,7 @@ async def test_여러건_활성시_본인부담률_최저값_우선(db):
     # V000(결핵)=0% < V193(암)=5%
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V000"
-    assert result.needs_review is False
+    assert result.review_reason is None
 
 
 async def test_낮은본인부담률_우선선택(db):
@@ -157,7 +157,7 @@ async def test_낮은본인부담률_우선선택(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V191"
-    assert result.needs_review is False
+    assert result.review_reason is None
 
 
 async def test_V192_확정값_반환(db):
@@ -172,7 +172,7 @@ async def test_V192_확정값_반환(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V192"
-    assert result.needs_review is False
+    assert result.review_reason is None
 
 
 async def test_F006_단독등록시_확정_40퍼센트(db):
@@ -187,7 +187,7 @@ async def test_F006_단독등록시_확정_40퍼센트(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "F006"
-    assert result.needs_review is False
+    assert result.review_reason is None
 
 
 async def test_F006과_암_동시활성시_예외로_needs_review_강제(db):
@@ -211,7 +211,7 @@ async def test_F006과_암_동시활성시_예외로_needs_review_강제(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V193"  # 본인부담률만으로는 여전히 V193이 최저값
-    assert result.needs_review is True   # 하지만 F006 동시해당 예외 때문에 확신할 수 없음
+    assert result.review_reason == "f006_concurrent"   # 하지만 F006 동시해당 예외 때문에 확신할 수 없음
 
 
 async def test_V221_레쉬니한증후군_10퍼센트_확정됨(db):
@@ -231,7 +231,7 @@ async def test_V221_레쉬니한증후군_10퍼센트_확정됨(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V221"
-    assert result.needs_review is False
+    assert result.review_reason is None
     assert _SPECIAL_CASE_COPAY_RATE["V221"] == (Decimal("0.10"), False)
 
 
@@ -248,7 +248,7 @@ async def test_V810_사전승인번호_없으면_needs_review(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V810"
-    assert result.needs_review is True
+    assert result.review_reason == "v810_no_approval"
 
 
 async def test_V810_사전승인번호_있으면_정상(db):
@@ -264,7 +264,7 @@ async def test_V810_사전승인번호_있으면_정상(db):
 
     result = await resolve_active_special_code(db, patient.id)
     assert result.special_code == "V810"
-    assert result.needs_review is False
+    assert result.review_reason is None
     assert result.prior_approval_number == "1-26-00000001"
 
 
@@ -300,7 +300,7 @@ async def test_create_claim_활성_산정특례_있으면_낮은본인부담률_
 
     # V193(암)=5% → ceil(100000*0.05)=5000. 산정특례 미반영이면 건강보험 외래 일반 30%=30000이 됐을 것.
     assert claim.patient_copay == 5000
-    assert claim.special_case_needs_review is False
+    assert claim.special_case_review_reason is None
 
 
 async def test_create_claim_V221_10퍼센트_실제금액_반영(db, approved_doctor, kcd_codes):
@@ -336,7 +336,7 @@ async def test_create_claim_V221_10퍼센트_실제금액_반영(db, approved_do
     )
 
     assert claim.patient_copay == 10000  # ceil(100000*0.10) — 5000(구 5%값)이면 회귀
-    assert claim.special_case_needs_review is False
+    assert claim.special_case_review_reason is None
 
 
 async def test_create_claim_확정된_뇌혈관코드는_플래그_노출_안됨(db, approved_doctor, kcd_codes):
@@ -376,7 +376,7 @@ async def test_create_claim_확정된_뇌혈관코드는_플래그_노출_안됨
         visit_type="외래",
     )
 
-    assert claim.special_case_needs_review is False
+    assert claim.special_case_review_reason is None
 
 
 async def test_create_claim_미확인_특정기호는_needs_review_노출(db, approved_doctor, kcd_codes):
@@ -424,8 +424,8 @@ async def test_create_claim_미확인_특정기호는_needs_review_노출(db, ap
         visit_type="외래",
     )
 
-    # needs_review는 service.py의 _UNKNOWN_SPECIAL_CODE_RATE(19%) 기준으로 True가 됨.
-    assert claim.special_case_needs_review is True
+    # review_reason은 service.py의 _UNKNOWN_SPECIAL_CODE_RATE(19%) 기준으로 채워짐.
+    assert claim.special_case_review_reason == "unconfirmed_rate"
     # 하지만 실제 금액은 copayment.py._special_rate()의 독립적인 fallback(10%)으로 계산됨.
     # 19%가 아니라 10%가 나오는 게 "현재 코드의 실제 동작"이며, 이 값이 맞는 설계인지는
     # 별도 확인이 필요하다 (위 docstring 참고).

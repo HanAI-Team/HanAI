@@ -120,7 +120,7 @@ def _has_f006_concurrent_exception(active: list["SpecialCaseRegistration"]) -> b
 @dataclass
 class SpecialCaseResolution:
     special_code: Optional[str] = None
-    needs_review: bool = False
+    review_reason: str | None = None
     registration_number: Optional[str] = None      # MT014용 등록번호 (V810 제외)
     prior_approval_number: Optional[str] = None    # MT014용 사전승인번호 (V810 전용)
     registered_disease_code: Optional[str] = None  # MT028용 유사상병코드
@@ -150,7 +150,7 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
         if r.expires_at is None or r.expires_at >= today
     ]
     if not active:
-        return SpecialCaseResolution(special_code=None, needs_review=False)
+        return SpecialCaseResolution(special_code=None, review_reason=None)
 
     def rate_of(reg: SpecialCaseRegistration) -> Decimal:
         rate, _ = _SPECIAL_CASE_COPAY_RATE.get(reg.special_code, _UNKNOWN_SPECIAL_CODE_RATE)
@@ -158,13 +158,15 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
 
     chosen = min(active, key=rate_of)
 
-    _, needs_review = _SPECIAL_CASE_COPAY_RATE.get(chosen.special_code, _UNKNOWN_SPECIAL_CODE_RATE)
+    reasons: list[str] = []
+    if chosen.special_code not in _SPECIAL_CASE_COPAY_RATE:
+        reasons.append("unconfirmed_rate")
     if _has_f006_concurrent_exception(active):
-        needs_review = True
+        reasons.append("f006_concurrent")
     # V810: 사전승인번호 없으면 공단 미승인 상태 — 담당자 확인 필요
     if chosen.special_code == "V810" and not chosen.prior_approval_number:
-        needs_review = True
-    if needs_review:
+        reasons.append("v810_no_approval")
+    if reasons:
         import logging
         logger = logging.getLogger(__name__)
         logger.warning(
@@ -173,7 +175,7 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
 
     return SpecialCaseResolution(
         special_code=chosen.special_code,
-        needs_review=needs_review,
+        review_reason=",".join(reasons) or None,
         registration_number=chosen.registration_number,
         prior_approval_number=chosen.prior_approval_number,
         registered_disease_code=chosen.registered_disease_code,
@@ -437,9 +439,12 @@ async def create_claim(
     ))
 
     # Claim 생성
-    # 추나 연간/1일 한도 WARN이 있으면 needs_review도 함께 세워 화면에 노출한다
-    # (ERROR와 달리 청구 생성 자체는 막지 않되, 사람이 재확인하도록).
-    needs_review = special_case.needs_review or bool(warn_notices)
+    existing_reason = special_case.review_reason  # 기존 산정특례 사유 (str|None)
+    if bool(warn_notices):
+        chuna_reason = "chuna_limit_exceeded"
+        review_reason = ",".join(filter(None, [existing_reason, chuna_reason]))
+    else:
+        review_reason = existing_reason
     claim = Claim(
         id=uuid.uuid4(),
         patient_id=patient_id,
@@ -454,7 +459,7 @@ async def create_claim(
         disability_medical_aid=billing_result.disability_medical_cost,
         support_fund=billing_result.support_fund,
         status="draft",
-        special_case_needs_review=needs_review,
+        special_case_review_reason=review_reason,
     )
     db.add(claim)
 

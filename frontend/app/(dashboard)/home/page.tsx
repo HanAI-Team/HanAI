@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { getPatients } from "@/lib/api/patients";
 import { getStats } from "@/lib/api/stats";
 import { Patient } from "@/types";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 interface Stats {
   total_patients: number;
@@ -43,7 +43,7 @@ export default function HomePage() {
   return (
     <div className="p-6 md:p-8 max-w-[1100px] mx-auto">
       <div className="mb-6">
-        <h1 className="font-serif text-2xl text-text">오늘의 진료</h1>
+        <h1 className="text-2xl text-text">오늘의 진료</h1>
         <p className="text-xs text-subtext mt-1">{today}</p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">

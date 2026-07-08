@@ -60,6 +60,7 @@ class ClaimListItem(BaseModel):
     patient_copay: int
     claim_amount: int
     created_at: str
+    special_case_review_reason: str | None = None
 
 
 class ClaimCreateRequest(BaseModel):
@@ -107,7 +108,7 @@ async def create_new_claim(
         total_amount=claim.total_amount,
         patient_copay=claim.patient_copay,
         claim_amount=claim.claim_amount,
-        needs_review=getattr(claim, "special_case_needs_review", False),
+        needs_review=getattr(claim, "special_case_review_reason", None) is not None,
     )
 
 
@@ -115,6 +116,8 @@ async def create_new_claim(
 async def list_claims(
     month: str | None = Query(None, description="YYYY-MM 형식, 예: 2026-06"),
     status: str | None = Query(None, description="draft / submitted / approved / rejected"),
+    needs_review: bool | None = Query(None, description="True면 review_reason이 있는 청구만"),
+    review_reason: str | None = Query(None, description="review_reason에 포함된 사유로 필터 (부분일치)"),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -128,6 +131,13 @@ async def list_claims(
         stmt = stmt.where(Claim.claim_period_year == year, Claim.claim_period_month == mon)
     if status:
         stmt = stmt.where(Claim.status == status)
+    if needs_review is not None:
+        if needs_review:
+            stmt = stmt.where(Claim.special_case_review_reason.isnot(None))
+        else:
+            stmt = stmt.where(Claim.special_case_review_reason.is_(None))
+    if review_reason:
+        stmt = stmt.where(Claim.special_case_review_reason.like(f"%{review_reason}%"))
     stmt = stmt.order_by(Claim.created_at.desc())
 
     rows = await db.execute(stmt)
@@ -142,6 +152,7 @@ async def list_claims(
             patient_copay=claim.patient_copay,
             claim_amount=claim.claim_amount,
             created_at=claim.created_at.strftime("%Y-%m-%d") if claim.created_at else "",
+            special_case_review_reason=claim.special_case_review_reason,
         )
         for claim, patient in results
     ]
@@ -323,7 +334,7 @@ async def calculate_copayment(
         resolved = await resolve_active_special_code(db, body.patient_id)
         if resolved.special_code is not None:
             special_code = resolved.special_code
-            needs_review = resolved.needs_review
+            needs_review = resolved.review_reason is not None
 
     inp = BillingInput(
         insurance_type=InsuranceType(body.insurance_type),
