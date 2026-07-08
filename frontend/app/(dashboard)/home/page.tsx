@@ -1,5 +1,6 @@
 "use client";
 import { getPatients } from "@/lib/api/patients";
+import { checkinPatient, getTodayQueue, QueueItem, updateQueueStatus } from "@/lib/api/queue";
 import { getStats } from "@/lib/api/stats";
 import { Patient } from "@/types";
 import { useRouter } from "next/navigation";
@@ -11,27 +12,40 @@ interface Stats {
   recent_records: { patient_id: string; record_id: string; patient_name: string; recorded_at: string | null; chart_structured: string | null }[];
 }
 
-function parseDiagSummary(chart: string | null): string {
-  if (!chart) return "-";
-  const match = chart.match(/▶\s*한의학적 진단\s*\n([^\n▶]+)/);
-  return match?.[1]?.trim() || "-";
-}
-
 export default function HomePage() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [todayQueue, setTodayQueue] = useState<QueueItem[]>([]);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     Promise.all([
       getPatients().catch(() => [] as Patient[]),
       getStats().catch(() => null),
-    ]).then(([p, s]) => {
+      getTodayQueue().catch(() => [] as QueueItem[]),
+    ]).then(([p, s, q]) => {
       setPatients(p);
       setStats(s);
-    }).finally(() => setLoading(false));
+      setTodayQueue(q);
+    }).finally(() => {
+      setLoading(false);
+      setQueueLoading(false);
+    });
   }, []);
+
+  // 접수 목록 정렬: done 나중, 같은 status면 checked_in_at 오름차순
+  const sortedQueue = [...todayQueue].sort((a, b) => {
+    const aDone = a.status === "done" ? 1 : 0;
+    const bDone = b.status === "done" ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    return new Date(a.checked_in_at).getTime() - new Date(b.checked_in_at).getTime();
+  });
+
+  // 환자 검색 필터
+  const filteredPatients = patients.filter((p) => p.name.includes(search)).slice(0, 6);
 
   const today = new Date().toLocaleDateString("ko-KR", {
     year: "numeric",
@@ -64,89 +78,93 @@ export default function HomePage() {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
         <div className="bg-card border border-border rounded-lg p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-xs font-medium text-text uppercase tracking-wide">환자 목록</div>
-            <button
-              onClick={() => router.push("/diagnosis")}
-              className="text-xs text-subtext hover:text-[#EF6600] transition-colors"
-            >
-              진료 시작 →
-            </button>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="text-xs font-medium text-text uppercase tracking-wide">오늘 접수</div>
+            <span className="text-xs text-muted bg-fill rounded-full px-1.5 py-0.5">{todayQueue.length}</span>
           </div>
-          {loading ? (
-            <div className="text-sm text-muted py-4 text-center">불러오는 중...</div>
-          ) : patients.length === 0 ? (
-            <div className="text-sm text-muted py-4 text-center">등록된 환자가 없습니다</div>
+          {queueLoading ? (
+            <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto my-4" />
+          ) : sortedQueue.length === 0 ? (
+            <div className="text-xs text-muted text-center py-4">오늘 접수된 환자가 없습니다</div>
           ) : (
-            patients.slice(0, 6).map((patient) => (
+            sortedQueue.map((item) => (
               <div
-                key={patient.id}
-                onClick={() => router.push("/diagnosis")}
-                className="flex items-center gap-3 py-2.5 border-b border-border last:border-none cursor-pointer hover:bg-bg -mx-2 px-2 rounded transition-colors"
+                key={item.id}
+                onClick={() => router.push(`/diagnosis?patientId=${item.patient_id}`)}
+                className="flex items-center justify-between gap-3 py-2.5 border-b border-border last:border-none cursor-pointer hover:bg-bg -mx-2 px-2 rounded transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
-                  {patient.name[0]}
-                </div>
                 <div>
-                  <div className="text-sm font-medium text-text">{patient.name}</div>
-                  <div className="text-xs text-subtext">
-                    {(() => {
-                      const gender = ({ male: "남", female: "여", 남성: "남", 여성: "여" } as Record<string, string>)[patient.gender] ?? patient.gender;
-                      let birthStr: string | null = null;
-                      if (patient.birth_date) {
-                        const birth = patient.birth_date.replace(/^\d{2}(\d{2})-(\d{2})-(\d{2})$/, "$1$2$3");
-                        const today = new Date();
-                        const b = new Date(patient.birth_date);
-                        let a = today.getFullYear() - b.getFullYear();
-                        if (today < new Date(today.getFullYear(), b.getMonth(), b.getDate())) a--;
-                        birthStr = `${birth} (만 ${a}세)`;
-                      }
-                      return [gender, birthStr].filter(Boolean).join(", ") || patient.phone || "-";
-                    })()}
+                  <div className="text-sm font-medium text-text">{item.patient_name}</div>
+                  <div className="text-xs text-subtext mt-0.5">
+                    {new Date(item.checked_in_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
                   </div>
                 </div>
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-muted" />
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full ${
+                      item.status === "waiting"
+                        ? "bg-muted/20 text-muted"
+                        : item.status === "in_progress"
+                          ? "bg-[#EF6600]/15 text-[#EF6600]"
+                          : "bg-green-500/15 text-green-500"
+                    }`}
+                  >
+                    {item.status === "waiting" ? "대기" : item.status === "in_progress" ? "진료중" : "완료"}
+                  </span>
+                  {item.status !== "done" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateQueueStatus(item.id, "done")
+                          .then((updated) => {
+                            setTodayQueue((prev) =>
+                              prev.map((q) => (q.id === updated.id ? updated : q)),
+                            );
+                          })
+                          .catch(console.error);
+                      }}
+                      className="text-xs text-subtext hover:text-[#EF6600] border border-border rounded px-1.5 py-0.5 transition-all"
+                    >
+                      ✓
+                    </button>
+                  )}
+                </div>
               </div>
             ))
           )}
         </div>
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={() => router.push("/diagnosis")}
-            className="w-full bg-[#EF6600] text-white rounded-lg py-3.5 text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-          >
-            🎙 새 진료 시작
-          </button>
-          <div className="bg-card border border-border rounded-lg p-5 flex-1">
-            <div className="text-xs font-medium text-text uppercase tracking-wide mb-3">최근 진료 기록</div>
-            {loading ? (
-              <div className="text-sm text-muted text-center py-4">불러오는 중...</div>
-            ) : !stats?.recent_records?.length ? (
-              <div className="text-sm text-muted text-center py-4">아직 진료 기록이 없습니다</div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {stats.recent_records.map((rec, i) => (
-                  <div
-                    key={i}
-                    onClick={() => router.push(`/diagnosis?patientId=${rec.patient_id}`)}
-                    className="py-2 border-b border-border last:border-none cursor-pointer hover:bg-bg -mx-2 px-2 rounded transition-colors"
-                  >
-                    <div className="text-sm font-medium text-text">{rec.patient_name}</div>
-                    <div className="text-xs text-subtext mt-0.5">
-                      {parseDiagSummary(rec.chart_structured)}
-                    </div>
-                    <div className="text-xs text-muted mt-0.5">
-                      {rec.recorded_at
-                        ? new Date(rec.recorded_at).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
-                        : "-"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        <div className="bg-card border border-border rounded-lg p-5">
+          <div className="text-xs font-medium text-text uppercase tracking-wide mb-3">환자 접수</div>
+          <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2 mb-3">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="이름 검색..."
+              className="flex-1 bg-transparent text-xs text-text outline-none"
+            />
           </div>
+          {loading ? (
+            <div className="text-sm text-muted py-4 text-center">불러오는 중...</div>
+          ) : filteredPatients.length === 0 ? (
+            <div className="text-sm text-muted py-4 text-center">환자가 없습니다</div>
+          ) : (
+            filteredPatients.map((patient) => (
+              <div
+                key={patient.id}
+                onClick={() => {
+                  checkinPatient(patient.id)
+                    .then((item) => setTodayQueue((prev) => [...prev, item]))
+                    .catch(console.error);
+                }}
+                className="flex flex-col py-2.5 border-b border-border last:border-none cursor-pointer hover:bg-bg -mx-2 px-2 rounded transition-colors"
+              >
+                <div className="text-sm font-medium text-text">{patient.name}</div>
+                <div className="text-xs text-subtext">{patient.birth_date || "-"}</div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
