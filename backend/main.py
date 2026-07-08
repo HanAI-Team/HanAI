@@ -16,6 +16,7 @@ from app.feedback.router import router as feedback_router
 from app.hospitals.router import router as hospitals_router
 from app.kcd.router import router as kcd_router
 from app.patients.router import router as patients_router
+from app.queue.router import router as queue_router
 from app.staff.router import router as staff_router
 from app.subscription.router import router as subscription_router
 from fastapi import FastAPI, Request
@@ -146,6 +147,7 @@ app.include_router(kcd_router, prefix="/api/kcd", tags=["kcd"])
 app.include_router(acupuncture_router, prefix="/api/acupuncture", tags=["acupuncture"])
 app.include_router(billing_router, prefix="/api/billing", tags=["billing"])
 app.include_router(hospitals_router, prefix="/api/hospitals", tags=["hospitals"])
+app.include_router(queue_router , prefix="/api/queue", tags=["queue"])
 
 
 @app.get("/health")
