@@ -10,7 +10,7 @@ from app.billing.copayment import (
 from app.billing.pediatric_dosage import get_max_allowed_ratio
 from decimal import Decimal
 
-from app.billing.catalog import BILLABLE_CATALOG, CHUNA_50_CODES, CHUNA_80_CODES, get_catalog_item
+from app.billing.catalog import BILLABLE_CATALOG, CHUNA_CODES, get_catalog_item
 from app.billing.schema import (
     INSURANCE_TYPE_CHOICES,
     MEDICAL_AID_GRADE_CHOICES,
@@ -673,27 +673,16 @@ async def add_line_items(
             aid_grade = MedicalAidGrade.GRADE_2
         special_case = await resolve_active_special_code(db, patient.id)
 
-        # 추나 본인부담률(50%/80%) 분리 적용을 위해 코드별로 나눠서 합산
-        # (2026-07-07: 40721이 80% 대상이라는 게 확정되면서 CHUNA_CODES 단일
-        # 합산 방식으로는 80% 대상을 50%로 잘못 계산하는 버그가 있었음)
+        # 추나 본인부담률(50%) 분리 적용을 위해 추나 합계 계산
         await db.flush()
-        chuna_50_rows = await db.execute(
+        chuna_rows = await db.execute(
             select(ClaimLineItem.amount).where(
                 ClaimLineItem.claim_id == claim.id,
                 ClaimLineItem.is_non_benefit == False,
-                ClaimLineItem.code.in_(CHUNA_50_CODES),
+                ClaimLineItem.code.in_(CHUNA_CODES),
             )
         )
-        chuna_total = sum(r.amount or 0 for r in chuna_50_rows)
-
-        chuna_80_rows = await db.execute(
-            select(ClaimLineItem.amount).where(
-                ClaimLineItem.claim_id == claim.id,
-                ClaimLineItem.is_non_benefit == False,
-                ClaimLineItem.code.in_(CHUNA_80_CODES),
-            )
-        )
-        chuna_80_total = sum(r.amount or 0 for r in chuna_80_rows)
+        chuna_total = sum(r.amount or 0 for r in chuna_rows)
 
         billing_result = calculate_billing(BillingInput(
             insurance_type=ins,
@@ -704,7 +693,6 @@ async def add_line_items(
             birth_date=patient.birth_date,
             special_code=special_case.special_code,
             chuna_total=chuna_total,
-            chuna_80_total=chuna_80_total,
         ))
         claim.patient_copay = billing_result.copayment
         claim.claim_amount = billing_result.claim_amount
