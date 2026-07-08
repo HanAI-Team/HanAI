@@ -379,24 +379,18 @@ async def create_claim(
         prior_annual = await _count_annual_chuna_sessions(
             db, patient_id, claim_period_year, exclude_medical_record_ids=this_claim_record_ids
         )
-        # 이번 청구분(진료기록 중 추나 시술이 있는 것)까지 합쳐서 최종 누적치를 만든다.
         this_claim_chuna_records = {
             p.medical_record_id for p in procedures
             if not p.is_non_benefit and p.fee_master_code in CHUNA_CODES
         }
         chuna_annual_count = prior_annual + len(this_claim_chuna_records)
 
-        # 1일 인원 한도는 진료일(레코드의 recorded_at) 기준. 여러 레코드가 섞여 있을 수
-        # 있으니 각 진료일마다 확인해야 정확하지만, 여기서는 청구 대표 진료일(가장
-        # 빠른 recorded_at)로 단순화한다 — 여러 날짜 진료를 한 청구에 묶는 경우
-        # 드물다는 전제. 필요시 레코드별로 세분화 검토.
         recorded_dates = [r.recorded_at.date() for r in records if r.recorded_at]
         if recorded_dates:
             target_date = min(recorded_dates)
             prior_daily = await _count_daily_chuna_patients(
                 db, doctor_id, target_date, exclude_patient_id=patient_id
             )
-            # 오늘 이 환자 본인도 포함해서 최종 카운트 (본인 1명 + 그 외 환자 수)
             chuna_daily_doctor_count = prior_daily + 1
 
     # ── 고시 기반 특정내역/청구 검증 (notice_rules.py) ──────────────────────────
