@@ -8,10 +8,12 @@ function getHeaders() {
   };
 }
 
-export async function getPatients(search?: string) {
-  const url = search
-    ? `${BASE_URL}/api/patients/?search=${search}`
-    : `${BASE_URL}/api/patients/`;
+export async function getPatients(search?: string, page = 1, size = 20) {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  params.set("page", String(page));
+  params.set("size", String(size));
+  const url = `${BASE_URL}/api/patients/?${params.toString()}`;
   const res = await fetch(url, { headers: getHeaders() });
   if (res.status === 404) return [];
   if (!res.ok) throw new Error("환자 목록 조회 실패");
