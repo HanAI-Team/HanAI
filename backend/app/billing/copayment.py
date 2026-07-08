@@ -215,9 +215,16 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                 copay = 1000  # 1종 외래: 1,000원 정액 (의원급)
             elif inp.has_disability:
                 # 2종 장애인 외래: 5% 경감 (의료급여법 시행령 별표1)
-                copay = _ceil_won(Decimal(total1) * Decimal("0.05"))
-                normal_copay = _ceil_won(Decimal(total1) * Decimal("0.15"))
-                result.disability_medical_cost = normal_copay - copay
+                # 단, 추나요법 본인부담금은 장애인의료비 미지급 (HIRA 고시)
+                # → 추나 항목은 15% 그대로, 비추나 항목만 5%로 경감하고 차액(10%)이 disability_medical_cost
+                chuna_sum = inp.chuna_total + inp.chuna_80_total
+                non_chuna = max(total1 - chuna_sum, 0)
+                non_chuna_copay = _ceil_won(Decimal(non_chuna) * Decimal("0.05"))
+                chuna_copay_ma = _ceil_won(Decimal(chuna_sum) * Decimal("0.15"))
+                copay = non_chuna_copay + chuna_copay_ma
+                result.disability_medical_cost = (
+                    _ceil_won(Decimal(non_chuna) * Decimal("0.15")) - non_chuna_copay
+                )
             else:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.15"))
             result.medical_aid_outpatient_copay = copay

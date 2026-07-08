@@ -204,12 +204,17 @@ BILLABLE_CATALOG: list[BillableItemDef] = [
         code="40710", unit_price=26330,
     ),
     BillableItemDef(
-        id="chuna_complex", name="추나요법(복잡)", sub="",
+        id="chuna_complex", name="추나요법(복잡)", sub="디스크·협착증",
         category="추나", hang="04", mok="05",
         code="40720", unit_price=44450,
     ),
     BillableItemDef(
-        id="chuna_special", name="추나요법(특수-한구)", sub="",
+        id="chuna_complex_80", name="추나요법(복잡-본인부담80%)", sub="디스크·협착증 외 근골격계 질환",
+        category="추나", hang="04", mok="05",
+        code="40721", unit_price=44450,
+    ),
+    BillableItemDef(
+        id="chuna_special", name="추나요법(특수-탈구)", sub="",
         category="추나", hang="04", mok="05",
         code="40730", unit_price=68140,
     ),
@@ -316,6 +321,23 @@ BILLABLE_CATALOG: list[BillableItemDef] = [
         id="herb_61p", name="한약조제료(61일분이상)", sub="",
         category="한약", hang="11", mok="01",
         code="30190", unit_price=6440,
+    ),
+
+    # ── 의원 전용 가산·기타 ──────────────────────────────────────
+    BillableItemDef(
+        id="pediatric_surcharge", name="소아과이외 6세미만 소아료", sub="의원급 한방, 6세미만 아동 가산",
+        category="진찰료", hang="01", mok="01",
+        code="154A6", unit_price=2640,
+    ),
+    BillableItemDef(
+        id="herb_counsel", name="한약의약품 조제복약지도료", sub="",
+        category="한약", hang="11", mok="01",
+        code="30200", unit_price=4200,
+    ),
+    BillableItemDef(
+        id="beonjeung", name="번증기제료", sub="한방의원 번증기술료",
+        category="기타", hang="04", mok="06",
+        code="40400", unit_price=2640,
     ),
 
     # ── 비급여 ──────────────────────────────────────────────────
