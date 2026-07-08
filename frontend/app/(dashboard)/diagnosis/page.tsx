@@ -179,6 +179,7 @@ export default function DiagnosisPage() {
   );
   const [todayQueue, setTodayQueue] = useState<QueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
+  const [queueOpen, setQueueOpen] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const secondsRef = useRef(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
@@ -1249,15 +1250,23 @@ ${historyLine}
       <div className="hidden sm:flex w-[260px] flex-shrink-0 bg-card border-r border-border flex-col">
         {/* 섹션 1: 오늘 접수 */}
         <div className="p-3 border-b border-border">
-          <div className="flex items-center gap-2 mb-2">
+          <div
+            onClick={() => setQueueOpen((prev) => !prev)}
+            className="flex items-center gap-2 mb-2 cursor-pointer"
+          >
             <div className="text-xs font-medium text-text uppercase tracking-wide">
               오늘 접수
             </div>
             <span className="text-xs text-muted bg-fill rounded-full px-1.5 py-0.5">
               {todayQueue.length}
             </span>
+            {queueOpen ? (
+              <ChevronUp className="w-3.5 h-3.5 text-muted ml-auto" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-muted ml-auto" />
+            )}
           </div>
-          {queueLoading ? (
+          {queueOpen && (queueLoading ? (
             <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto py-2" />
           ) : sortedQueue.length === 0 ? (
             <div className="text-xs text-muted text-center py-4">
@@ -1317,7 +1326,7 @@ ${historyLine}
                 </div>
               ))}
             </div>
-          )}
+          ))}
         </div>
 
         {/* 섹션 2: 환자 검색 */}
