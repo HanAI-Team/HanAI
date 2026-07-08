@@ -190,7 +190,7 @@ export default function HomePage() {
           </div>
           <div
             ref={scrollContainerRef}
-            className="max-h-[500px] overflow-y-auto overflow-x-hidden"
+            className="max-h-[550px] overflow-y-auto overflow-x-hidden"
             onScroll={(e) => {
               const el = e.currentTarget;
               if (el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
