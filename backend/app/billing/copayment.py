@@ -57,7 +57,7 @@ def _special_rate(special_code: str) -> Decimal:
 
     2026-07-07 재검증 (law.go.kr 별표4/별표4의2 원문 + HIRA 별표6 종합 코드표
     직접 대조 완료):
-      - V221: 5% → 10%로 정정. "중증화상" 코드가 아니라 별표4(희귀질환자
+      - V221: 5% → 10%로 정정. "중증화상"이 아니라 별표4(희귀질환자
         산정특례 대상) 소속 "레쉬-니한증후군(E79.1)" 코드였음. 중증화상 코드는
         아래 V247/V248/V250/V305/V306 5개뿐 (별표3·별표6 Ⅲ장 원문 확인).
       - V800: 0% → 10%로 정정. 별표4의2 구분6(조기발병 알츠하이머 등)에는
@@ -121,7 +121,15 @@ class BillingInput:
     support_fund: int = 0                          # 지원금
     treatment_days: Decimal = field(default_factory=lambda: Decimal("0"))
     graduated_fee_index: Decimal = field(default_factory=lambda: Decimal("0"))
-    chuna_total: int = 0
+    # 추나요법 본인부담률은 코드에 따라 둘로 갈린다 (2026-07-07 확정):
+    #   - 40710(단순)/40720(복잡-일반)/40730(특수·탈구) → 50%
+    #   - 40721(복잡추나 중 디스크·협착증 외 근골격계 질환) → 80%
+    #   (국민건강보험법 시행령 별표2 제3호 라목9)·10))
+    # 기존에는 chuna_total 하나로 합산해 일괄 50%를 적용했는데, 40721이
+    # 카탈로그에 없어 드러나지 않았던 버그. 40721을 카탈로그에 추가하면서
+    # 함께 분리함.
+    chuna_total: int = 0       # 50% 대상 추나 합계 (40710/40720/40730)
+    chuna_80_total: int = 0    # 80% 대상 추나 합계 (40721)
 
 
 @dataclass
@@ -134,7 +142,8 @@ class BillingResult:
     copayment: int = 0              # 본인일부부담금
     claim_amount: int = 0           # 청구액
     upper_limit_excess: int = 0     # 본인부담 상한액 초과금 (별도 계산 필요)
-    chuna_copay: int = 0
+    chuna_copay: int = 0            # 추나 50% 대상 본인부담금
+    chuna_80_copay: int = 0         # 추나 80% 대상 본인부담금
     # 유형별 본인일부부담금 (해당하는 항목만 값, 나머지 0)
     health_outpatient_copay: int = 0        # 건강보험 외래
     health_inpatient_copay: int = 0         # 건강보험 입원
@@ -249,10 +258,15 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                     copay = min(1500, total1)
                     result.senior_outpatient_copay = copay
                 else:
-                    normal_total = max(total1 - inp.chuna_total, 0)
+                    chuna_50 = inp.chuna_total
+                    chuna_80 = inp.chuna_80_total
+                    normal_total = max(total1 - chuna_50 - chuna_80, 0)
                     normal_copay = _ceil_won(Decimal(normal_total) * Decimal("0.30"))
-                    chuna_copay = _ceil_won(Decimal(inp.chuna_total) * Decimal("0.50"))
-                    copay = normal_copay + chuna_copay
+                    chuna_copay = _ceil_won(Decimal(chuna_50) * Decimal("0.50"))
+                    chuna_80_copay = _ceil_won(Decimal(chuna_80) * Decimal("0.80"))
+                    copay = normal_copay + chuna_copay + chuna_80_copay
+                    result.chuna_copay = chuna_copay
+                    result.chuna_80_copay = chuna_80_copay
                     result.health_outpatient_copay = copay
             else:
                 if _is_under_15(inp.birth_date, ref_date):

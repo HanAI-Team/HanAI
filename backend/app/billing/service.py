@@ -41,7 +41,7 @@ from app.core.models import (
     Subscription,
 )
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
@@ -180,6 +180,98 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
         disease_name=chosen.disease_name,
     )
 
+
+async def _count_annual_chuna_sessions(
+    db: AsyncSession, patient_id: UUID, year: int, exclude_medical_record_ids: set[UUID] | None = None
+) -> int:
+    """환자의 올해(달력연도 1/1~12/31) 누적 추나요법 시행 횟수.
+
+    ※ "연간" 기산 기준이 달력연도인지 최초시술일 기준 365일 롤링인지
+      공식 문서에서 확인 못해 달력연도로 가정 — 확정 필요.
+    ※ MedicalRecordProcedure(구 차팅 경로)와 ClaimLineItem(BillableItemPicker
+      경로) 두 곳에 추나 시술이 나뉘어 저장될 수 있어(dual-path 이슈,
+      2026-07-07 발견) 두 테이블을 다 세어 합산한다. 같은 진료기록이
+      두 테이블에 동시에 잡히는 경우는 없다고 가정(정상 플로우라면 한
+      진료기록당 한 경로만 사용).
+    ※ "1회"는 추나 시술이 있었던 서로 다른 MedicalRecord(=방문) 수로 센다
+      (하루에 추나 코드가 여러 줄 찍혀도 1회로 취급).
+    """
+    exclude = exclude_medical_record_ids or set()
+    year_start = date(year, 1, 1)
+    year_end = date(year, 12, 31)
+
+    r1 = await db.execute(
+        select(MedicalRecordProcedure.medical_record_id)
+        .join(MedicalRecord, MedicalRecord.id == MedicalRecordProcedure.medical_record_id)
+        .where(
+            MedicalRecord.patient_id == patient_id,
+            MedicalRecordProcedure.fee_master_code.in_(CHUNA_CODES),
+            MedicalRecord.recorded_at.is_not(None),
+            func.date(MedicalRecord.recorded_at) >= year_start,
+            func.date(MedicalRecord.recorded_at) <= year_end,
+        )
+        .distinct()
+    )
+    ids_from_procedures = {row[0] for row in r1.all()}
+
+    r2 = await db.execute(
+        select(ClaimLineItem.medical_record_id)
+        .join(MedicalRecord, MedicalRecord.id == ClaimLineItem.medical_record_id)
+        .where(
+            MedicalRecord.patient_id == patient_id,
+            ClaimLineItem.code.in_(CHUNA_CODES),
+            MedicalRecord.recorded_at.is_not(None),
+            func.date(MedicalRecord.recorded_at) >= year_start,
+            func.date(MedicalRecord.recorded_at) <= year_end,
+        )
+        .distinct()
+    )
+    ids_from_line_items = {row[0] for row in r2.all()}
+
+    all_record_ids = (ids_from_procedures | ids_from_line_items) - exclude
+    return len(all_record_ids)
+
+
+async def _count_daily_chuna_patients(
+    db: AsyncSession, doctor_id: UUID, target_date: date, exclude_patient_id: UUID | None = None
+) -> int:
+    """특정 한의사가 특정 날짜에 추나요법을 시행한 서로 다른 환자 수.
+
+    ※ 위 _count_annual_chuna_sessions와 동일하게 MedicalRecordProcedure /
+      ClaimLineItem 두 경로를 합산한다.
+    """
+    r1 = await db.execute(
+        select(MedicalRecord.patient_id)
+        .join(MedicalRecordProcedure, MedicalRecordProcedure.medical_record_id == MedicalRecord.id)
+        .where(
+            MedicalRecord.doctor_id == doctor_id,
+            MedicalRecordProcedure.fee_master_code.in_(CHUNA_CODES),
+            MedicalRecord.recorded_at.is_not(None),
+            func.date(MedicalRecord.recorded_at) == target_date,
+        )
+        .distinct()
+    )
+    patients_from_procedures = {row[0] for row in r1.all()}
+
+    r2 = await db.execute(
+        select(MedicalRecord.patient_id)
+        .join(ClaimLineItem, ClaimLineItem.medical_record_id == MedicalRecord.id)
+        .where(
+            MedicalRecord.doctor_id == doctor_id,
+            ClaimLineItem.code.in_(CHUNA_CODES),
+            MedicalRecord.recorded_at.is_not(None),
+            func.date(MedicalRecord.recorded_at) == target_date,
+        )
+        .distinct()
+    )
+    patients_from_line_items = {row[0] for row in r2.all()}
+
+    all_patients = patients_from_procedures | patients_from_line_items
+    if exclude_patient_id is not None:
+        all_patients.discard(exclude_patient_id)
+    return len(all_patients)
+
+
 async def create_claim(
     db: AsyncSession,
     hospital_id: UUID,
@@ -202,9 +294,9 @@ async def create_claim(
     tier = sub.tier if sub else "basic"
 
     if tier == "basic":
-        from sqlalchemy import func
+        from sqlalchemy import func as _func
         count_result = await db.execute(
-            select(func.count(Claim.id)).where(
+            select(_func.count(Claim.id)).where(
                 Claim.hospital_id == hospital_id,
                 Claim.claim_period_year == claim_period_year,
                 Claim.claim_period_month == claim_period_month,
@@ -278,6 +370,8 @@ async def create_claim(
         procedures=procedures,
         _claim_period_year=claim_period_year,
         _claim_period_month=claim_period_month,
+        chuna_annual_count=chuna_annual_count,
+        chuna_daily_doctor_count=chuna_daily_doctor_count,
     )
 
     blocking_errors = [e for e in notice_errors if e["severity"] == "ERROR"]
@@ -290,6 +384,9 @@ async def create_claim(
                 "errors": blocking_errors,
             },
         )
+
+    warn_notices = [e for e in notice_errors if e["severity"] == "WARN"]
+
     # 본인부담금 계산
     insurance_type = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
     special_case = await resolve_active_special_code(db, patient_id)
@@ -307,6 +404,9 @@ async def create_claim(
     ))
 
     # Claim 생성
+    # 추나 연간/1일 한도 WARN이 있으면 needs_review도 함께 세워 화면에 노출한다
+    # (ERROR와 달리 청구 생성 자체는 막지 않되, 사람이 재확인하도록).
+    needs_review = special_case.needs_review or bool(warn_notices)
     claim = Claim(
         id=uuid.uuid4(),
         patient_id=patient_id,
@@ -321,7 +421,7 @@ async def create_claim(
         disability_medical_aid=billing_result.disability_medical_cost,
         support_fund=billing_result.support_fund,
         status="draft",
-        special_case_needs_review=special_case.needs_review,
+        special_case_needs_review=needs_review,
     )
     db.add(claim)
 
