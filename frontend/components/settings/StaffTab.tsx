@@ -90,20 +90,22 @@ export default function StaffTab() {
       ) : (
         <div className="space-y-3">
           {staffList.map((staff) => (
-            <div key={staff.id} className="flex items-center justify-between border border-border rounded-xl px-4 py-4">
+            <div key={staff.id} className="flex flex-col border border-border rounded-xl px-4 py-4">
               <div>
                 <div className="font-medium text-text">{staff.name}</div>
                 <div className="text-xs text-subtext mt-0.5">{staff.email}</div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="mt-1">
                 <span className="text-xs px-3 py-1 bg-fill rounded-lg">
                   {STAFF_ROLE_LABEL[staff.role] || staff.role}
                 </span>
+              </div>
+              <div className="mt-2">
                 <button
                   onClick={() => handleToggleActive(staff)}
                   className={`px-4 py-1.5 text-xs rounded-lg font-medium transition-all ${
-                    staff.is_active 
-                      ? 'border border-border hover:bg-red-500/10 hover:text-red-400' 
+                    staff.is_active
+                      ? 'border border-border hover:bg-red-500/10 hover:text-red-400'
                       : 'bg-[#EF6600] text-white'
                   }`}
                 >

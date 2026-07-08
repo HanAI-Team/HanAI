@@ -38,7 +38,7 @@ export default function RootPage() {
             }`}
           />
           <h1
-            className="font-serif text-5xl md:text-6xl tracking-tight bg-gradient-to-b from-[#FF6B00] to-[#FF9500] bg-clip-text text-transparent dark:bg-none dark:text-[#7FFFD4] transition-opacity duration-500"
+            className="text-5xl md:text-6xl tracking-tight bg-gradient-to-b from-[#FF6B00] to-[#FF9500] bg-clip-text text-transparent dark:bg-none dark:text-[#7FFFD4] transition-opacity duration-500"
             style={{ opacity: textVisible ? 1 : 0 }}
           >
             Zinmac

@@ -935,7 +935,7 @@ ${historyLine}
     printWindow.document.title = `진단 결과 - ${selectedPatient.name}`;
     const pre = printWindow.document.createElement("pre");
     pre.style.cssText =
-      "white-space: pre-wrap; font-family: sans-serif; font-size: 13px; line-height: 1.6; color: #232323; padding: 24px; margin: 0;";
+      "white-space: pre-wrap;  font-size: 13px; line-height: 1.6; color: #232323; padding: 24px; margin: 0;";
     pre.textContent = text;
     printWindow.document.body.appendChild(pre);
     printWindow.focus();

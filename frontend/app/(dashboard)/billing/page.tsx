@@ -1,5 +1,4 @@
 "use client";
-import { useEffect, useState } from "react";
 import {
   ClaimListItem,
   bulkDownloadEdi,
@@ -8,6 +7,7 @@ import {
   resubmitClaim,
   statusLabel,
 } from "@/lib/api/billing";
+import { useEffect, useState } from "react";
 
 const STATUS_FILTERS = [
   { key: "", label: "전체" },
@@ -184,7 +184,7 @@ export default function BillingPage() {
       {/* 헤더 */}
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-serif text-2xl text-text">보험 청구</h1>
+          <h1 className="text-2xl text-text">보험 청구</h1>
           <p className="text-xs text-subtext mt-1">EDI 파일 생성 및 다운로드</p>
         </div>
         <button
