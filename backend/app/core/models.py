@@ -55,6 +55,17 @@ class Doctor(Base):
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
     force_password_change = Column(Boolean, default=False, nullable=False, server_default="false")
 
+    # 추나요법 급여 사전교육(대한한의사협회, 온라인9시간+오프라인6시간=15시간) 이수 여부.
+    # 일회성 교육으로 확인되어(2026-07-08, 승희 확인) 만료/재이수 로직은 별도로 두지 않음.
+    # 원장 본인이 프로필 화면에서 직접 체크(PATCH /auth/me)하는 방식. 미이수 상태로
+    # 추나요법을 청구하면 notice_rules.py에서 ERROR로 차단됨.
+    chuna_training_certified = Column(Boolean, default=False, nullable=False, server_default="false")
+    # 배포 직후 "이수 여부를 확인해주세요" 안내를 1회만 띄우기 위한 플래그.
+    # chuna_training_certified와 별개로 관리해야 함 — 안내를 보고 "나는 미이수"라고
+    # 확인한 원장도 certified=False로 남지만, banner_seen=True가 되어 매번 로그인할
+    # 때마다 배너가 다시 뜨는 걸 막는다.
+    chuna_training_banner_seen = Column(Boolean, default=False, nullable=False, server_default="false")
+
     hospital = relationship("Hospital", back_populates="doctors")
     medical_records = relationship("MedicalRecord", back_populates="doctor")
     feedbacks = relationship("Feedback", back_populates="doctor")

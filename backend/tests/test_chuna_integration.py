@@ -1,10 +1,19 @@
-"""추나요법 관련 create_claim() 통합 테스트 (2026-07-07 신규).
+"""추나요법 관련 create_claim() 통합 테스트 (2026-07-07 신규, 2026-07-08 수정).
 
 기존 test_chuna_copay_split.py / test_chuna_notice_rules.py는 순수 함수만
 검증했고, service.create_claim() 안의 실제 DB 쿼리(_count_annual_chuna_sessions,
 _count_daily_chuna_patients)는 한 번도 실행된 적이 없었다 (기존 테스트 스위트
 전체를 돌려도 추나 코드가 포함된 청구가 하나도 없었음). 이 파일은 그 갭을
 메운다.
+
+2026-07-08 수정:
+  - Doctor.chuna_training_certified 필드 신설(사전교육 이수 검증 기능 추가)로
+    인해, 이 파일의 테스트들이 만드는 기본 의사(approved_doctor fixture)가
+    미이수(False) 상태라 전부 400으로 막히던 문제 수정 — 각 테스트에서
+    doctor.chuna_training_certified = True로 명시적으로 이수 처리 후 진행.
+  - Claim.special_case_needs_review(Boolean) → special_case_review_reason
+    (String, nullable)로 필드명 자체가 바뀐 것 반영 (review_reason 브랜치,
+    #376 develop 머지 반영).
 """
 
 from datetime import date, datetime, timedelta, timezone
@@ -35,6 +44,14 @@ async def chuna_fee_codes(db):
     return codes
 
 
+async def _certify_chuna_training(db, doctor) -> None:
+    """이 파일의 테스트들은 추나 요율/한도 로직 검증이 목적이라, 사전교육
+    이수 검증(별도 기능, test_chuna_training_certification.py에서 전담 검증)
+    때문에 막히지 않도록 미리 이수 처리해준다."""
+    doctor.chuna_training_certified = True
+    await db.commit()
+
+
 async def _make_patient(db, hospital, name="추나환자") -> Patient:
     patient = Patient(hospital_id=hospital.id, name=name, gender="남", insurance_type="health")
     db.add(patient)
@@ -62,6 +79,7 @@ async def _make_chuna_record(db, hospital, doctor, patient, code, amount, record
 async def test_추나_50_80_요율_실제_DB_계산(db, approved_doctor, chuna_fee_codes):
     """40710(50%)+40721(80%) 혼합 청구 시 실제 청구금액이 분리 계산되는지 확인."""
     doctor, _ = approved_doctor
+    await _certify_chuna_training(db, doctor)
     hospital = await db.get(Hospital, doctor.hospital_id)
     patient = await _make_patient(db, hospital)
 
@@ -81,8 +99,9 @@ async def test_추나_50_80_요율_실제_DB_계산(db, approved_doctor, chuna_f
     assert claim.total_amount == 26330 + 44450
 
 
-async def test_추나_연간_20회_이하는_needs_review_안뜸(db, approved_doctor, chuna_fee_codes):
+async def test_추나_연간_20회_이하는_review_reason_없음(db, approved_doctor, chuna_fee_codes):
     doctor, _ = approved_doctor
+    await _certify_chuna_training(db, doctor)
     hospital = await db.get(Hospital, doctor.hospital_id)
     patient = await _make_patient(db, hospital)
 
@@ -110,8 +129,9 @@ async def test_추나_연간_20회_이하는_needs_review_안뜸(db, approved_do
     assert claim.special_case_review_reason is None
 
 
-async def test_추나_연간_20회_초과시_needs_review_뜸(db, approved_doctor, chuna_fee_codes):
+async def test_추나_연간_20회_초과시_review_reason_뜸(db, approved_doctor, chuna_fee_codes):
     doctor, _ = approved_doctor
+    await _certify_chuna_training(db, doctor)
     hospital = await db.get(Hospital, doctor.hospital_id)
     patient = await _make_patient(db, hospital)
 
@@ -137,11 +157,13 @@ async def test_추나_연간_20회_초과시_needs_review_뜸(db, approved_docto
         claim_period_year=this_year, claim_period_month=6, visit_type="외래",
     )
     assert claim.special_case_review_reason is not None
+    assert "chuna_limit_exceeded" in claim.special_case_review_reason
 
 
-async def test_추나_1일_18명_초과시_needs_review_뜸(db, approved_doctor, chuna_fee_codes):
-    """같은 한의사가 같은 날 18명을 초과해 추나를 시행한 경우 needs_review=True."""
+async def test_추나_1일_18명_초과시_review_reason_뜸(db, approved_doctor, chuna_fee_codes):
+    """같은 한의사가 같은 날 18명을 초과해 추나를 시행한 경우 review_reason에 노출."""
     doctor, _ = approved_doctor
+    await _certify_chuna_training(db, doctor)
     hospital = await db.get(Hospital, doctor.hospital_id)
 
     target_date = date.today().replace(month=6, day=15)
@@ -164,11 +186,15 @@ async def test_추나_1일_18명_초과시_needs_review_뜸(db, approved_doctor,
         claim_period_year=target_date.year, claim_period_month=target_date.month, visit_type="외래",
     )
     assert claim.special_case_review_reason is not None
+    assert "chuna_limit_exceeded" in claim.special_case_review_reason
 
 
 async def test_추나_없는_청구는_DB_카운트_쿼리_아예_안_타고_정상동작(db, approved_doctor):
     """추나 항목이 없으면 chuna_annual_count/chuna_daily_doctor_count가 None으로 유지되고,
-    기존 동작(일반 진료 30%)이 그대로 유지되는지 회귀 확인."""
+    기존 동작(일반 진료 30%)이 그대로 유지되는지 회귀 확인.
+
+    이 테스트는 의도적으로 이수 처리를 안 함 — 추나가 없는 청구는 사전교육
+    여부와 무관하게 정상 통과해야 한다는 걸 같이 확인하기 위함."""
     doctor, _ = approved_doctor
     hospital = await db.get(Hospital, doctor.hospital_id)
     patient = await _make_patient(db, hospital)
