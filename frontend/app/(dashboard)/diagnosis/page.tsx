@@ -56,8 +56,6 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-const PAGE_SIZE = 20;
-
 const ASK_SAVE_FIELDS: { key: string; label: string }[] = [
   { key: "constitution", label: "사상체질" },
   { key: "diagnosis", label: "한의학적 진단 / 양방 대응" },
@@ -81,7 +79,9 @@ export default function DiagnosisPage() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [patientPage, setPatientPage] = useState(1);
+  const [patientHasMore, setPatientHasMore] = useState(true);
+  const [patientLoadingMore, setPatientLoadingMore] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [activeTab, setActiveTab] = useState<
     "record" | "result" | "history" | "ask" | "billing"
@@ -179,16 +179,16 @@ export default function DiagnosisPage() {
   );
   const [todayQueue, setTodayQueue] = useState<QueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
+  const [queueOpen, setQueueOpen] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const secondsRef = useRef(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const patientScrollRef = useRef<HTMLDivElement | null>(null);
   const urlPatientIdRef = useRef<string | null>(null);
+  const PAGE_SIZE = 10;
 
   const filtered = patients.filter((p) => p.name.includes(search));
-  const displayedPatients = filtered.slice(0, page * PAGE_SIZE);
-  const hasMore = filtered.length > page * PAGE_SIZE;
   const sortedQueue = [...todayQueue].sort((a, b) => {
     const aDone = a.status === "done" ? 1 : 0;
     const bDone = b.status === "done" ? 1 : 0;
@@ -209,8 +209,11 @@ export default function DiagnosisPage() {
   }, []);
 
   useEffect(() => {
-    getPatients()
-      .then(setPatients)
+    getPatients(undefined, 1, PAGE_SIZE)
+      .then((p) => {
+        setPatients(p);
+        setPatientHasMore(p.length === PAGE_SIZE);
+      })
       .catch(console.error)
       .finally(() => setPatientsLoading(false));
   }, []);
@@ -222,17 +225,21 @@ export default function DiagnosisPage() {
       .finally(() => setQueueLoading(false));
   }, []);
 
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && hasMore && !patientsLoading) {
-        setPage((prev) => prev + 1);
-      }
+  // 다음 페이지를 서버에서 조회해 patients에 append (홈 화면과 동일한 방식)
+  const loadMorePatients = async () => {
+    if (patientLoadingMore || !patientHasMore) return;
+    const nextPage = patientPage + 1;
+    setPatientLoadingMore(true);
+    const newItems: Patient[] = await getPatients(undefined, nextPage, PAGE_SIZE).catch(() => [] as Patient[]);
+    setPatients((prev) => {
+      const existingIds = new Set(prev.map((p) => p.id));
+      const deduped = newItems.filter((p) => !existingIds.has(p.id));
+      return [...prev, ...deduped];
     });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, patientsLoading]);
+    setPatientPage(nextPage);
+    if (newItems.length < PAGE_SIZE) setPatientHasMore(false);
+    setPatientLoadingMore(false);
+  };
 
   useEffect(() => {
     const id = urlPatientIdRef.current;
@@ -1249,15 +1256,23 @@ ${historyLine}
       <div className="hidden sm:flex w-[260px] flex-shrink-0 bg-card border-r border-border flex-col">
         {/* 섹션 1: 오늘 접수 */}
         <div className="p-3 border-b border-border">
-          <div className="flex items-center gap-2 mb-2">
+          <div
+            onClick={() => setQueueOpen((prev) => !prev)}
+            className="flex items-center gap-2 mb-2 cursor-pointer"
+          >
             <div className="text-xs font-medium text-text uppercase tracking-wide">
               오늘 접수
             </div>
             <span className="text-xs text-muted bg-fill rounded-full px-1.5 py-0.5">
               {todayQueue.length}
             </span>
+            {queueOpen ? (
+              <ChevronUp className="w-3.5 h-3.5 text-muted ml-auto" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-muted ml-auto" />
+            )}
           </div>
-          {queueLoading ? (
+          {queueOpen && (queueLoading ? (
             <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto py-2" />
           ) : sortedQueue.length === 0 ? (
             <div className="text-xs text-muted text-center py-4">
@@ -1317,7 +1332,7 @@ ${historyLine}
                 </div>
               ))}
             </div>
-          )}
+          ))}
         </div>
 
         {/* 섹션 2: 환자 검색 */}
@@ -1329,19 +1344,26 @@ ${historyLine}
             <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
             <input
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="검색 후 접수 추가..."
               className="flex-1 bg-transparent text-xs text-text outline-none"
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto py-1">
+        <div
+          ref={patientScrollRef}
+          className="flex-1 overflow-y-auto py-1"
+          onScroll={(e) => {
+            if (search) return;
+            const el = e.currentTarget;
+            if (el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
+              loadMorePatients();
+            }
+          }}
+        >
           {patientsLoading ? (
             <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto mt-8" />
-          ) : displayedPatients.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <div className="text-xs text-muted text-center py-8">
               등록된 환자가 없습니다
             </div>
@@ -1407,6 +1429,9 @@ ${historyLine}
                 </button>
               </div>
             ))
+          )}
+          {!search && patientLoadingMore && (
+            <div className="text-xs text-muted text-center py-2">불러오는 중...</div>
           )}
         </div>
         {selectedPatient && (
