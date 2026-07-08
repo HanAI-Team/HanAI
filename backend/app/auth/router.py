@@ -370,7 +370,9 @@ async def get_me(
             "institution_code": institution_code,
             "birth_date": user.birth_date,
             "tier" :  subscription.tier,
-            "expired_at" : subscription.expired_at
+            "expired_at" : subscription.expired_at,
+            "chuna_training_certified": user.chuna_training_certified,
+            "chuna_training_banner_seen": user.chuna_training_banner_seen,
         }
     return {
         "id": user.id,
@@ -391,8 +393,16 @@ async def update_me(
 ):
     if data.birth_date is not None:
         doctor.birth_date = data.birth_date
+    if data.chuna_training_certified is not None:
+        doctor.chuna_training_certified = data.chuna_training_certified
+    if data.chuna_training_banner_seen is not None:
+        doctor.chuna_training_banner_seen = data.chuna_training_banner_seen
     await db.commit()
-    return {"birth_date": doctor.birth_date}
+    return {
+        "birth_date": doctor.birth_date,
+        "chuna_training_certified": doctor.chuna_training_certified,
+        "chuna_training_banner_seen": doctor.chuna_training_banner_seen,
+    }
 
 
 @router.post("/staff/login", response_model=TokenResponse)
