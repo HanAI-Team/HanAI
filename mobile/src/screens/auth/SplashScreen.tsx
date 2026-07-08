@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Animated, useColorScheme, View } from "react-native";
 
 const LOGO_SIZE = 96;
@@ -102,7 +102,7 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
       <Animated.Text
         className="text-5xl tracking-tight mt-5"
         style={{
-          fontFamily: "serif",
+          
           color: textColor,
           opacity: textOpacity,
         }}

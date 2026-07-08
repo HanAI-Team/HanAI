@@ -1,11 +1,11 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { jwtDecode } from 'jwt-decode'
-import GeneralTab from '@/components/settings/GeneralTab'
-import StaffTab from '@/components/settings/StaffTab'
 import AccessTab from '@/components/settings/AccessTab'
 import FaqTab from '@/components/settings/FaqTab'
+import GeneralTab from '@/components/settings/GeneralTab'
+import StaffTab from '@/components/settings/StaffTab'
 import WorkDaysTab from '@/components/settings/WorkDaysTab'
+import { jwtDecode } from 'jwt-decode'
+import { useEffect, useState } from 'react'
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<'general' | 'staff' | 'access' | 'workdays' | 'faq' | null>(null)
@@ -29,7 +29,7 @@ export default function SettingsPage() {
   return (
     <div className="p-6 md:p-8 max-w-[1100px] mx-auto">
       <div className="max-w-[1100px]">
-        <h1 className="font-serif text-3xl text-text mb-1">설정</h1>
+        <h1 className="text-3xl text-text mb-1">설정</h1>
         <p className="text-subtext">계정과 병원 환경을 관리하세요</p>
 
         {isOwner && (

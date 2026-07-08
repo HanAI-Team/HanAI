@@ -3,6 +3,7 @@ venv/
 __pycache__/
 *.csv
 !backend/data/kcd8_u_codes.csv
+!backend/data/acupuncture_points.csv
 *.db
 *.dump
 data/*.jsonl

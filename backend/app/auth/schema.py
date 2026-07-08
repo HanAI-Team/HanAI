@@ -126,6 +126,10 @@ class ChangePasswordRequest(BaseModel):
 
 class DoctorProfileUpdate(BaseModel):
     birth_date: Optional[date] = None
+    # 2026-07-08 추가: 추나요법 급여 사전교육 이수여부(원장 본인 직접 체크) +
+    # 배포 직후 1회성 안내 배너 노출 여부. 승희 확인요청 v3 답변 반영.
+    chuna_training_certified: Optional[bool] = None
+    chuna_training_banner_seen: Optional[bool] = None
 
 
 class VerifyInitResponse(BaseModel):

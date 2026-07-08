@@ -1,7 +1,7 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { register } from '@/lib/api/auth'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -40,7 +40,7 @@ export default function RegisterPage() {
       <div className="flex-1 hidden md:flex items-center justify-center p-10 relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_60%,rgba(239,102,0,0.15),transparent_60%)]" />
         <div className="relative z-10 text-center">
-          <h1 className="font-serif text-6xl text-white tracking-tight">Zinmac</h1>
+          <h1 className="text-6xl text-white tracking-tight">Zinmac</h1>
           <p className="text-[#A09892] mt-3 text-sm tracking-widest">AI 한의 진료 보조 시스템</p>
           <div className="w-12 h-0.5 bg-[#EF6600] mx-auto mt-5" />
         </div>

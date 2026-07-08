@@ -1,11 +1,11 @@
 "use client";
 import PwaInstallGuide from "@/components/PwaInstallGuide";
 import ThemeToggle from "@/components/ThemeToggle";
+import { UserInfoForNav } from "@/components/userInfo";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { UserInfoForNav } from "@/components/userInfo";
 
 
 export default function DashboardLayout({
@@ -58,7 +58,7 @@ export default function DashboardLayout({
             height={40}
             className="w-10 h-10 hidden dark:block "
           />
-          <div className="font-serif text-[19px] text-white">Zinmac</div>
+          <div className="text-[19px] text-white">Zinmac</div>
         </div>
         <div className="flex gap-1 flex-1">
           {navLinks.map((link) => (
@@ -90,7 +90,7 @@ export default function DashboardLayout({
  alt="Zinmac" width={36} height={36} className="w-9 h-9 dark:hidden" />
           <Image   src="/images/logo-dark.png"
  alt="Zinmac" width={36} height={36} className="w-9 h-9 hidden dark:block" />
-          <div className="font-serif text-[19px] text-white">Zinmac</div>
+          <div className="text-[19px] text-white">Zinmac</div>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
@@ -120,7 +120,7 @@ export default function DashboardLayout({
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <div className="flex items-center gap-2">
             <Image src="/logo.png" alt="Zinmac" width={32} height={32} className="w-8 h-8" />
-            <div className="font-serif text-[18px] text-white">Zinmac</div>
+            <div className="text-[18px] text-white">Zinmac</div>
           </div>
           <button
             onClick={() => setDrawerOpen(false)}

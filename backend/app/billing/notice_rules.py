@@ -2,6 +2,8 @@ from collections import defaultdict
 from datetime import date, datetime
 from typing import Any
 
+from app.billing.catalog import CHUNA_CODES
+
 
 def _get(obj: Any, key: str, default=None):
     if isinstance(obj, dict):
@@ -257,5 +259,24 @@ def validate_notice_rules(
                 "1일 인정 한도(18명)를 초과했습니다. 초과분 급여 인정 여부를 확인하세요."
             ),
         })
+
+    # 10) 추나요법 급여 사전교육 미이수 한의사 청구 차단 (2026-07-08 추가)
+    # 근거: 대한한의사협회 '추나요법 급여 사전교육'(온라인9시간+오프라인6시간=15시간)
+    # 이수를 신고한 한의사만 산정 가능 (HIRA 요양급여비용 청구방법·작성요령
+    # 572p, "추나요법은... 사전 교육 이수를 신고한 한의사가... 시행한 경우에
+    # 산정한다"). ERROR인 이유: WARN(연간/1일 한도)과 달리 이건 산정 요건
+    # 자체를 충족 못 하는 경우라 청구를 막아야 함 (보훈 MT038과 동일한 성격).
+    if doctor is not None:
+        has_chuna_items = any(
+            str(_get(item, "fee_master_code") or _get(item, "code") or "") in CHUNA_CODES
+            for item in items
+        )
+        if has_chuna_items and not _get(doctor, "chuna_training_certified", False):
+            results.append({
+                "rule_id": "NOTICE_CHUNA_TRAINING_REQUIRED",
+                "notice_no": "대한한의사협회 '추나요법 급여 사전교육' 이수 요건",
+                "severity": "ERROR",
+                "message": "추나요법 급여 사전교육을 이수하지 않은 한의사는 추나요법을 청구할 수 없습니다. 프로필에서 이수여부를 확인해주세요.",
+            })
 
     return results

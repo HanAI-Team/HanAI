@@ -684,9 +684,10 @@ async def add_line_items(
             aid_grade = MedicalAidGrade.GRADE_2
         special_case = await resolve_active_special_code(db, patient.id)
 
-        # 추나 본인부담률(50%/80%) 분리 적용을 위해 코드별로 나눠서 합산
-        # (2026-07-07: 40721이 80% 대상이라는 게 확정되면서 CHUNA_CODES 단일
-        # 합산 방식으로는 80% 대상을 50%로 잘못 계산하는 버그가 있었음)
+        # 추나 본인부담률(50%/80%) 분리 적용을 위해 코드별로 나눠서 합산.
+        # 2026-07-08 재수정: 이 파일이 한 차례 #373(요율 분리 수정) 이전 버전으로
+        # 되돌아가 있었음 — CHUNA_CODES 단일 합산 + chuna_80_total 누락으로
+        # 40721(80% 대상)이 다시 50%로 잘못 계산되는 회귀가 있었던 것을 재적용함.
         await db.flush()
         chuna_50_rows = await db.execute(
             select(ClaimLineItem.amount).where(

@@ -340,6 +340,23 @@ BILLABLE_CATALOG: list[BillableItemDef] = [
         code="30190", unit_price=6440,
     ),
 
+    # ── 의원 전용 가산·기타 ──────────────────────────────────────
+    BillableItemDef(
+        id="pediatric_surcharge", name="소아과이외 6세미만 소아료", sub="의원급 한방, 6세미만 아동 가산",
+        category="진찰료", hang="01", mok="01",
+        code="154A6", unit_price=2640,
+    ),
+    BillableItemDef(
+        id="herb_counsel", name="한약의약품 조제복약지도료", sub="",
+        category="한약", hang="11", mok="01",
+        code="30200", unit_price=4200,
+    ),
+    BillableItemDef(
+        id="beonjeung", name="번증기제료", sub="한방의원 번증기술료",
+        category="기타", hang="04", mok="06",
+        code="40400", unit_price=2640,
+    ),
+
     # ── 비급여 ──────────────────────────────────────────────────
     BillableItemDef(
         id="yakchim", name="약침술", sub="단가 자율책정",

@@ -291,6 +291,13 @@ async def create_claim(
     patient = r_patient.scalar_one_or_none()
     if not patient:
         raise HTTPException(status_code=404, detail="환자를 찾을 수 없습니다.")
+
+    # 추나요법 사전교육 이수여부 확인용 (notice_rules.py에서 사용, 2026-07-08 추가)
+    r_doctor = await db.execute(
+        select(Doctor).where(Doctor.id == doctor_id, Doctor.hospital_id == hospital_id)
+    )
+    doctor_obj = r_doctor.scalar_one_or_none()
+
     r_sub = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital_id))
     sub = r_sub.scalar_one_or_none()
     tier = sub.tier if sub else "basic"
@@ -412,6 +419,7 @@ async def create_claim(
         _claim_period_month=claim_period_month,
         chuna_annual_count=chuna_annual_count,
         chuna_daily_doctor_count=chuna_daily_doctor_count,
+        doctor=doctor_obj,
     )
 
     blocking_errors = [e for e in notice_errors if e["severity"] == "ERROR"]

@@ -27,7 +27,7 @@ export default function LoginPage() {
             className="mx-auto mb-3 w-12 h-12 sm:w-16 sm:h-16 hidden dark:block"
             priority
           />
-          <h1 className="font-serif text-5xl sm:text-6xl text-white tracking-tight">
+          <h1 className="text-5xl sm:text-6xl text-white tracking-tight">
             Zinmac
           </h1>
           <p className="text-[#A09892] mt-2 sm:mt-3 text-xs sm:text-sm tracking-widest">
