@@ -1,5 +1,12 @@
 """
-한의원 청구 가능 항목 — 심평원 고시 기준 실수가 데이터.
+한의원 청구 가능 항목 — 심평원 요양급여비용 목록표 2026-01-01 기준.
+
+코드 체계: 40XXX 숫자 코드 (HIRA 공식 한방 행위코드)
+  - 40011~40120: 침술
+  - 40304~40307: 뜸(구술)
+  - 40312~40323: 부항술
+  - 40710~40730: 추나요법 (2024 급여 편입, 2026 수가)
+  - 40091, 40700~40702: 전기/온열
 
 hang/mok: HIRA EDI 명세 항번호/목번호
   - 01/01: 진찰료
@@ -7,10 +14,25 @@ hang/mok: HIRA EDI 명세 항번호/목번호
   - 04/02: 시술처치 > 구술(뜸)
   - 04/03: 시술처치 > 부항
   - 04/04: 시술처치 > 전기/온열
-  - 04/05: 시술처치 > 추나/도수
+  - 04/05: 시술처치 > 추나
   - 05/01: 검사
   - 11/01: 한약조제
   - 09/01: 비급여
+
+단가 기준: 한방병원단가 (hanbang_fee_master_20260701.csv, 적용일 2026-01-01)
+
+2026-07-07 갱신 (TASK_fee_master_update.md + 심평원 원본 CSV 대조):
+  - 40721(추나요법-복잡추나-본인부담률 80%) 신규 추가. 국민건강보험법 시행령
+    별표2 제3호 라목9)·10) 기준 "복잡추나 중 디스크·협착증 외 근골격계 질환"은
+    본인부담률 80%가 적용되는 별도 수가코드. 기존에 CHUNA_CODES 상수엔
+    있었으나 BILLABLE_CATALOG에 항목 자체가 없어 원장이 선택할 수 없는
+    상태였음 (선택 불가 버그).
+  - 정확히 어떤 KCD 상병코드가 "디스크·협착증"에 해당하는지의 공식 목록은
+    아직 미확보 상태라, 자동 KCD 판별 로직은 이번 스코프에 넣지 않고
+    40710/40720/40721/40730을 40711 등과 동일하게 원장이 직접 선택하는
+    항목으로만 추가함. 목록 확보 시 자동 추천/검증 로직 추가 검토.
+  - "추나요법(특수-한구)" → "추나요법(특수-탈구)" 오타 수정 (CSV 원문:
+    "추나요법-특수(탈구)추나").
 """
 
 from dataclasses import dataclass
@@ -30,273 +52,292 @@ class BillableItemDef:
     requires_hyeolmyeong: bool = False
 
 
+# 추나 코드 전체 집합 — 사전교육 이수 검증, 연간/일일 횟수 집계 등에서
+# "추나요법인지 여부"만 판단할 때 사용.
+CHUNA_CODES: frozenset[str] = frozenset({"40710", "40720", "40721", "40730"})
+
+# 본인부담률 50% 대상 (단순추나/복잡추나-일반/특수(탈구)추나)
+CHUNA_50_CODES: frozenset[str] = frozenset({"40710", "40720", "40730"})
+
+# 본인부담률 80% 대상 — 복잡추나 중 디스크·협착증 외 근골격계 질환
+# (국민건강보험법 시행령 별표2 제3호 라목9)·10))
+CHUNA_80_CODES: frozenset[str] = frozenset({"40721"})
+
+
 BILLABLE_CATALOG: list[BillableItemDef] = [
     # ── 진찰료 ──────────────────────────────────────────────────
     BillableItemDef(
         id="visit_initial", name="초진진찰료", sub="",
         category="진찰료", hang="01", mok="01",
-        code="10100", unit_price=11560,
+        code="10100", unit_price=15860,
     ),
     BillableItemDef(
         id="visit_revisit", name="재진진찰료", sub="",
         category="진찰료", hang="01", mok="01",
-        code="10200", unit_price=7290,
+        code="10200", unit_price=10010,
     ),
     BillableItemDef(
-        id="visit_consult", name="협의진찰료", sub="한의원",
+        id="visit_consult", name="협의진찰료", sub="한방병원",
         category="진찰료", hang="01", mok="01",
-        code="11900", unit_price=5100,
+        code="11900", unit_price=7000,
     ),
 
-    # ── 침술 ────────────────────────────────────────────────────
+    # ── 침술 (40XXX, 2026 수가) ──────────────────────────────────
     BillableItemDef(
         id="acu_1", name="경혈침술(1부위)", sub="",
         category="침술", hang="04", mok="01",
-        code="40011", unit_price=2620,
+        code="40011", unit_price=4070,
         requires_hyeolmyeong=True,
     ),
     BillableItemDef(
-        id="acu_2", name="경혈침술(2부위이상)", sub="",
+        id="acu_2p", name="경혈침술(2부위이상)", sub="",
         category="침술", hang="04", mok="01",
-        code="40012", unit_price=3920,
+        code="40012", unit_price=6110,
         requires_hyeolmyeong=True,
     ),
     BillableItemDef(
         id="acu_orbital", name="안와내침술", sub="",
         category="침술", hang="04", mok="01",
-        code="40030", unit_price=2880,
+        code="40030", unit_price=4820,
     ),
     BillableItemDef(
         id="acu_nasal", name="비강내침술", sub="",
         category="침술", hang="04", mok="01",
-        code="40040", unit_price=2880,
+        code="40040", unit_price=4370,
     ),
     BillableItemDef(
-        id="acu_abd", name="복강내침술", sub="",
+        id="acu_abdom", name="복강내침술", sub="",
         category="침술", hang="04", mok="01",
-        code="40050", unit_price=2860,
+        code="40050", unit_price=4380,
     ),
     BillableItemDef(
         id="acu_joint", name="관절내침술", sub="",
         category="침술", hang="04", mok="01",
-        code="40060", unit_price=2720,
+        code="40060", unit_price=4760,
     ),
     BillableItemDef(
-        id="acu_spinal", name="척추간침술", sub="",
+        id="acu_spine", name="척추간침술", sub="",
         category="침술", hang="04", mok="01",
-        code="40070", unit_price=2840,
+        code="40070", unit_price=4880,
     ),
     BillableItemDef(
-        id="acu_trans", name="투자법침술", sub="",
+        id="acu_embed", name="투자법침술", sub="",
         category="침술", hang="04", mok="01",
-        code="40080", unit_price=4220,
+        code="40080", unit_price=4890,
     ),
     BillableItemDef(
         id="acu_electro", name="전자침술", sub="",
         category="침술", hang="04", mok="01",
-        code="40092", unit_price=3980,
+        code="40092", unit_price=4660,
     ),
     BillableItemDef(
         id="acu_laser", name="레이저침술", sub="",
         category="침술", hang="04", mok="01",
-        code="40100", unit_price=2740,
+        code="40100", unit_price=4080,
     ),
     BillableItemDef(
         id="acu_bun", name="분구침술", sub="이침/두침/족침 등",
         category="침술", hang="04", mok="01",
-        code="40120", unit_price=2280,
+        code="40120", unit_price=4080,
     ),
 
-    # ── 뜸 ──────────────────────────────────────────────────────
+    # ── 뜸 (구술, 2026 수가) ────────────────────────────────────
     BillableItemDef(
         id="mox_dir_ae", name="구술(직접구-직접애주구)", sub="",
         category="뜸", hang="04", mok="02",
-        code="40304", unit_price=5600,
+        code="40304", unit_price=12280,
     ),
     BillableItemDef(
-        id="mox_dir_sc", name="구술(직접구-반흔구)", sub="",
+        id="mox_dir_scar", name="구술(직접구-반흔구)", sub="",
         category="뜸", hang="04", mok="02",
-        code="40305", unit_price=5840,
+        code="40305", unit_price=12310,
     ),
     BillableItemDef(
         id="mox_ind_ae", name="구술(간접구-간접애주구)", sub="",
         category="뜸", hang="04", mok="02",
-        code="40306", unit_price=2320,
+        code="40306", unit_price=5090,
     ),
     BillableItemDef(
         id="mox_ind_dev", name="구술(간접구-기기구술)", sub="",
         category="뜸", hang="04", mok="02",
-        code="40307", unit_price=2140,
+        code="40307", unit_price=4370,
     ),
 
-    # ── 부항 ────────────────────────────────────────────────────
+    # ── 부항술 (2026 수가) ───────────────────────────────────────
     BillableItemDef(
-        id="cup_wet_1", name="부항술(자락관법)", sub="습식",
+        id="cup_wet", name="부항술(자락관법)", sub="",
         category="부항", hang="04", mok="03",
-        code="40312", unit_price=5570,
+        code="40312", unit_price=9830,
     ),
     BillableItemDef(
-        id="cup_wet_2", name="부항술(자락관법-2부위이상)", sub="습식",
+        id="cup_wet_2p", name="부항술(자락관법-2부위이상)", sub="",
         category="부항", hang="04", mok="03",
-        code="40313", unit_price=8350,
+        code="40313", unit_price=14740,
     ),
     BillableItemDef(
-        id="cup_dry_u", name="부항술(건식-유관법)", sub="건식",
+        id="cup_dry_u", name="부항술(건식-유관법)", sub="",
         category="부항", hang="04", mok="03",
-        code="40321", unit_price=3470,
+        code="40321", unit_price=5590,
     ),
     BillableItemDef(
-        id="cup_dry_s", name="부항술(건식-섬관법)", sub="건식",
+        id="cup_dry_s", name="부항술(건식-섬관법)", sub="",
         category="부항", hang="04", mok="03",
-        code="40322", unit_price=3720,
+        code="40322", unit_price=6510,
     ),
     BillableItemDef(
-        id="cup_dry_j", name="부항술(건식-주관법)", sub="건식",
+        id="cup_dry_j", name="부항술(건식-주관법)", sub="",
         category="부항", hang="04", mok="03",
-        code="40323", unit_price=4290,
+        code="40323", unit_price=6720,
     ),
 
-    # ── 전기/온열 ────────────────────────────────────────────────
+    # ── 전기/온열 (2026 수가) ────────────────────────────────────
     BillableItemDef(
         id="elec_stim", name="침전기자극술", sub="",
         category="전기/온열", hang="04", mok="04",
-        code="40091", unit_price=3950,
+        code="40091", unit_price=4180,
     ),
     BillableItemDef(
         id="heat_warm", name="온냉경락요법(온열)", sub="경피경근온열요법",
         category="전기/온열", hang="04", mok="04",
-        code="40700", unit_price=780,
+        code="40700", unit_price=2520,
     ),
     BillableItemDef(
         id="heat_ir", name="온냉경락요법(적외선)", sub="경피적외선조사요법",
         category="전기/온열", hang="04", mok="04",
-        code="40701", unit_price=780,
+        code="40701", unit_price=1940,
     ),
     BillableItemDef(
         id="heat_cold", name="온냉경락요법(한냉)", sub="경피경근한냉요법",
         category="전기/온열", hang="04", mok="04",
-        code="40702", unit_price=780,
+        code="40702", unit_price=2380,
     ),
 
-    # ── 추나/도수 ────────────────────────────────────────────────
+    # ── 추나요법 (2026 수가, 급여 적용) ─────────────────────────
+    # 사전교육(대한한의사협회 '추나요법 급여 사전교육', 15시간) 이수한 한의사만
+    # 청구 가능. 본인부담률: 40710/40720/40730=50%, 40721=80%.
     BillableItemDef(
-        id="chuna_total", name="총관도수법", sub="",
-        category="추나/도수", hang="04", mok="05",
-        code="45550", unit_price=4940,
+        id="chuna_simple", name="추나요법(단순)", sub="",
+        category="추나", hang="04", mok="05",
+        code="40710", unit_price=26330,
     ),
     BillableItemDef(
-        id="chuna_attach", name="첩대총관도수법", sub="",
-        category="추나/도수", hang="04", mok="05",
-        code="45560", unit_price=9370,
+        id="chuna_complex", name="추나요법(복잡)", sub="디스크·협착증",
+        category="추나", hang="04", mok="05",
+        code="40720", unit_price=44450,
     ),
     BillableItemDef(
-        id="byeong_jeung", name="변증기술료", sub="",
-        category="추나/도수", hang="04", mok="05",
-        code="40400", unit_price=2500,
+        id="chuna_complex_80", name="추나요법(복잡-본인부담80%)", sub="디스크·협착증 외 근골격계 질환",
+        category="추나", hang="04", mok="05",
+        code="40721", unit_price=44450,
+    ),
+    BillableItemDef(
+        id="chuna_special", name="추나요법(특수-탈구)", sub="",
+        category="추나", hang="04", mok="05",
+        code="40730", unit_price=68140,
     ),
 
-    # ── 검사 ────────────────────────────────────────────────────
+    # ── 검사 (2026 수가) ────────────────────────────────────────
     BillableItemDef(
         id="test_yang", name="양도락검사", sub="",
         category="검사", hang="05", mok="01",
-        code="20010", unit_price=3030,
+        code="20010", unit_price=5340,
     ),
     BillableItemDef(
         id="test_pulse", name="맥전도검사", sub="",
         category="검사", hang="05", mok="01",
-        code="20020", unit_price=2720,
+        code="20020", unit_price=5990,
     ),
     BillableItemDef(
         id="test_gyeong", name="경락기능검사", sub="",
         category="검사", hang="05", mok="01",
-        code="20030", unit_price=4020,
+        code="20030", unit_price=6870,
     ),
     BillableItemDef(
         id="test_gyeong_y", name="경락기능검사(양명경)", sub="",
         category="검사", hang="05", mok="01",
-        code="20031", unit_price=3710,
+        code="20031", unit_price=5750,
     ),
     BillableItemDef(
         id="test_gyeong_s", name="경락기능검사(수양명경)", sub="",
         category="검사", hang="05", mok="01",
-        code="20032", unit_price=3750,
+        code="20032", unit_price=5430,
     ),
     BillableItemDef(
         id="test_vertigo", name="현훈검사", sub="",
         category="검사", hang="05", mok="01",
-        code="29003", unit_price=3270,
+        code="29003", unit_price=5820,
     ),
     BillableItemDef(
         id="test_person", name="인성검사", sub="",
         category="검사", hang="05", mok="01",
-        code="29004", unit_price=12900,
+        code="29004", unit_price=20530,
     ),
     BillableItemDef(
         id="test_dementia", name="치매검사", sub="",
         category="검사", hang="05", mok="01",
-        code="29005", unit_price=22910,
+        code="29005", unit_price=36400,
     ),
 
-    # ── 한약조제료 ───────────────────────────────────────────────
+    # ── 한약조제료 (2026 수가) ───────────────────────────────────
     BillableItemDef(
         id="herb_01", name="한약조제료(1일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30010", unit_price=340,
+        code="30010", unit_price=1230,
     ),
     BillableItemDef(
         id="herb_02", name="한약조제료(2일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30020", unit_price=420,
+        code="30020", unit_price=1400,
     ),
     BillableItemDef(
         id="herb_03", name="한약조제료(3일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30030", unit_price=490,
+        code="30030", unit_price=1580,
     ),
     BillableItemDef(
         id="herb_04", name="한약조제료(4일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30040", unit_price=570,
+        code="30040", unit_price=1760,
     ),
     BillableItemDef(
         id="herb_05", name="한약조제료(5일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30050", unit_price=650,
+        code="30050", unit_price=1930,
     ),
     BillableItemDef(
         id="herb_07", name="한약조제료(7일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30070", unit_price=800,
+        code="30070", unit_price=2290,
     ),
     BillableItemDef(
         id="herb_10", name="한약조제료(10일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30100", unit_price=1030,
+        code="30100", unit_price=2820,
     ),
     BillableItemDef(
         id="herb_14", name="한약조제료(14일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30140", unit_price=1340,
+        code="30140", unit_price=3530,
     ),
     BillableItemDef(
         id="herb_15", name="한약조제료(15일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30150", unit_price=1420,
+        code="30150", unit_price=3710,
     ),
     BillableItemDef(
         id="herb_30", name="한약조제료(16~30일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30160", unit_price=1650,
+        code="30160", unit_price=4490,
     ),
     BillableItemDef(
         id="herb_60", name="한약조제료(31~60일분)", sub="",
         category="한약", hang="11", mok="01",
-        code="30180", unit_price=2030,
+        code="30180", unit_price=5540,
     ),
     BillableItemDef(
         id="herb_61p", name="한약조제료(61일분이상)", sub="",
         category="한약", hang="11", mok="01",
-        code="30190", unit_price=2340,
+        code="30190", unit_price=6440,
     ),
 
     # ── 비급여 ──────────────────────────────────────────────────

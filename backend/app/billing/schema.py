@@ -247,6 +247,7 @@ class LineItemInput(BaseModel):
 class AddLineItemsRequest(BaseModel):
     medical_record_id: str
     items: list[LineItemInput] = Field(..., min_length=1)
+    visit_type: str = Field("outpatient", description="outpatient | inpatient")
 
 
 class ClaimLineItemResponse(BaseModel):

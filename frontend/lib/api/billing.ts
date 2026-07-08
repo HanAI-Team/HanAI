@@ -123,7 +123,8 @@ function mapClaimSummary(raw: any): ClaimSummary {
 
 export async function submitLineItems(
   medicalRecordId: string,
-  items: SelectedBillableItem[]
+  items: SelectedBillableItem[],
+  visitType: "outpatient" | "inpatient" = "outpatient"
 ): Promise<ClaimSummary> {
   const raw = await apiCall(`/api/billing/medical-records/${medicalRecordId}/line-items`, {
     method: "POST",
@@ -134,6 +135,7 @@ export async function submitLineItems(
         hyeolmyeong_names: i.hyeolmyeongNames,
         is_non_benefit: i.isNonBenefit ?? false,
       })),
+      visit_type: visitType,
     }),
   });
   return mapClaimSummary(raw);
