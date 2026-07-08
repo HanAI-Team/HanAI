@@ -2410,10 +2410,20 @@ ${historyLine}
                       onChange={(e) => { setKcdQuery(e.target.value); setKcdDropdownOpen(true); }}
                       onFocus={() => setKcdDropdownOpen(true)}
                       onBlur={() => setTimeout(() => setKcdDropdownOpen(false), 150)}
-                      placeholder="코드 또는 진단명 검색 (예: U234, 두통)"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && kcdQuery.trim()) {
+                          const match = kcdResults[0];
+                          const code = match ?? { code: kcdQuery.trim().toUpperCase(), korean_name: kcdQuery.trim() };
+                          setKcdCode(code);
+                          setKcdQuery("");
+                          setKcdResults([]);
+                          setKcdDropdownOpen(false);
+                        }
+                      }}
+                      placeholder="코드 또는 진단명 검색 (예: M545, 요통)"
                       className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                     />
-                    {kcdDropdownOpen && kcdResults.length > 0 && (
+                    {kcdDropdownOpen && (kcdResults.length > 0 || kcdQuery.trim().length > 0) && (
                       <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto z-10">
                         {kcdResults.map((item) => (
                           <button
@@ -2427,6 +2437,22 @@ ${historyLine}
                             <span className="text-text">{item.korean_name}</span>
                           </button>
                         ))}
+                        {kcdResults.length === 0 && kcdQuery.trim().length > 0 && (
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setKcdCode({ code: kcdQuery.trim().toUpperCase(), korean_name: kcdQuery.trim() });
+                              setKcdQuery("");
+                              setKcdResults([]);
+                              setKcdDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors"
+                          >
+                            <span className="text-subtext">직접 입력:</span>{" "}
+                            <span className="font-medium text-text">{kcdQuery.trim()}</span>
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
