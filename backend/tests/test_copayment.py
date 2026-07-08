@@ -230,3 +230,68 @@ def test_chuna_total이_benefit_total보다_큰_경우_normal_total_음수방어
     assert result.copayment == expected_chuna_copay
     # claim_amount도 음수 방어로 0
     assert result.claim_amount == 0
+
+
+# ── 2026-07-07 재검증: V221/V800/V027 ────────────────────────────────────
+# law.go.kr 별표4/별표4의2 원문 + HIRA 별표6 종합 코드표 직접 대조로 확정.
+
+def test_V221_레쉬니한증후군_10퍼센트():
+    # V221은 중증화상(5%)이 아니라 별표4 희귀질환(레쉬-니한증후군, E79.1) 코드 → 10%
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=12000,
+        special_code="V221",
+    ))
+    assert result.special_exception_copay == 1200  # ceil(12000*0.10)
+    assert result.copayment == 1200
+
+
+def test_V800_중증치매_10퍼센트():
+    # V800은 면제(0%)가 아니라 V810과 동일하게 10% (별표4의2 구분6, 일수제한 없음)
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=20000,
+        special_code="V800",
+    ))
+    assert result.special_exception_copay == 2000  # ceil(20000*0.10)
+    assert result.copayment == 2000
+
+
+def test_V027_폐지코드_fallback_10퍼센트():
+    # V027(미등록 암환자)은 HIRA 고시 제2020-191호(2020-09-01)로 공식 폐지됨.
+    # RATES 테이블에서 삭제됐으므로 fallback 기본값(10%)이 적용된다.
+    # 이 값으로 실제 청구가 나가면 안 되므로, 이 테스트는 "폐지된 코드가
+    # 조용히 넘어가지 않고 항상 fallback을 탄다"는 것만 확인하는 안전망이다.
+    # (DB 조회 결과 개발 단계 기존 등록 데이터 없음, 2026-07-07 확인)
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=10000,
+        special_code="V027",
+    ))
+    assert result.special_exception_copay == 1000  # ceil(10000*0.10), fallback
+    assert result.copayment == 1000
+
+
+def test_뇌혈관_V191_5퍼센트():
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.INPATIENT,
+        benefit_total=100000,
+        special_code="V191",
+    ))
+    assert result.special_exception_copay == 5000  # ceil(100000*0.05)
+    assert result.copayment == 5000
+
+
+def test_심장질환_V192_5퍼센트():
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.INPATIENT,
+        benefit_total=100000,
+        special_code="V192",
+    ))
+    assert result.special_exception_copay == 5000  # ceil(100000*0.05)
+    assert result.copayment == 5000
