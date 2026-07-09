@@ -20,6 +20,9 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 
+# ================================================================
+# 병원 / 인증 / 계정
+# ================================================================
 class Hospital(Base):
     __tablename__ = "hospitals"
 
@@ -124,6 +127,9 @@ class StaffAccount(Base):
     hospital = relationship("Hospital", back_populates="staff_accounts")
 
 
+# ================================================================
+# 구독 / 결제
+# ================================================================
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
@@ -139,6 +145,9 @@ class Subscription(Base):
     hospital = relationship("Hospital", back_populates="subscription")
 
 
+# ================================================================
+# 환자 / 산정특례
+# ================================================================
 class Patient(Base):
     __tablename__ = "patients"
 
@@ -195,6 +204,9 @@ class SpecialCaseRegistration(Base):
     patient = relationship("Patient", back_populates="special_case_registrations")
 
 
+# ================================================================
+# 청구
+# ================================================================
 class Claim(Base):
     __tablename__ = "claims"
 
@@ -268,6 +280,9 @@ class ClaimLineItem(Base):
     claim = relationship("Claim", back_populates="line_items")
 
 
+# ================================================================
+# 진료 기록 / AI
+# ================================================================
 class MedicalRecord(Base):
     __tablename__ = "medical_records"
 
@@ -387,6 +402,9 @@ class MedicalRecordProcedure(Base):
     fee_master = relationship("FeeMaster", foreign_keys="[MedicalRecordProcedure.fee_master_code]")
 
 
+# ================================================================
+# 보안 / 로그
+# ================================================================
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
@@ -400,6 +418,9 @@ class AuditLog(Base):
     detail = Column(Text, nullable=True)
 
 
+# ================================================================
+# 수가 / 코드 마스터
+# ================================================================
 class AcupuncturePoint(Base):
     __tablename__ = "acupuncture_points"
 
@@ -445,6 +466,9 @@ class FeeMaster(Base):
     is_standalone = Column(Boolean, default=False, nullable=False, server_default="false")
 
 
+# ================================================================
+# 보안 / 로그
+# ================================================================
 class AccountHistory(Base):
     __tablename__ = "account_histories"
 
@@ -481,6 +505,9 @@ class PasswordHistory(Base):
 
 
 
+# ================================================================
+# 접수 (DailyQueue)
+# ================================================================
 class DailyQueue(Base):
     __tablename__ = "daily_queue"
     
@@ -495,3 +522,22 @@ class DailyQueue(Base):
     # UniqueConstraint 없음
     
     patient = relationship("Patient", lazy="raise")
+
+
+# ================================================================
+# 구독 / 결제
+# ================================================================
+class Payment(Base):
+    __tablename__ = "payments"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    order_id = Column(String(100), unique=True, nullable=False)
+    payment_key = Column(String(200), nullable=True)
+    tier = Column(String(20), nullable=False)
+    billing_period = Column(String(10), nullable=False)
+    amount = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    # pending / paid / failed / refunded
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
