@@ -2,7 +2,10 @@
 import PwaInstallGuide from "@/components/PwaInstallGuide";
 import ThemeToggle from "@/components/ThemeToggle";
 import { UserInfoForNav } from "@/components/userInfo";
+import { SubscriptionContext } from "@/contexts/SubscriptionContext";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
+import { getMe } from "@/lib/api/get-me";
+import { Me } from "@/types";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -16,11 +19,18 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
   useIdleLogout();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) router.push("/login");
+  }, []);
+
+  useEffect(() => {
+    getMe().then((data: Me | undefined) => {
+      if (data) setIsExpired(!!data.is_expired);
+    });
   }, []);
 
   const navLinks = [
@@ -39,6 +49,7 @@ export default function DashboardLayout({
   ];
 
   return (
+    <SubscriptionContext.Provider value={isExpired}>
     <div className="flex flex-col min-h-screen">
       {/* PC 네비바 */}
       <nav className="hidden sm:flex h-[52px] bg-[#232323] dark:bg-card dark:border-b dark:border-border items-center px-6 flex-shrink-0">
@@ -186,5 +197,6 @@ export default function DashboardLayout({
         </div>
       </nav>
     </div>
+    </SubscriptionContext.Provider>
   );
 }
