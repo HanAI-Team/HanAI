@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     DISCORD_WEBHOOK_URL: Optional[str] = None
     RRN_ENCRYPTION_KEY:str = ""
     EDI_VENDOR_CODE: str = "10870025"  # 청구소프트웨어 업체기호 (심평원 상시점검 테스트 SAM FILE용)
+    TOSS_SECRET_KEY :Optional[str] = None
+    TOSS_CLINET_KEY:Optional[str] = None
 
 
 settings = Settings()
