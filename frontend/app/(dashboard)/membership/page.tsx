@@ -1,7 +1,9 @@
 "use client";
 import { MembershipBadge } from "@/components/MembershipBadge";
 import { getMe } from "@/lib/api/get-me";
+import { preparePayment } from "@/lib/api/payments";
 import { Check, Crown, Zap } from "lucide-react";
+import { loadTossPayments } from "@tosspayments/tosspayments-sdk";
 import { useEffect, useState } from "react";
 
 type User = {
@@ -26,6 +28,29 @@ const MembershipPage = () => {
   }, []);
 
   const isExpired = !me?.expired_at;
+
+  const handleSelectPlan = async (tier: string) => {
+    try {
+      const billingPeriod = billingCycle === "annual" ? "yearly" : "monthly";
+      const data = await preparePayment(`${tier}_beta`, billingPeriod);
+
+      const tossPayments = await loadTossPayments(
+        process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY as string
+      );
+      const payment = tossPayments.payment({ customerKey: "ANONYMOUS" });
+      await payment.requestPayment({
+        method: "CARD",
+        amount: { currency: "KRW", value: data.amount },
+        orderId: data.order_id,
+        orderName: data.order_name,
+        successUrl: `${window.location.origin}/payment/success`,
+        failUrl: `${window.location.origin}/payment/fail`,
+      });
+    } catch (error) {
+      console.error(error);
+      alert("결제 요청에 실패했습니다.");
+    }
+  };
 const plans = [
   {
     tier: "basic" as const,
@@ -199,6 +224,10 @@ const plans = [
                   </label>
 
                   <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectPlan(plan.tier);
+                    }}
                     className={`
                       w-full py-4 rounded-2xl text-sm font-semibold transition-all
                       ${isCurrent
