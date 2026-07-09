@@ -417,7 +417,7 @@ class KcdUCode(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String(20), unique=True, nullable=False, index=True)
-    korean_name = Column(String(100), nullable=False)
+    korean_name = Column(String(150), nullable=False)
     hanja = Column(String(100))
     category = Column(String(100))
     effective_date = Column(Date, nullable=True)
