@@ -254,6 +254,27 @@ class ClaimResubmissionHistory(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class ClaimRejectionCode(Base):
+    """요양급여비용 심사보류·불능 및 반송 사유별 코드 (별첨6), 수탁기관 통보 사유코드 (별첨7).
+
+    category="반송"|"심사불능"|"수탁기관통보". detail_code=""(빈 문자열)이면 상위 코드
+    자체의 포괄 설명(세부코드 없는 행), 별첨7은 세부코드 구조가 없어 항상 "".
+    (NULL 대신 ""을 쓰는 이유: Postgres 유니크 제약은 NULL끼리 서로 다른 값으로 취급해
+    재시딩 시 ON CONFLICT가 매칭되지 않기 때문.)
+    """
+    __tablename__ = "claim_rejection_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category = Column(String(10), nullable=False)
+    code = Column(String(2), nullable=False)
+    detail_code = Column(String(2), nullable=False, server_default="")
+    description = Column(String(500), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("category", "code", "detail_code", name="uq_claim_rejection_code"),
+    )
+
+
 class ClaimLineItem(Base):
     """차트 화면에서 항목 클릭 시 생성되는 청구 라인. EDI C2-71과 1:1 대응."""
 

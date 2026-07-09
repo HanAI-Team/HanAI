@@ -314,3 +314,13 @@ class NeedsReviewClaimItem(BaseModel):
 class NeedsReviewClaimsResponse(BaseModel):
     total: int
     items: list[NeedsReviewClaimItem]
+
+
+class ClaimRejectionCodeResponse(BaseModel):
+    category: str
+    code: str
+    detail_code: str
+    description: str
+
+    class Config:
+        from_attributes = True
