@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional
 from uuid import UUID
@@ -294,3 +294,23 @@ class ClaimResubmissionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class NeedsReviewClaimItem(BaseModel):
+    id: UUID
+    patient_id: UUID
+    patient_name: str
+    claim_period_year: int
+    claim_period_month: int
+    special_case_review_reason: str
+    status: str
+    total_amount: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class NeedsReviewClaimsResponse(BaseModel):
+    total: int
+    items: list[NeedsReviewClaimItem]
