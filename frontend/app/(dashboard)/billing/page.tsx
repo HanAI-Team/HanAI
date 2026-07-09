@@ -106,13 +106,7 @@ export default function BillingPage() {
       if (meRes.ok) {
         const me = await meRes.json();
         if (me.institution_code) institutionCode = me.institution_code;
-        if (me.hospital_id) {
-          const hospRes = await fetch(`${base}/api/hospitals/${me.hospital_id}`, { headers: authHeaders });
-          if (hospRes.ok) {
-            const hosp = await hospRes.json();
-            if (hosp.name) hospitalName = hosp.name;
-          }
-        }
+        if (me.hospital_name) hospitalName = me.hospital_name;
       }
     } catch {}
 
