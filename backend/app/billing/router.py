@@ -254,7 +254,7 @@ async def bulk_download_edi(
         for claim_id_str in body.ids:
             edi_bytes = await generate_claim_edi(db, current_user.hospital_id, UUID(claim_id_str), test_mode=body.test_mode)
             suffix = "_TEST" if body.test_mode else ""
-            zf.writestr(f"claim_{claim_id_str}{suffix}.edi", edi_bytes)
+            zf.writestr(f"claim_{claim_id_str}{suffix}.sam", edi_bytes)
     buf.seek(0)
 
     filename = "claims_edi_TEST.zip" if body.test_mode else "claims_edi.zip"
@@ -639,7 +639,7 @@ async def download_claim_edi(
         content=edi_bytes,
         media_type="application/octet-stream",
         headers={
-            "Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}.edi",
+            "Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}.sam",
             "Cache-Control": "no-store",
         },
     )
