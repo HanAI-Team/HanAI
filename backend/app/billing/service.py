@@ -40,6 +40,7 @@ from app.core.models import (
     SpecialCaseRegistration,
     Subscription,
 )
+from app.core.config import settings
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -573,7 +574,12 @@ async def generate_claim_edi(
     hospital = r7.scalar_one_or_none()
 
     # 2. ClaimHeader 조립
-    inst_code = (hospital.institution_code if hospital and hospital.institution_code else "00000000")
+    # 상시점검(테스트) SAM FILE은 실 요양기관기호 대신 심평원에 등록된
+    # 청구소프트웨어 업체기호를 기재하는 것이 공식 방법 (신규SW검사 신청방법.pdf).
+    if test_mode:
+        inst_code = settings.EDI_VENDOR_CODE
+    else:
+        inst_code = (hospital.institution_code if hospital and hospital.institution_code else "00000000")
     key = RecordKey(institution_code=inst_code, serial_no=1, ext_no=0)
 
     header = ClaimHeader(
