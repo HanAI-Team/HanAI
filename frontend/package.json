@@ -10,6 +10,7 @@
     "test": "echo \"No tests yet\" && exit 0"
   },
   "dependencies": {
+    "@tosspayments/tosspayments-sdk": "^2.7.1",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^1.17.0",
     "next": "16.2.6",

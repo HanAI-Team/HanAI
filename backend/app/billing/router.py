@@ -206,7 +206,10 @@ async def bulk_download_edi(
     return Response(
         content=buf.read(),
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-store",
+        },
     )
 
 # 심평원 기준 상수 (성인 기준)
@@ -580,7 +583,10 @@ async def download_claim_edi(
     return Response(
         content=edi_bytes,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}.edi"},
+        headers={
+            "Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}.edi",
+            "Cache-Control": "no-store",
+        },
     )
 
 @router.get("/catalog", response_model=list[BillableItemResponse])

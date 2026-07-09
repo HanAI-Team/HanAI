@@ -367,6 +367,7 @@ async def get_me(
             "license_number": user.license_number,
             "role": user.role,
             "hospital_id": user.hospital_id,
+            "hospital_name": hospital.name if hospital else None,
             "institution_code": institution_code,
             "birth_date": user.birth_date,
             "tier" :  subscription.tier,
@@ -381,6 +382,7 @@ async def get_me(
         "email": user.email,
         "role": user.role,
         "hospital_id": user.hospital_id,
+        "hospital_name": hospital.name if hospital else None,
         "institution_code": institution_code,
     }
 
