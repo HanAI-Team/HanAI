@@ -58,3 +58,21 @@ export interface DoctorWorkDays {
   doctor_birth_date: string
   work_days: number
 }
+
+export interface Me {
+  id: string
+  name: string
+  role: string
+  hospital_id: string
+  hospital_name?: string | null
+  institution_code?: string | null
+  license_number?: string
+  username?: string
+  email?: string
+  birth_date?: string | null
+  tier?: "basic" | "premium"
+  expired_at?: string | null
+  is_expired?: boolean
+  chuna_training_certified?: boolean
+  chuna_training_banner_seen?: boolean
+}

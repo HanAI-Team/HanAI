@@ -22,6 +22,7 @@ import {
   updatePatient,
 } from "@/lib/api/patients";
 import { checkinPatient, getTodayQueue, QueueItem, updateQueueStatus } from "@/lib/api/queue";
+import { useIsExpired } from "@/contexts/SubscriptionContext";
 import { DiagnosisResult, Patient } from "@/types";
 import {
   Check,
@@ -76,6 +77,7 @@ const QUEUE_STATUS_CLASS: Record<string, string> = {
 };
 
 export default function DiagnosisPage() {
+  const isExpired = useIsExpired();
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
@@ -1604,11 +1606,19 @@ ${historyLine}
                 </div>
                 <div className="text-center p-6 bg-fill border border-border rounded-lg mb-3">
                   <button
-                    onClick={toggleRecording}
+                    onClick={() => {
+                      if (isExpired) {
+                        alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
+                        return;
+                      }
+                      toggleRecording();
+                    }}
                     className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 transition-all ${
-                      isRecording
-                        ? "bg-[#68413E] animate-pulse"
-                        : "bg-[#EF6600] hover:scale-105"
+                      isExpired
+                        ? "bg-[#68413E]/40 opacity-50 cursor-not-allowed"
+                        : isRecording
+                          ? "bg-[#68413E] animate-pulse"
+                          : "bg-[#EF6600] hover:scale-105"
                     }`}
                   >
                     {isRecording ? (
@@ -1806,11 +1816,19 @@ ${historyLine}
               </div>
               <div className="sm:col-span-2">
                 <button
-                  onClick={startAnalysis}
+                  onClick={() => {
+                    if (isExpired) {
+                      alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
+                      return;
+                    }
+                    startAnalysis();
+                  }}
                   disabled={
                     loading || (audioFiles.length === 0 && !symptomText.trim())
                   }
-                  className="w-full bg-[#EF6600] text-white rounded-md py-3.5 text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40"
+                  className={`w-full bg-[#EF6600] text-white rounded-md py-3.5 text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40 ${
+                    isExpired ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
                 >
                   {loading ? (
                     "분석 중..."
@@ -2062,6 +2080,10 @@ ${historyLine}
                     </button>
                     <button
                       onClick={() => {
+                        if (isExpired) {
+                          alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
+                          return;
+                        }
                         setActiveTab("record");
                         setFeedbackAvailable(false);
                         setFeedbackHelpful(null);
@@ -2070,7 +2092,10 @@ ${historyLine}
                         setFeedbackRecordId(null);
                         setResultMemoOpen(false);
                       }}
-                      className="flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5"
+                      title={isExpired ? "구독을 갱신해주세요" : undefined}
+                      className={`flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5 ${
+                        isExpired ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                     >
                       <Plus className="w-3.5 h-3.5" /> 새 진료
                     </button>
