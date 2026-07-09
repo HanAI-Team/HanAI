@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 
 from app.billing.copayment import (
@@ -19,6 +20,7 @@ from app.billing.schema import (
     BillingCalcRequest,
     BillingCalcResponse,
     ClaimLineItemResponse,
+    ClaimRejectionCodeResponse,
     ClaimResubmissionResponse,
     ClaimResubmissionUpdate,
     ClaimSummaryResponse,
@@ -43,11 +45,11 @@ from app.billing.service import (
 )
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Claim, ClaimLineItem, DoctorWorkDays, FeeMaster, MedicalRecord, Patient
+from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, FeeMaster, MedicalRecord, Patient
 from app.core.config import settings
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -420,6 +422,28 @@ async def list_insurance_types(current_doctor=Depends(get_current_doctor)):
         "insurance_types": INSURANCE_TYPE_CHOICES,
         "medical_aid_grades": MEDICAL_AID_GRADE_CHOICES,
     }
+
+
+@router.get("/rejection-codes", response_model=list[ClaimRejectionCodeResponse])
+async def search_rejection_codes(
+    q: str = Query(..., min_length=1, description="코드 또는 사유 내용 검색어"),
+    category: Optional[str] = Query(None, description="반송 | 심사불능 | 수탁기관통보"),
+    limit: int = Query(20, ge=1, le=100),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """요양급여비용 심사보류·불능·반송 사유별 코드(별첨6) 및 수탁기관 통보 사유코드(별첨7) 검색."""
+    stmt = select(ClaimRejectionCode).where(
+        or_(
+            ClaimRejectionCode.code.ilike(f"{q}%"),
+            ClaimRejectionCode.description.ilike(f"%{q}%"),
+        )
+    )
+    if category:
+        stmt = stmt.where(ClaimRejectionCode.category == category)
+    stmt = stmt.order_by(ClaimRejectionCode.category, ClaimRejectionCode.code, ClaimRejectionCode.detail_code).limit(limit)
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
 @router.get("/fees", response_model=list[FeeItem])
