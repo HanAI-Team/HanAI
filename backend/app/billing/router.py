@@ -27,6 +27,7 @@ from app.billing.schema import (
     DoctorWorkDaysCreate,
     DoctorWorkDaysItem,
     DoctorWorkDaysUpdate,
+    DrugMasterResponse,
     FeeCreate,
     FeeItem,
     FeeUpdate,
@@ -45,7 +46,7 @@ from app.billing.service import (
 )
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, FeeMaster, MedicalRecord, Patient
+from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, DrugMaster, FeeMaster, MedicalRecord, Patient
 from app.core.config import settings
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
@@ -442,6 +443,26 @@ async def search_rejection_codes(
     if category:
         stmt = stmt.where(ClaimRejectionCode.category == category)
     stmt = stmt.order_by(ClaimRejectionCode.category, ClaimRejectionCode.code, ClaimRejectionCode.detail_code).limit(limit)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.get("/drugs", response_model=list[DrugMasterResponse])
+async def search_drugs(
+    q: str = Query(..., min_length=1, description="제품코드, 제품명 또는 주성분명 검색어"),
+    limit: int = Query(20, ge=1, le=100),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """약제급여목록 및 급여상한금액표 검색 (제품코드/제품명/주성분명)."""
+    stmt = select(DrugMaster).where(
+        or_(
+            DrugMaster.product_code.ilike(f"{q}%"),
+            DrugMaster.product_name.ilike(f"%{q}%"),
+            DrugMaster.ingredient_name.ilike(f"%{q}%"),
+        )
+    )
+    stmt = stmt.order_by(DrugMaster.product_name).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
 

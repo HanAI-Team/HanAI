@@ -488,6 +488,28 @@ class FeeMaster(Base):
     is_standalone = Column(Boolean, default=False, nullable=False, server_default="false")
 
 
+class DrugMaster(Base):
+    """약제급여목록 및 급여상한금액표 (HIRA, 매월 고시). 전국 공통(양·한방 구분 없음)."""
+
+    __tablename__ = "drug_master"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_code = Column(String(20), unique=True, nullable=False, index=True)   # 제품코드
+    product_name = Column(String(300), nullable=False)                            # 제품명
+    ingredient_code = Column(String(20), nullable=True)                           # 주성분코드
+    ingredient_name = Column(String(1500), nullable=True)                         # 주성분명
+    company_name = Column(String(100), nullable=True)                            # 업체명
+    spec = Column(String(50), nullable=True)                                      # 규격
+    unit = Column(String(30), nullable=True)                                      # 단위
+    unit_price = Column(Integer, nullable=False)                                  # 상한금액표 금액(원)
+    administration_route = Column(String(20), nullable=True)                      # 투여 (내복/외용/주사/기타)
+    classification_code = Column(String(10), nullable=True)                       # 분류(식약분류) 코드
+    # 전문/일반 구분. 원본 엑셀 헤더는 이 컬럼을 "전일"이라고 표기하지만 실제
+    # 값은 항상 "전문"|"일반"이라 헤더 자체가 오기임 — 값 기준으로 매핑.
+    is_prescription = Column(Boolean, nullable=True)
+    effective_date = Column(Date, nullable=True)                                  # 고시 적용일 (파일 스냅샷 기준)
+
+
 # ================================================================
 # 보안 / 로그
 # ================================================================
