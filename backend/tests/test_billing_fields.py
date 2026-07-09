@@ -102,7 +102,9 @@ def _calc(
 def _c2_11_bytes(result, **kwargs) -> bytes:
     rec = PatientRecord(
         key=_DUMMY_KEY,
-        employer_code="00000000000",
+        format_code=kwargs.get("format_code", "13"),
+        insurance_type=kwargs.get("insurance_type", "4"),
+        employer_code="00000000",
         cert_no="0000000000000",
         subscriber_name="홍길동",
         patient_name="홍길동",
@@ -131,7 +133,7 @@ def _c2_11_bytes(result, **kwargs) -> bytes:
 def _c2_00_bytes(result) -> bytes:
     hdr = ClaimHeader(
         key=_DUMMY_KEY,
-        billing_type="U1",
+        billing_type="V1",
         treatment_ym="202606",
         claim_date="20260601",
         claimer="홍길동",
@@ -190,18 +192,18 @@ class TestS01_건강보험_외래_기본:
     def test_항목8_100미만_총액(self):
         assert self.r.under_full_total == 10000
 
-    def test_C2_11_요양급여비용총액1_바이트128_137(self):
-        # 0-indexed: 127-136 → 요양급여비용총액1 9(10)
+    def test_C2_11_요양급여비용총액1_바이트108_117(self):
+        # 0-indexed 107:117 → 요양급여비용총액1 9(10)
         raw = _c2_11_bytes(self.r)
-        assert raw[127:137].decode("euc-kr") == "0000010000"
+        assert raw[107:117].decode("euc-kr") == "0000010000"
 
-    def test_C2_11_본인일부부담금_바이트138_147(self):
+    def test_C2_11_본인일부부담금_바이트118_127(self):
         raw = _c2_11_bytes(self.r)
-        assert raw[137:147].decode("euc-kr") == "0000003000"
+        assert raw[117:127].decode("euc-kr") == "0000003000"
 
-    def test_C2_11_청구액_바이트148_157(self):
+    def test_C2_11_청구액_바이트138_147(self):
         raw = _c2_11_bytes(self.r)
-        assert raw[147:157].decode("euc-kr") == "0000007000"
+        assert raw[137:147].decode("euc-kr") == "0000007000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -222,7 +224,7 @@ class TestS02_건강보험_입원_성인:
 
     def test_C2_11_본인일부부담금(self):
         raw = _c2_11_bytes(self.r, inpatient_days=5)
-        assert raw[137:147].decode("euc-kr") == "0000010000"
+        assert raw[117:127].decode("euc-kr") == "0000010000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -261,7 +263,7 @@ class TestS04_의료급여1종_외래:
     def test_C2_11_의료급여종별구분_바이트200(self):
         # 0-indexed 200: 의료급여종별구분 A
         raw = _c2_11_bytes(self.r, medical_aid_type="1")
-        assert raw[200:201].decode("euc-kr") == "1"
+        assert raw[237:238].decode("euc-kr") == "1"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -308,7 +310,7 @@ class TestS05_의료급여2종_외래_장애인:
     def test_C2_11_장애인의료비_바이트202_211(self):
         # 0-indexed 202-211: 대불금/장애인의료비 9(10)
         raw = _c2_11_bytes(self.r, medical_aid_type="2")
-        assert raw[202:212].decode("euc-kr") == "0000001000"
+        assert raw[238:248].decode("euc-kr") == "0000001000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -401,15 +403,15 @@ class TestS09_보훈:
     def test_항목2_100미만_보훈청구액(self):
         assert self.r.under_full_veterans_claim == 18000
 
-    def test_C2_11_보훈청구액_바이트245_254(self):
-        # 0-indexed 245-254: 보훈청구액 9(10)
+    def test_C2_11_보훈청구액_바이트168_177(self):
+        # 0-indexed 167-177: 보훈청구액 9(10)
         raw = _c2_11_bytes(self.r)
-        assert raw[245:255].decode("euc-kr") == "0000018000"
+        assert raw[167:177].decode("euc-kr") == "0000018000"
 
-    def test_C2_11_보훈본인부담_바이트295_304(self):
-        # 0-indexed 295-304: 보훈 본인일부부담금 9(10)
+    def test_C2_11_보훈본인부담_바이트188_197(self):
+        # 0-indexed 187-197: 보훈 본인일부부담금 9(10)
         raw = _c2_11_bytes(self.r)
-        assert raw[295:305].decode("euc-kr") == "0000000000"
+        assert raw[187:197].decode("euc-kr") == "0000000000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -433,7 +435,7 @@ class TestS10_100분의100_비급여포함:
     def test_C2_11_100분의100_바이트285_294(self):
         # 0-indexed 285-294: 건강보험(의료급여) 100분의100 본인부담금총액 9(10)
         raw = _c2_11_bytes(self.r)
-        assert raw[285:295].decode("euc-kr") == "0000020000"
+        assert raw[177:187].decode("euc-kr") == "0000020000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -452,7 +454,7 @@ class TestS11_지원금:
     def test_C2_11_지원금_바이트255_264(self):
         # 0-indexed 255-264: 지원금 9(10)
         raw = _c2_11_bytes(self.r, medical_aid_type="2")
-        assert raw[255:265].decode("euc-kr") == "0000005000"
+        assert raw[127:137].decode("euc-kr") == "0000005000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -480,19 +482,19 @@ class TestS12_차등수가:
         assert self.r.graduated_claim == 33600
 
     def test_C2_00_차등수가청구액_바이트166_175(self):
-        # 0-indexed 166-175: 차등수가청구액 9(10)
+        # 0-indexed 165-175: 차등수가청구액 9(10)
         raw = _c2_00_bytes(self.r)
-        assert raw[166:176].decode("euc-kr") == "0000033600"
+        assert raw[165:175].decode("euc-kr") == "0000033600"
 
     def test_C2_00_차등지수_바이트176_182(self):
-        # 0-indexed 176-182: 차등지수 9V9(7), 0.800 → 스케일 10^3 → "0000800"
+        # 0-indexed 175-182: 차등지수 (4+3=7자리), 0.800 → 스케일 10^3 → "0000800"
         raw = _c2_00_bytes(self.r)
-        assert raw[176:183].decode("euc-kr") == "0000800"
+        assert raw[175:182].decode("euc-kr") == "0000800"
 
     def test_C2_00_진료일수_바이트183_190(self):
-        # 0-indexed 183-190: 진료일수 9999V99(8), 30.00 → 스케일 10^2 → "00003000"
+        # 0-indexed 182-190: 진료일수 (6+2=8자리), 30.00 → 스케일 10^2 → "00003000"
         raw = _c2_00_bytes(self.r)
-        assert raw[183:191].decode("euc-kr") == "00003000"
+        assert raw[182:190].decode("euc-kr") == "00003000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -500,11 +502,11 @@ class TestS12_차등수가:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestS_자릿수_레코드길이:
-    """항목 24: 포맷터가 자릿수를 보장. CRLF 포함 Max 347 바이트(EUC-KR)."""
+    """항목 24: 포맷터가 자릿수를 보장. C2-11은 CRLF 포함 273바이트, C2-00은 347바이트(EUC-KR)."""
 
-    def test_C2_11_레코드_길이_345_plus_CRLF(self):
+    def test_C2_11_레코드_길이_271_plus_CRLF(self):
         r = _calc("4", "외래", benefit_total=10000)
-        assert len(_c2_11_bytes(r)) == 347
+        assert len(_c2_11_bytes(r)) == 273
 
     def test_C2_00_레코드_길이_345_plus_CRLF(self):
         r = _calc("4", "외래", benefit_total=10000)
@@ -518,19 +520,17 @@ class TestS_자릿수_레코드길이:
 class TestC2_13_진료내역:
     """C2-13 레코드 바이트 위치 검증 (항목 28·29).
 
+    2026-07-09 별첨2 원문 재검증 반영 — 레이아웃 전면 재작성.
     레이아웃 0-indexed:
-      17-20: 공란 X(4)
-      21-22: 항번호 XX      → 0-indexed [21:23]
-      23-24: 목번호 99      → [23:25]
-      25   : 코드구분 X(1)  → [25:26]
-      26-33: 코드 X(8)      → [26:34]
-      40-49: 단가 9(9)V9    → [40:50]
-      50-57: 1회투약량       → [50:58]
-      58-63: 일투            → [58:64]
-      64-66: 총투            → [64:67]
-      67-76: 금액 9(10)     → [67:77]
-      187  : 면허종류 X(1)  → [187:188]
-      188-287: 면허번호 X(100) → [188:288]
+      17   : 자료구분 X(1)       → [17:18]
+      18-19: 항 X(2)            → [18:20]
+      20-21: 목 9(2)            → [20:22]
+      22   : 코드구분 X(1)      → [22:23]
+      23-31: 코드 X(9)          → [23:32]
+      32-41: 단가 9(9)V9        → [32:42]
+      59-68: 금액 9(10)         → [59:69]
+      78   : 면허종류 X(1)      → [78:79]
+      79-178: 면허번호 X(100)   → [79:179]
     """
 
     def _make_proc(self, code="AA159", license_type="3", license_no="1234567890") -> ProcedureDetail:
@@ -548,49 +548,49 @@ class TestC2_13_진료내역:
             license_no=license_no,
         )
 
-    def test_항목29_레코드_길이_291_plus_CRLF(self):
+    def test_항목29_레코드_길이_185_plus_CRLF(self):
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert len(raw) == 293
+        assert len(raw) == 187
 
-    def test_항목29_항번호_바이트21_22(self):
+    def test_항목29_항_바이트19_20(self):
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert raw[21:23].decode("euc-kr") == "04"
+        assert raw[18:20].decode("euc-kr") == "04"
 
-    def test_항목29_목번호_바이트23_24(self):
+    def test_항목29_목_바이트21_22(self):
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert raw[23:25].decode("euc-kr") == "01"
+        assert raw[20:22].decode("euc-kr") == "01"
 
-    def test_항목29_코드구분_바이트25(self):
+    def test_항목29_코드구분_바이트23(self):
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert raw[25:26].decode("euc-kr") == "A"
+        assert raw[22:23].decode("euc-kr") == "A"
 
-    def test_항목29_행위코드_바이트26_33(self):
-        # code="AA159" → X(8) 좌측정렬 공백패딩 → "AA159   "
+    def test_항목29_행위코드_바이트24_32(self):
+        # code="AA159" → X(9) 좌측정렬 공백패딩 → "AA159    "(4칸 공백)
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert raw[26:34].decode("euc-kr") == "AA159   "
+        assert raw[23:32].decode("euc-kr") == "AA159    "
 
-    def test_항목29_단가_바이트40_49(self):
+    def test_항목29_단가_바이트33_42(self):
         # 6260원, 9(9)V9 → 62600 → "0000062600"
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert raw[40:50].decode("euc-kr") == "0000062600"
+        assert raw[32:42].decode("euc-kr") == "0000062600"
 
-    def test_항목29_금액_바이트67_76(self):
+    def test_항목29_금액_바이트60_69(self):
         # 6260원, 9(10) → "0000006260"
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert raw[67:77].decode("euc-kr") == "0000006260"
+        assert raw[59:69].decode("euc-kr") == "0000006260"
 
-    def test_항목28_면허종류_바이트187(self):
+    def test_항목28_면허종류_바이트79(self):
         raw = build_procedure_record(self._make_proc(license_type="3")).encode("euc-kr")
-        assert raw[187:188].decode("euc-kr") == "3"
+        assert raw[78:79].decode("euc-kr") == "3"
 
-    def test_항목28_면허번호_바이트188_197(self):
+    def test_항목28_면허번호_바이트80_89(self):
         # "1234567890" → 좌측정렬 X(100) 중 처음 10자리
         raw = build_procedure_record(self._make_proc(license_no="1234567890")).encode("euc-kr")
-        assert raw[188:198].decode("euc-kr") == "1234567890"
+        assert raw[79:89].decode("euc-kr") == "1234567890"
 
     def test_항목28_면허종류_한의사(self):
         raw = build_procedure_record(self._make_proc(license_type="3")).encode("euc-kr")
-        license_type_byte = raw[187:188].decode("euc-kr")
+        license_type_byte = raw[78:79].decode("euc-kr")
         assert license_type_byte == "3", "한의사 면허종류는 '3'"
 
 
@@ -599,37 +599,46 @@ class TestC2_13_진료내역:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestC2_08_특정내역:
-    """항목 31: 혈명코드 JS011이 C2-08 특정내역 레코드에 올바르게 기록되는지."""
+    """항목 31: 혈명코드 JS011이 C2-08 특정내역 레코드에 올바르게 기록되는지.
+
+    2026-07-09 별첨2 원문 재검증 반영 — "발생단위구분" 필드 신설, 레이아웃 재작성.
+    """
 
     def _make_special(self, hyeolmyeong: list[str]) -> SpecialRecord:
         content = ",".join(hyeolmyeong)
         return SpecialRecord(
             key=_DUMMY_KEY,
+            record_group_type="2",  # 줄단위(확장번호단위) — JS011은 줄 단위 특정내역
             prescription_no=0,
             record_ext_no=1,
             special_code="JS011",
             content=content,
         )
 
+    def test_항목31_발생단위구분_바이트19(self):
+        # 0-indexed 18: 발생단위구분 X(1)
+        raw = build_special_record(self._make_special(["합곡"])).encode("euc-kr")
+        assert raw[18:19].decode("euc-kr") == "2"
+
     def test_항목31_JS011_혈명코드_기록(self):
         names = ["합곡", "족삼리", "내관"]
         raw = build_special_record(self._make_special(names)).encode("euc-kr")
-        # C2-08 레코드: 47번(0-indexed)부터 content 700바이트
-        content_start = 47
+        # C2-08 레코드: 0-indexed 41부터 content 700바이트
+        content_start = 41
         content_raw = raw[content_start:content_start + 700]
         content_str = content_raw.decode("euc-kr").rstrip()
         assert "합곡" in content_str
         assert "족삼리" in content_str
         assert "내관" in content_str
 
-    def test_항목31_특정내역구분_JS011_바이트42_46(self):
-        # C2-08 43-47번(0-indexed 42-46): 특정내역구분 X(5) = "JS011"
+    def test_항목31_특정내역구분_JS011_바이트37_41(self):
+        # 0-indexed 36-41: 특정내역구분 X(5) = "JS011"
         raw = build_special_record(self._make_special(["합곡"])).encode("euc-kr")
-        assert raw[42:47].decode("euc-kr") == "JS011"
+        assert raw[36:41].decode("euc-kr") == "JS011"
 
-    def test_C2_08_레코드_길이_747_plus_CRLF(self):
+    def test_C2_08_레코드_길이_741_plus_CRLF(self):
         raw = build_special_record(self._make_special(["합곡"])).encode("euc-kr")
-        assert len(raw) == 749
+        assert len(raw) == 743
 
 class TestS12b_차등수가_범위검증:
     def test_차등지수_0_미적용_통과(self):
