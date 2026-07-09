@@ -66,7 +66,7 @@ export async function downloadEdi(claimId: string, testMode = false): Promise<vo
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = objectUrl;
-  a.download = testMode ? `claim_${claimId}_TEST.edi` : `claim_${claimId}.edi`;
+  a.download = testMode ? `claim_${claimId}_TEST.sam` : `claim_${claimId}.sam`;
   a.click();
   URL.revokeObjectURL(objectUrl);
 }
