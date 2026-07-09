@@ -1,6 +1,7 @@
 import base64
 import json
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -30,7 +31,9 @@ async def prepare_payment(
         raise HTTPException(status_code=400, detail="유효하지 않은 플랜입니다.")
     amount  = config["amount"]
     
-    order_id = f"ZINMAC-{str(hospital_id)[:8]}-{int(time.time())}"
+    order_id = f"ZINMAC-{str(hospital_id)[:8]}-{int(time.time() * 1000)}-{str(uuid.uuid4())[:8]}"
+
+
 
     if _redis:
         _redis.set(
@@ -98,6 +101,8 @@ async def confirm_payment(
         )
     if res.status_code != 200:
         # Payment 실패 기록
+        print(f"토스 에러: {res.status_code} {res.text}")
+
         fail_result = await db.execute(
             select(Payment).where(Payment.order_id == order_id)
         )
