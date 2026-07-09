@@ -353,7 +353,7 @@ BILLABLE_CATALOG: list[BillableItemDef] = [
     ),
     BillableItemDef(
         id="beonjeung", name="번증기제료", sub="한방의원 번증기술료",
-        category="기타", hang="04", mok="06",
+        category="추나", hang="04", mok="06",
         code="40400", unit_price=2640,
     ),
 
