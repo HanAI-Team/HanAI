@@ -7,6 +7,8 @@ from app.acupuncture.router import router as acupuncture_router
 from app.auth.router import router as auth_router
 from app.billing.router import router as billing_router
 from app.charting.router import router as charting_router
+from app.payments.router import router as payments_router
+
 from app.core.cleanup import run_cleanup_loop
 from app.core.config import settings
 from app.core.discord import notify_discord
@@ -148,6 +150,7 @@ app.include_router(acupuncture_router, prefix="/api/acupuncture", tags=["acupunc
 app.include_router(billing_router, prefix="/api/billing", tags=["billing"])
 app.include_router(hospitals_router, prefix="/api/hospitals", tags=["hospitals"])
 app.include_router(queue_router )
+app.include_router(payments_router)
 
 
 @app.get("/health")

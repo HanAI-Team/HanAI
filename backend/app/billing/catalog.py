@@ -20,6 +20,19 @@ hang/mok: HIRA EDI 명세 항번호/목번호
   - 09/01: 비급여
 
 단가 기준: 한방병원단가 (hanbang_fee_master_20260701.csv, 적용일 2026-01-01)
+
+2026-07-07 갱신 (TASK_fee_master_update.md + 심평원 원본 CSV 대조):
+  - 40721(추나요법-복잡추나-본인부담률 80%) 신규 추가. 국민건강보험법 시행령
+    별표2 제3호 라목9)·10) 기준 "복잡추나 중 디스크·협착증 외 근골격계 질환"은
+    본인부담률 80%가 적용되는 별도 수가코드. 기존에 CHUNA_CODES 상수엔
+    있었으나 BILLABLE_CATALOG에 항목 자체가 없어 원장이 선택할 수 없는
+    상태였음 (선택 불가 버그).
+  - 정확히 어떤 KCD 상병코드가 "디스크·협착증"에 해당하는지의 공식 목록은
+    아직 미확보 상태라, 자동 KCD 판별 로직은 이번 스코프에 넣지 않고
+    40710/40720/40721/40730을 40711 등과 동일하게 원장이 직접 선택하는
+    항목으로만 추가함. 목록 확보 시 자동 추천/검증 로직 추가 검토.
+  - "추나요법(특수-한구)" → "추나요법(특수-탈구)" 오타 수정 (CSV 원문:
+    "추나요법-특수(탈구)추나").
 """
 
 from dataclasses import dataclass
@@ -39,13 +52,15 @@ class BillableItemDef:
     requires_hyeolmyeong: bool = False
 
 
-# 추나 코드 전체 집합 — 연간/일일 횟수 집계 등에서 "추나요법인지 여부"만 판단할 때 사용.
+# 추나 코드 전체 집합 — 사전교육 이수 검증, 연간/일일 횟수 집계 등에서
+# "추나요법인지 여부"만 판단할 때 사용.
 CHUNA_CODES: frozenset[str] = frozenset({"40710", "40720", "40721", "40730"})
 
 # 본인부담률 50% 대상 (단순추나/복잡추나-일반/특수(탈구)추나)
 CHUNA_50_CODES: frozenset[str] = frozenset({"40710", "40720", "40730"})
 
 # 본인부담률 80% 대상 — 복잡추나 중 디스크·협착증 외 근골격계 질환
+# (국민건강보험법 시행령 별표2 제3호 라목9)·10))
 CHUNA_80_CODES: frozenset[str] = frozenset({"40721"})
 
 
@@ -198,18 +213,25 @@ BILLABLE_CATALOG: list[BillableItemDef] = [
     ),
 
     # ── 추나요법 (2026 수가, 급여 적용) ─────────────────────────
+    # 사전교육(대한한의사협회 '추나요법 급여 사전교육', 15시간) 이수한 한의사만
+    # 청구 가능. 본인부담률: 40710/40720/40730=50%, 40721=80%.
     BillableItemDef(
         id="chuna_simple", name="추나요법(단순)", sub="",
         category="추나", hang="04", mok="05",
         code="40710", unit_price=26330,
     ),
     BillableItemDef(
-        id="chuna_complex", name="추나요법(복잡)", sub="",
+        id="chuna_complex", name="추나요법(복잡)", sub="디스크·협착증",
         category="추나", hang="04", mok="05",
         code="40720", unit_price=44450,
     ),
     BillableItemDef(
-        id="chuna_special", name="추나요법(특수-한구)", sub="",
+        id="chuna_complex_80", name="추나요법(복잡-본인부담80%)", sub="디스크·협착증 외 근골격계 질환",
+        category="추나", hang="04", mok="05",
+        code="40721", unit_price=44450,
+    ),
+    BillableItemDef(
+        id="chuna_special", name="추나요법(특수-탈구)", sub="",
         category="추나", hang="04", mok="05",
         code="40730", unit_price=68140,
     ),
@@ -316,6 +338,23 @@ BILLABLE_CATALOG: list[BillableItemDef] = [
         id="herb_61p", name="한약조제료(61일분이상)", sub="",
         category="한약", hang="11", mok="01",
         code="30190", unit_price=6440,
+    ),
+
+    # ── 의원 전용 가산·기타 ──────────────────────────────────────
+    BillableItemDef(
+        id="pediatric_surcharge", name="소아과이외 6세미만 소아료", sub="의원급 한방, 6세미만 아동 가산",
+        category="진찰료", hang="01", mok="01",
+        code="154A6", unit_price=2640,
+    ),
+    BillableItemDef(
+        id="herb_counsel", name="한약의약품 조제복약지도료", sub="",
+        category="한약", hang="11", mok="01",
+        code="30200", unit_price=4200,
+    ),
+    BillableItemDef(
+        id="beonjeung", name="번증기제료", sub="한방의원 번증기술료",
+        category="추나", hang="04", mok="06",
+        code="40400", unit_price=2640,
     ),
 
     # ── 비급여 ──────────────────────────────────────────────────

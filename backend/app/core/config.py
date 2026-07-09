@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     DISCORD_WEBHOOK_URL: Optional[str] = None
     RRN_ENCRYPTION_KEY:str = ""
+    TOSS_SECRET_KEY :Optional[str] = None
+    TOSS_CLINET_KEY:Optional[str] = None
 
 
 settings = Settings()

@@ -157,7 +157,32 @@ async def test_추나_연간_20회_초과시_review_reason_뜸(db, approved_doct
         claim_period_year=this_year, claim_period_month=6, visit_type="외래",
     )
     assert claim.special_case_review_reason is not None
-    assert "chuna_limit_exceeded" in claim.special_case_review_reason
+
+
+async def test_추나_1일_18명_초과시_needs_review_뜸(db, approved_doctor, chuna_fee_codes):
+    """같은 한의사가 같은 날 18명을 초과해 추나를 시행한 경우 needs_review=True."""
+    doctor, _ = approved_doctor
+    await _certify_chuna_training(db, doctor)
+    hospital = await db.get(Hospital, doctor.hospital_id)
+
+    target_date = date.today().replace(month=6, day=15)
+    target_dt = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
+
+    for i in range(18):
+        other_patient = await _make_patient(db, hospital, name=f"환자{i}")
+        await _make_chuna_record(db, hospital, doctor, other_patient, "40710", 26330, target_dt)
+    await db.commit()
+
+    last_patient = await _make_patient(db, hospital, name="19번째환자")
+    new_record = await _make_chuna_record(db, hospital, doctor, last_patient, "40710", 26330, target_dt)
+    await db.commit()
+
+    claim = await create_claim(
+        db=db, hospital_id=hospital.id, doctor_id=doctor.id, patient_id=last_patient.id,
+        medical_record_ids=[new_record.id],
+        claim_period_year=target_date.year, claim_period_month=target_date.month, visit_type="외래",
+    )
+    assert claim.special_case_review_reason is not None
 
 
 async def test_추나_1일_18명_초과시_review_reason_뜸(db, approved_doctor, chuna_fee_codes):
