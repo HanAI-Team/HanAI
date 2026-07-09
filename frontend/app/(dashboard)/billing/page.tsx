@@ -7,6 +7,7 @@ import {
   resubmitClaim,
   statusLabel,
 } from "@/lib/api/billing";
+import { useIsExpired } from "@/contexts/SubscriptionContext";
 import { useEffect, useState } from "react";
 
 const STATUS_FILTERS = [
@@ -23,6 +24,7 @@ function getCurrentMonth() {
 }
 
 export default function BillingPage() {
+  const isExpired = useIsExpired();
   const [claims, setClaims] = useState<ClaimListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(getCurrentMonth());
@@ -250,9 +252,17 @@ export default function BillingPage() {
         </div>
         {selected.size > 0 && (
           <button
-            onClick={handleBulkDownload}
+            onClick={() => {
+              if (isExpired) {
+                alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
+                return;
+              }
+              handleBulkDownload();
+            }}
             disabled={downloading === "bulk"}
-            className="ml-auto px-4 py-1.5 text-xs rounded-md bg-[#EF6600] text-white hover:bg-[#d45a00] disabled:opacity-50 transition-all"
+            className={`ml-auto px-4 py-1.5 text-xs rounded-md bg-[#EF6600] text-white hover:bg-[#d45a00] disabled:opacity-50 transition-all ${
+              isExpired ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           >
             {downloading === "bulk" ? "생성 중..." : `EDI 일괄 다운로드 (${selected.size}건)`}
           </button>
@@ -340,16 +350,32 @@ export default function BillingPage() {
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-1.5">
                       <button
-                        onClick={() => handleDownload(claim.id)}
+                        onClick={() => {
+                          if (isExpired) {
+                            alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
+                            return;
+                          }
+                          handleDownload(claim.id);
+                        }}
                         disabled={downloading === claim.id}
-                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all"
+                        className={`px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all ${
+                          isExpired ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
                       >
                         {downloading === claim.id ? "생성 중..." : "다운로드"}
                       </button>
                       {claim.status === "rejected" && (
                         <button
-                          onClick={() => setResubmitTarget(claim)}
-                          className="px-3 py-1 text-xs rounded-md border border-[#EF6600] text-[#EF6600] hover:bg-[#EF6600] hover:text-white transition-all"
+                          onClick={() => {
+                            if (isExpired) {
+                              alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
+                              return;
+                            }
+                            setResubmitTarget(claim);
+                          }}
+                          className={`px-3 py-1 text-xs rounded-md border border-[#EF6600] text-[#EF6600] hover:bg-[#EF6600] hover:text-white transition-all ${
+                            isExpired ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
                         >
                           보완·추가청구
                         </button>

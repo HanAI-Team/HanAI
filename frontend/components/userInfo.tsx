@@ -90,7 +90,13 @@ export const UserInfoForNav = () => {
               month: 'short',
               day: 'numeric',
             })}
-            {daysRemaining !== null && daysRemaining <= 7 && ` (${daysRemaining}일 남음)`}
+            {daysRemaining !== null && daysRemaining <= 7 && (
+              daysRemaining < 0
+                ? " (만료됨)"
+                : daysRemaining === 0
+                  ? " (오늘 만료)"
+                  : ` (${daysRemaining}일 남음)`
+            )}
           </span>
         ) : (
           "정보 없음"

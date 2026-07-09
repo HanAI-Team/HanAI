@@ -5,7 +5,11 @@ from typing import Union
 from uuid import UUID
 
 from app.auth import service
-from app.auth.datahub import confirm_verification, extract_birth_date, request_verification
+from app.auth.datahub import (
+    confirm_verification,
+    extract_birth_date,
+    request_verification,
+)
 from app.auth.schema import (
     AdminApproveResponse,
     ChangePasswordRequest,
@@ -24,7 +28,14 @@ from app.auth.schema import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import AccountHistory, Doctor, Hospital, LoginLog, StaffAccount, Subscription
+from app.core.models import (
+    AccountHistory,
+    Doctor,
+    Hospital,
+    LoginLog,
+    StaffAccount,
+    Subscription,
+)
 from app.core.redis import (
     VerifyPendingDecryptionError,
     add_session,
@@ -371,6 +382,10 @@ async def get_me(
             "birth_date": user.birth_date,
             "tier" :  subscription.tier,
             "expired_at" : subscription.expired_at,
+            "is_expired": (
+                subscription.expired_at is None or 
+                subscription.expired_at < datetime.now(timezone.utc)
+            ) if subscription else True,
             "chuna_training_certified": user.chuna_training_certified,
             "chuna_training_banner_seen": user.chuna_training_banner_seen,
         }
