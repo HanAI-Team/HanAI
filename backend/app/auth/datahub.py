@@ -4,10 +4,9 @@ import re
 from datetime import date
 
 import httpx
+from app.core.config import settings
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
