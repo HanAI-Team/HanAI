@@ -6,7 +6,7 @@ import type { BillableItem, ClaimSummary, SelectedBillableItem } from "@/types/b
 
 interface BillableItemPickerProps {
   medicalRecordId: string;
-  visitType?: "outpatient" | "inpatient";
+  visitType?: "외래" | "입원";
   onConfirmed?: (claim: ClaimSummary) => void;
 }
 
@@ -14,7 +14,7 @@ const CATEGORY_ORDER = ["진찰료", "침술", "뜸", "부항", "전기/온열",
 
 type SelectedEntry = { item: BillableItem; hyeolmyeong: string[]; isNonBenefit: boolean };
 
-export function BillableItemPicker({ medicalRecordId, visitType = "outpatient", onConfirmed }: BillableItemPickerProps) {
+export function BillableItemPicker({ medicalRecordId, visitType = "외래", onConfirmed }: BillableItemPickerProps) {
   const [catalog, setCatalog] = useState<BillableItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("진찰료");
   const [selected, setSelected] = useState<Map<string, SelectedEntry>>(new Map());

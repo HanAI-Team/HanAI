@@ -247,7 +247,7 @@ class LineItemInput(BaseModel):
 class AddLineItemsRequest(BaseModel):
     medical_record_id: str
     items: list[LineItemInput] = Field(..., min_length=1)
-    visit_type: str = Field("outpatient", description="outpatient | inpatient")
+    visit_type: Literal["외래", "입원"] = Field("외래", description="외래 | 입원 (VisitType enum과 일치)")
 
 
 class ClaimLineItemResponse(BaseModel):
