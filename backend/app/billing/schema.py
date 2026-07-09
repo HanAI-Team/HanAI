@@ -324,3 +324,18 @@ class ClaimRejectionCodeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DrugMasterResponse(BaseModel):
+    product_code: str
+    product_name: str
+    ingredient_name: Optional[str]
+    company_name: Optional[str]
+    spec: Optional[str]
+    unit: Optional[str]
+    unit_price: int
+    administration_route: Optional[str]
+    is_prescription: Optional[bool]
+
+    class Config:
+        from_attributes = True
