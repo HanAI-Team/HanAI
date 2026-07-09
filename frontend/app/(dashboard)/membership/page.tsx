@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 
 type User = {
   expired_at: string | null;
+  is_expired?: boolean;
   name: string;
   tier: "basic" | "premium";
 };
@@ -28,6 +29,9 @@ const MembershipPage = () => {
   }, []);
 
   const isExpired = !me?.expired_at;
+  const isSubscriptionExpired = !!(
+    me?.is_expired || (me?.expired_at && new Date(me.expired_at) < new Date())
+  );
 
   const handleSelectPlan = async (tier: string) => {
     try {
@@ -158,7 +162,7 @@ const plans = [
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {plans.map((plan) => {
-              const isCurrent = me?.tier === plan.tier;
+              const isCurrent = me?.tier === plan.tier && !isSubscriptionExpired;
 
               return (
                 <div
