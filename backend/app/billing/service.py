@@ -580,18 +580,44 @@ async def generate_claim_edi(
         inst_code = settings.EDI_VENDOR_CODE
     else:
         inst_code = (hospital.institution_code if hospital and hospital.institution_code else "00000000")
-    # 헤더(심사청구서)의 명세서일련번호는 원문상 "00000"(serial_no=0) 고정 —
-    # 첫 번째 명세서(serial_no=1)와 다른 값. 2026-07-09 재검증 반영.
-    key = RecordKey(institution_code=inst_code, serial_no=0, ext_no=0)
+
+    treatment_ym = f"{claim.claim_period_year}{claim.claim_period_month:02d}"
+    # 청구번호 an(10) = 진료년월(6) + 일련번호(4, 이 앱은 청구서 1건=파일 1개라 항상 "0001").
+    claim_no = f"{treatment_ym}0001"
+
+    # 의료급여 환자 여부 판정 (MT019 진료확인번호 부착 조건, 서식번호/보험자종별구분 선택에 사용)
+    patient_insurance_type = _INSURANCE_MAP.get(
+        (patient.insurance_type if patient else None) or "health", InsuranceType.HEALTH
+    )
+    is_medical_aid_patient = patient_insurance_type == InsuranceType.MEDICAL_AID
+    is_veterans_patient = patient_insurance_type == InsuranceType.VETERANS
+
+    # 보험자종별구분: 건강보험4, 보훈위탁7, 의료급여는 기관 종별(1차/2차)에 따라 1/2 —
+    # 이 앱은 한의원(항상 1차 의료기관) 전용이라 의료급여는 "1"로 고정한다.
+    insurance_type_code = "1" if is_medical_aid_patient else ("7" if is_veterans_patient else "4")
+
+    # 청구구분(보완/추가/분리): claim.claim_type이 "supplement"/"addition"이면 매핑,
+    # "분리청구"는 현재 스키마에 대응 개념이 없어 스코프 아웃 — 필요시 추후 추가.
+    # 헤더의 청구구분은 신규일 때 공백이 원문 규격.
+    claim_type_code = {"supplement": "1", "addition": "2"}.get(claim.claim_type, "0")
+    header_claim_type = " " if claim_type_code == "0" else claim_type_code
+
+    # 서식번호: 헤더는 건강보험/보훈=H010, 의료급여=H011.
+    header_form_no = "H011" if is_medical_aid_patient else "H010"
+    # 레코드2 서식번호: 이 앱은 Claim에 방문유형(외래/입원)을 저장하는 필드가 없어
+    # 항상 외래로 고정 — 입원 케이스 다루게 되면 스키마 추가 필요 (2026-07-09 확인).
+    patient_form_no = "K031" if is_medical_aid_patient else "K021"
 
     header = ClaimHeader(
-        key=key,
-        billing_type="V1",  # 수록사양번호 Vn: V1=의치과및한방 (2026-07-09: 기존 "U1"은 별첨2 원문에 없는 값이었음)
-        treatment_ym=f"{claim.claim_period_year}{claim.claim_period_month:02d}",
+        claim_no=claim_no,
+        form_no=header_form_no,
+        institution_code=inst_code,
+        insurance_type_code=insurance_type_code,
+        claim_type_code=header_claim_type,
+        treatment_ym=treatment_ym,
         claim_date=datetime.now().strftime("%Y%m%d"),
         claimer=doctor.name if doctor else "",
         writer="상시점검" if test_mode else (doctor.name if doctor else ""),
-        writer_rrn="0000000000000",
         claim_count=len(medical_records),
         benefit_total_1=claim.total_amount,
         copayment=claim.patient_copay,
@@ -603,12 +629,6 @@ async def generate_claim_edi(
     diagnosis_records = []
     procedure_records = []
     special_records = []
-
-    # 의료급여 환자 여부 판정 (MT019 진료확인번호 부착 조건에 사용)
-    patient_insurance_type = _INSURANCE_MAP.get(
-        (patient.insurance_type if patient else None) or "health", InsuranceType.HEALTH
-    )
-    is_medical_aid_patient = patient_insurance_type == InsuranceType.MEDICAL_AID
 
     # MT050: 토요일·공휴일 근무현황 (병원 단위, 청구서당 1회만 기재 — 첫 명세서에 부착)
     # ※ 내용(content) 바이트 레이아웃은 공식 "명세서 작성요령" 문서를 확보하지 못한 상태의 추정값.
@@ -656,32 +676,17 @@ async def generate_claim_edi(
 
     for i, record in enumerate(medical_records):
         serial = i + 1
-        rec_key = RecordKey(institution_code=inst_code, serial_no=serial, ext_no=0)
-
-        is_veterans = patient_insurance_type == InsuranceType.VETERANS
-        # 보험자종별구분: 4=건강보험 5=의료급여 7=보훈
-        insurance_type_code = {
-            InsuranceType.HEALTH: "4",
-            InsuranceType.MEDICAL_AID: "5",
-            InsuranceType.VETERANS: "7",
-        }.get(patient_insurance_type, "4")
-
-        # 청구구분(보완/추가/분리): claim.claim_type이 "supplement"/"addition"이면 매핑,
-        # "분리청구"는 현재 스키마에 대응 개념이 없어 스코프 아웃 — 필요시 추후 추가.
-        claim_type_code = {"supplement": "1", "addition": "2"}.get(claim.claim_type, "0")
+        rec_key = RecordKey(claim_no=claim_no, record_serial=serial)
 
         # 의료급여종별구분: 1종/2종/노숙인1종 등. 건강보험이면 공란.
         medical_aid_type = " "
-        if patient_insurance_type == InsuranceType.MEDICAL_AID and patient and patient.medical_aid_grade:
+        if is_medical_aid_patient and patient and patient.medical_aid_grade:
             medical_aid_type = patient.medical_aid_grade  # "1" 또는 "2" 그대로 사용
 
         patient_records.append(PatientRecord(
             key=rec_key,
-            # 서식(12=한방입원/13=한방외래): Claim에 방문유형(외래/입원)을 저장하는 필드가
-            # 없어 일단 외래(13)로 고정 — 입원 케이스 다루게 되면 Claim에 visit_type을
-            # 저장하도록 스키마 추가 필요 (2026-07-09 확인, 추후 재검증).
-            format_code="13",
-            insurance_type=insurance_type_code,
+            form_no=patient_form_no,
+            institution_code=inst_code,
             employer_code="",
             cert_no="",
             subscriber_name=patient.name if patient else "",
@@ -699,8 +704,9 @@ async def generate_claim_edi(
             under_full_copay=claim.patient_copay,
             under_full_claim=claim.claim_amount,
             veterans_copay=0,
-            under_full_veterans_claim=claim.claim_amount if is_veterans else 0,
-            deferred_or_disability=claim.disability_medical_aid,
+            under_full_veterans_claim=claim.claim_amount if is_veterans_patient else 0,
+            disability_medical_cost=claim.disability_medical_aid,
+            deferred_payment=0,
             support_fund=claim.support_fund,
             # 보완·추가청구(claim_type)일 때만 당초 접수번호/명일련/사유코드를 채워 넣는다.
             receipt_no=claim.original_receipt_no or 0,
@@ -716,7 +722,7 @@ async def generate_claim_edi(
                 key=rec_key,
                 record_group_type="1",  # 명세서단위
                 prescription_no=0,
-                record_ext_no=0,
+                line_no=0,
                 special_code="MT032",
                 content=record.recorded_at.strftime("%Y%m%d%H%M"),
             )))
@@ -730,7 +736,7 @@ async def generate_claim_edi(
                 key=rec_key,
                 record_group_type="1",
                 prescription_no=0,
-                record_ext_no=0,
+                line_no=0,
                 special_code="MT019",
                 content=patient.confirmation_no,
             )))
@@ -741,7 +747,7 @@ async def generate_claim_edi(
                 key=rec_key,
                 record_group_type="1",
                 prescription_no=0,
-                record_ext_no=0,
+                line_no=0,
                 special_code="MT050",
                 content=mt050_content,
             )))
@@ -752,7 +758,7 @@ async def generate_claim_edi(
                 key=rec_key,
                 record_group_type="1",
                 prescription_no=0,
-                record_ext_no=0,
+                line_no=0,
                 special_code="MT008",
                 content=mt008_content,
             )))
@@ -764,7 +770,7 @@ async def generate_claim_edi(
                 key=rec_key,
                 record_group_type="1",
                 prescription_no=0,
-                record_ext_no=0,
+                line_no=0,
                 special_code="MT002",
                 content=special_case.special_code,
             )))
@@ -781,7 +787,7 @@ async def generate_claim_edi(
                     key=rec_key,
                     record_group_type="1",
                     prescription_no=0,
-                    record_ext_no=0,
+                    line_no=0,
                     special_code="MT014",
                     content=mt014_content,
                 )))
@@ -792,7 +798,7 @@ async def generate_claim_edi(
                     key=rec_key,
                     record_group_type="1",
                     prescription_no=0,
-                    record_ext_no=0,
+                    line_no=0,
                     special_code="MT028",
                     content=f"{special_case.registered_disease_code}/{special_case.disease_name}",
                 )))
@@ -803,9 +809,7 @@ async def generate_claim_edi(
                 key=rec_key,
                 kcd_code=record.kcd_code,
                 onset_date=record.recorded_at.strftime("%Y%m%d") if record.recorded_at else "00000000",
-                treatment_dept=9,  # 진료과목: 09=한의과 (2026-07-09: 별첨2 원문 대조로 51→9 정정)
-                sub_specialty=0,
-                inpatient_route=0,
+                treatment_dept=9,  # 진료과목: 09=한의과
                 license_kind="3",
                 license_no=doctor.license_number if doctor else "",
             )))
@@ -818,22 +822,21 @@ async def generate_claim_edi(
                     key=rec_key,
                     hang=li.hang,
                     mok=li.mok,
+                    line_no=line_no,
                     code_gubun="A",
                     code=li.code,
                     unit_price=Decimal(str(li.unit_price or 0)),
                     qty=Decimal(str(li.qty or 1)),
                     days=li.days or 1,
                     amount=li.amount or 0,
-                    license_type="3",
-                    license_no=doctor.license_number if doctor else "",
                 )))
-                # JS010: 진료일시 (줄 단위 — 발생단위구분='2' 확장번호단위)
+                # JS010: 진료일시 (줄 단위 — 발생단위구분='2' 줄번호단위)
                 if record.recorded_at:
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
                         prescription_no=0,
-                        record_ext_no=line_no,
+                        line_no=line_no,
                         special_code="JS010",
                         content=record.recorded_at.strftime("%Y%m%d%H%M"),
                     )))
@@ -842,32 +845,33 @@ async def generate_claim_edi(
                         key=rec_key,
                         record_group_type="2",
                         prescription_no=0,
-                        record_ext_no=line_no,
+                        line_no=line_no,
                         special_code="JS011",
                         content="/".join(li.hyeolmyeong_names),
                     )))
         else:
             # 구 차팅 경로 폴백: MedicalRecordProcedure 사용
-            for proc in [p for p in procedures if p.medical_record_id == record.id]:
+            for line_no, proc in enumerate(
+                [p for p in procedures if p.medical_record_id == record.id], start=1
+            ):
                 procedure_records.append((serial, ProcedureDetail(
                     key=rec_key,
                     hang=proc.hang or "04",
                     mok=proc.mok or "99",
+                    line_no=line_no,
                     code_gubun=proc.code_gubun or "A",
                     code=proc.fee_master_code or "",
                     unit_price=Decimal(str(proc.unit_price or 0)),
                     qty=Decimal(str(proc.qty or 1)),
                     days=proc.days or 1,
                     amount=proc.amount or 0,
-                    license_type=proc.license_type or "3",
-                    license_no=doctor.license_number if doctor else "",
                 )))
                 if proc.special_detail:
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="1",  # 줄 번호를 특정 못해 명세서단위로 기재 (구 경로 한계)
                         prescription_no=0,
-                        record_ext_no=0,
+                        line_no=0,
                         special_code="JS011",
                         content=proc.special_detail,
                     )))
