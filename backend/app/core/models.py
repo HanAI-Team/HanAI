@@ -237,6 +237,7 @@ class Claim(Base):
 
     medical_records = relationship("MedicalRecord", back_populates="claim")
     line_items = relationship("ClaimLineItem", back_populates="claim", cascade="all, delete-orphan")
+    patient = relationship("Patient", foreign_keys=[patient_id])
 
 
 class ClaimResubmissionHistory(Base):

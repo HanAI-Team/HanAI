@@ -28,6 +28,8 @@ from app.billing.schema import (
     FeeCreate,
     FeeItem,
     FeeUpdate,
+    NeedsReviewClaimItem,
+    NeedsReviewClaimsResponse,
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
     ViolationItem,
@@ -45,8 +47,9 @@ from app.core.models import Claim, ClaimLineItem, DoctorWorkDays, FeeMaster, Med
 from app.core.config import settings
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["billing"])
 
@@ -156,6 +159,58 @@ async def list_claims(
         )
         for claim, patient in results
     ]
+
+
+@router.get("/claims/needs-review", response_model=NeedsReviewClaimsResponse)
+async def list_needs_review_claims(
+    review_reason: str | None = Query(None, description="review_reason에 포함된 사유로 필터 (부분일치)"),
+    month: str | None = Query(None, description="YYYY-MM 형식, 예: 2026-06"),
+    page: int = 1,
+    size: int = 20,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    base_query = select(Claim).where(
+        Claim.hospital_id == current_user.hospital_id,
+        Claim.special_case_review_reason.isnot(None),
+    )
+    if review_reason:
+        base_query = base_query.where(Claim.special_case_review_reason.like(f"%{review_reason}%"))
+    if month:
+        year, mon = int(month[:4]), int(month[5:7])
+        base_query = base_query.where(
+            Claim.claim_period_year == year, Claim.claim_period_month == mon
+        )
+
+    count_result = await db.execute(select(func.count()).select_from(base_query.subquery()))
+    total = count_result.scalar_one()
+
+    stmt = (
+        base_query.options(selectinload(Claim.patient))
+        .order_by(Claim.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    rows = await db.execute(stmt)
+    claims = rows.scalars().all()
+
+    return NeedsReviewClaimsResponse(
+        total=total,
+        items=[
+            NeedsReviewClaimItem(
+                id=claim.id,
+                patient_id=claim.patient_id,
+                patient_name=claim.patient.name,
+                claim_period_year=claim.claim_period_year,
+                claim_period_month=claim.claim_period_month,
+                special_case_review_reason=claim.special_case_review_reason,
+                status=claim.status,
+                total_amount=claim.total_amount,
+                created_at=claim.created_at,
+            )
+            for claim in claims
+        ],
+    )
 
 
 @router.patch("/claims/{claim_id}/resubmission", response_model=ClaimResubmissionResponse)
