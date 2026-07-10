@@ -7,7 +7,7 @@ import pandas as pd
 from app.core.audit import write_audit
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import AIResult, Doctor, MedicalRecord, Patient, StaffAccount
+from app.core.models import AIResult, DataDownloadLog, Doctor, MedicalRecord, Patient, StaffAccount
 from app.patients import service
 from app.patients.schema import (
     PatientCreate,
@@ -17,7 +17,7 @@ from app.patients.schema import (
     RecentRecordSummary,
     RecordCreate,
 )
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy import insert as sa_insert
@@ -404,10 +404,22 @@ async def get_patient_records(
 
 @router.get("/export/csv")
 async def export_patients_csv(
+    request: Request,
+    reason: str = Query(..., min_length=1, max_length=500, description="다운로드 사유"),
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """환자 목록 CSV 다운로드 (헤딩 포함)"""
+    db.add(DataDownloadLog(
+        id=uuid.uuid4(),
+        hospital_id=current_doctor.hospital_id,
+        doctor_id=current_doctor.id,
+        download_type="patient_list",
+        reason=reason,
+        ip_address=request.client.host if request.client else None,
+    ))
+    await db.commit()
+
     result = await db.execute(
         select(Patient)
         .where(Patient.hospital_id == current_doctor.hospital_id)
@@ -431,7 +443,7 @@ async def export_patients_csv(
     output.seek(0)
 
     return StreamingResponse(
-        iter([output.getvalue()]),
+        iter(["\ufeff" + output.getvalue()]),  # BOM: StringIO는 encoding= 인자를 무시하므로 직접 부착
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=patients.csv"}
     )
@@ -439,10 +451,22 @@ async def export_patients_csv(
 
 @router.get("/export/records/csv")
 async def export_records_csv(
+    request: Request,
+    reason: str = Query(..., min_length=1, max_length=500, description="다운로드 사유"),
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """진료 기록 CSV 다운로드 (헤딩 포함)"""
+    db.add(DataDownloadLog(
+        id=uuid.uuid4(),
+        hospital_id=current_doctor.hospital_id,
+        doctor_id=current_doctor.id,
+        download_type="medical_records",
+        reason=reason,
+        ip_address=request.client.host if request.client else None,
+    ))
+    await db.commit()
+
     result = await db.execute(
         select(MedicalRecord)
         .where(MedicalRecord.hospital_id == current_doctor.hospital_id)
@@ -465,7 +489,7 @@ async def export_records_csv(
     output.seek(0)
 
     return StreamingResponse(
-        iter([output.getvalue()]),
+        iter(["\ufeff" + output.getvalue()]),  # BOM: StringIO는 encoding= 인자를 무시하므로 직접 부착
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=medical_records.csv"}
     )
