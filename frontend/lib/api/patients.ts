@@ -93,6 +93,49 @@ export async function importPatientsFromCsv(file: File) {
   return res.json() as Promise<{ inserted: number; skipped: number }>;
 }
 
+export async function downloadPatientsCsv(reason: string): Promise<void> {
+  const token = localStorage.getItem("token");
+  const url = `${BASE_URL}/api/patients/export/csv?${new URLSearchParams({ reason })}`;
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("환자 목록 CSV 다운로드 실패");
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = "patients.csv";
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export async function downloadRecordsCsv(reason: string): Promise<void> {
+  const token = localStorage.getItem("token");
+  const url = `${BASE_URL}/api/patients/export/records/csv?${new URLSearchParams({ reason })}`;
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("진료기록 CSV 다운로드 실패");
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = "medical_records.csv";
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export async function anonymizePatient(id: string) {
+  const res = await fetch(`${BASE_URL}/api/patients/${id}/anonymize`, {
+    method: "PATCH",
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("환자 익명화에 실패했습니다.");
+  return res.json();
+}
+
 export async function updatePatient(
   id: string,
   data: {

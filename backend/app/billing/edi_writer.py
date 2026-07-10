@@ -315,6 +315,8 @@ class ProcedureDetail:
     days: int = 0                # 총투여일수·실시횟수 n(3)
     amount: int = 0              # 금액 n(10)
     gamigam_gubun: str = ""      # 가감 등 구분 an(10): 기준처방B### 가미제A### 감미제S### 임의처방H###
+    license_kind: str = "3"      # 면허종류 an(1): 3=한의사
+    license_no: str = ""         # 면허번호 an(10)
 
 
 def build_procedure_record(p: ProcedureDetail) -> str:

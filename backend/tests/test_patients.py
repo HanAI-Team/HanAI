@@ -135,6 +135,29 @@ async def test_create_record_with_medical_history(client, approved_doctor):
     assert record["medical_history"] == "고혈압 약 복용 중"
 
 
+async def test_export_patients_csv_has_bom(client, approved_doctor):
+    """엑셀에서 한글이 깨지지 않도록 UTF-8 BOM(EF BB BF)이 응답 맨 앞에 있어야 한다."""
+    _, headers = approved_doctor
+    await client.post("/api/patients/register", json=PATIENT_DATA, headers=headers)
+
+    resp = await client.get(
+        "/api/patients/export/csv", params={"reason": "테스트 다운로드"}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.content[:3] == b"\xef\xbb\xbf"
+
+
+async def test_export_records_csv_has_bom(client, approved_doctor):
+    """엑셀에서 한글이 깨지지 않도록 UTF-8 BOM(EF BB BF)이 응답 맨 앞에 있어야 한다."""
+    _, headers = approved_doctor
+
+    resp = await client.get(
+        "/api/patients/export/records/csv", params={"reason": "테스트 다운로드"}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.content[:3] == b"\xef\xbb\xbf"
+
+
 async def test_create_record_with_selected_result(client, approved_doctor, db):
     from app.core.models import MedicalRecord
 
