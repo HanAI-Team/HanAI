@@ -476,7 +476,8 @@ async def export_patients_csv(
         "메모": p.memo or "",
         "등록일": str(p.created_at),
     } for p in patients])
-
+    if df.empty:
+        df = pd.DataFrame(columns=["진료ID", "환자ID", "의사ID", "상태", "차트", "진료일시", "등록일"])
     output = io.StringIO()
     df.to_csv(output, index=False, encoding="utf-8-sig")  # utf-8-sig: 엑셀 한글 깨짐 방지
     output.seek(0)
