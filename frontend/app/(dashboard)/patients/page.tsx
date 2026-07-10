@@ -8,11 +8,15 @@ import {
   importPatientsFromExcel,
   downloadPatientsCsv,
   downloadRecordsCsv,
+  anonymizePatient,
 } from "@/lib/api/patients";
+import { getMe } from "@/lib/api/get-me";
 import { Patient } from "@/types";
-import { Search, Plus, ChevronRight, X } from "lucide-react";
+import { Search, Plus, X, ChevronUp, ChevronDown } from "lucide-react";
 
 const PAGE_SIZE = 20;
+
+type SortField = "name" | "birth_date" | "phone" | "created_at";
 
 export default function PatientsPage() {
   const router = useRouter();
@@ -20,6 +24,10 @@ export default function PatientsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [isOwner, setIsOwner] = useState(false);
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [newPatient, setNewPatient] = useState({
     name: "",
@@ -29,6 +37,14 @@ export default function PatientsPage() {
     rrn: "",
   });
   const [addLoading, setAddLoading] = useState(false);
+
+  const [editTarget, setEditTarget] = useState<Patient | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", birth_date: "", gender: "", phone: "" });
+  const [editLoading, setEditLoading] = useState(false);
+
+  const [anonymizeTarget, setAnonymizeTarget] = useState<Patient | null>(null);
+  const [anonymizeLoading, setAnonymizeLoading] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
@@ -39,14 +55,31 @@ export default function PatientsPage() {
   const excelInputRef = useRef<HTMLInputElement | null>(null);
 
   const filtered = patients.filter((p) => p.name.includes(search));
-  const displayed = filtered.slice(0, page * PAGE_SIZE);
-  const hasMore = filtered.length > page * PAGE_SIZE;
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    switch (sortField) {
+      case "birth_date":
+        return (a.birth_date || "").localeCompare(b.birth_date || "") * dir;
+      case "phone":
+        return (a.phone || "").localeCompare(b.phone || "") * dir;
+      case "created_at":
+        return (a.created_at || "").localeCompare(b.created_at || "") * dir;
+      default:
+        return a.name.localeCompare(b.name, "ko") * dir;
+    }
+  });
+  const displayed = sorted.slice(0, page * PAGE_SIZE);
+  const hasMore = sorted.length > page * PAGE_SIZE;
 
   useEffect(() => {
     getPatients()
       .then(setPatients)
       .catch(console.error)
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    getMe().then((me) => setIsOwner(me?.role === "owner"));
   }, []);
 
   useEffect(() => {
@@ -59,17 +92,31 @@ export default function PatientsPage() {
     return () => observer.disconnect();
   }, [hasMore]);
 
-  function patientSubtext(p: Patient) {
-    const gender = p.gender === "M" ? "남" : p.gender === "F" ? "여" : "";
-    const birth = p.birth_date;
-    const age = birth
-      ? `${new Date().getFullYear() - new Date(birth).getFullYear()}세`
-      : "";
-    const parts = [
-      gender,
-      birth && age ? `${birth} (${age})` : birth,
-    ].filter(Boolean);
-    return parts.join(", ") || p.phone || "-";
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  }
+
+  function SortIcon({ field }: { field: SortField }) {
+    if (sortField !== field) return null;
+    return sortDir === "asc" ? (
+      <ChevronUp className="w-3 h-3 inline ml-0.5" />
+    ) : (
+      <ChevronDown className="w-3 h-3 inline ml-0.5" />
+    );
+  }
+
+  function calcAge(birth?: string) {
+    if (!birth) return null;
+    return new Date().getFullYear() - new Date(birth).getFullYear();
+  }
+
+  function genderLabel(g?: string) {
+    return g === "M" ? "남" : g === "F" ? "여" : "-";
   }
 
   async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -135,79 +182,94 @@ export default function PatientsPage() {
     }
   }
 
+  function openEditModal(p: Patient) {
+    setEditTarget(p);
+    setEditForm({
+      name: p.name,
+      birth_date: p.birth_date || "",
+      gender: p.gender || "",
+      phone: p.phone || "",
+    });
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget) return;
+    setEditLoading(true);
+    try {
+      const updated = await updatePatient(editTarget.id, editForm);
+      setPatients((prev) =>
+        prev.map((p) => (p.id === editTarget.id ? { ...p, ...updated } : p))
+      );
+      setEditTarget(null);
+    } catch (e: any) {
+      setErrorMessage(e.message || "환자 정보 수정에 실패했습니다.");
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function handleAnonymizeConfirm() {
+    if (!anonymizeTarget) return;
+    setAnonymizeLoading(true);
+    try {
+      const updated = await anonymizePatient(anonymizeTarget.id);
+      setPatients((prev) =>
+        prev.map((p) => (p.id === anonymizeTarget.id ? { ...p, ...updated } : p))
+      );
+      setAnonymizeTarget(null);
+    } catch (e: any) {
+      setErrorMessage(e.message || "익명화 처리에 실패했습니다.");
+    } finally {
+      setAnonymizeLoading(false);
+    }
+  }
+
   return (
     <div className="flex flex-col bg-bg" style={{ minHeight: "100%" }}>
-      {/* 검색 헤더 */}
+      {/* 상단 툴바: 좌측 검색, 우측 액션 버튼 그룹 */}
       <div className="bg-card border-b border-border px-4 pt-4 pb-3 flex flex-col gap-3 sticky top-0 z-10">
-        <div className="text-sm font-medium text-text">환자 목록</div>
-        <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2">
-          <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            placeholder="이름 검색..."
-            className="flex-1 bg-transparent text-xs text-text outline-none"
-          />
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2 flex-1 min-w-[160px] max-w-xs">
+            <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+            <input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="이름 검색..."
+              className="flex-1 bg-transparent text-xs text-text outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="bg-[#EF6600] text-white rounded-md px-3 py-2 text-xs flex items-center gap-1.5 hover:opacity-90 transition-opacity"
+            >
+              <Plus className="w-3.5 h-3.5" /> 신규 환자 등록
+            </button>
+            <button
+              onClick={() => excelInputRef.current?.click()}
+              disabled={importLoading}
+              className="border border-border text-text rounded-md px-3 py-2 text-xs hover:bg-bg transition-colors disabled:opacity-50"
+            >
+              {importLoading ? "가져오는 중..." : "엑셀로 환자 가져오기"}
+            </button>
+            <button
+              onClick={() => setDownloadTarget("patient_list")}
+              className="border border-border text-text rounded-md px-3 py-2 text-xs hover:bg-bg transition-colors"
+            >
+              환자 목록 CSV
+            </button>
+            <button
+              onClick={() => setDownloadTarget("medical_records")}
+              className="border border-border text-text rounded-md px-3 py-2 text-xs hover:bg-bg transition-colors"
+            >
+              진료기록 CSV
+            </button>
+          </div>
         </div>
-      </div>
-
-      {/* 환자 목록 */}
-      <div className="flex-1">
-        {loading ? (
-          <div className="text-sm text-muted text-center py-16">
-            불러오는 중...
-          </div>
-        ) : displayed.length === 0 ? (
-          <div className="text-sm text-muted text-center py-16">
-            {search ? "검색 결과가 없습니다" : "등록된 환자가 없습니다"}
-          </div>
-        ) : (
-          <>
-            {displayed.map((patient) => (
-              <button
-                key={patient.id}
-                onClick={() =>
-                  router.push(`/diagnosis?patientId=${patient.id}`)
-                }
-                className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-border bg-card hover:bg-bg transition-colors text-left"
-              >
-                <div className="w-9 h-9 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
-                  {patient.name[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-text">
-                    {patient.name}
-                  </div>
-                  <div className="text-xs text-subtext mt-0.5">
-                    {patientSubtext(patient)}
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted flex-shrink-0" />
-              </button>
-            ))}
-            <div ref={sentinelRef} className="h-2" />
-          </>
-        )}
-      </div>
-
-      {/* 하단 버튼 */}
-      <div className="p-4 bg-card border-t border-border sticky bottom-0 flex flex-col gap-2">
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="w-full bg-[#EF6600] text-white rounded-md py-3 text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-        >
-          <Plus className="w-4 h-4" /> 신규 환자 등록
-        </button>
-        <button
-          onClick={() => excelInputRef.current?.click()}
-          disabled={importLoading}
-          className="w-full border border-border text-text rounded-md py-3 text-sm flex items-center justify-center gap-2 hover:bg-bg transition-colors disabled:opacity-50"
-        >
-          {importLoading ? "가져오는 중..." : "📂 엑셀로 환자 가져오기"}
-        </button>
         <input
           ref={excelInputRef}
           type="file"
@@ -215,20 +277,101 @@ export default function PatientsPage() {
           className="hidden"
           onChange={handleExcelImport}
         />
-        <div className="flex gap-2">
-          <button
-            onClick={() => setDownloadTarget("patient_list")}
-            className="flex-1 border border-border text-text rounded-md py-2.5 text-xs hover:bg-bg transition-colors"
-          >
-            환자 목록 CSV 다운로드
-          </button>
-          <button
-            onClick={() => setDownloadTarget("medical_records")}
-            className="flex-1 border border-border text-text rounded-md py-2.5 text-xs hover:bg-bg transition-colors"
-          >
-            진료기록 CSV 다운로드
-          </button>
-        </div>
+      </div>
+
+      {/* 환자 목록 테이블 */}
+      <div className="flex-1 overflow-x-auto">
+        {loading ? (
+          <div className="text-sm text-muted text-center py-16">불러오는 중...</div>
+        ) : displayed.length === 0 ? (
+          <div className="text-sm text-muted text-center py-16">
+            {search ? "검색 결과가 없습니다" : "등록된 환자가 없습니다"}
+          </div>
+        ) : (
+          <>
+            <table className="w-full text-sm">
+              <thead className="border-b border-border">
+                <tr className="text-xs text-subtext">
+                  <th
+                    onClick={() => toggleSort("name")}
+                    className="p-3 text-left cursor-pointer select-none hover:text-text"
+                  >
+                    이름 <SortIcon field="name" />
+                  </th>
+                  <th
+                    onClick={() => toggleSort("birth_date")}
+                    className="p-3 text-left cursor-pointer select-none hover:text-text"
+                  >
+                    생년월일(나이) <SortIcon field="birth_date" />
+                  </th>
+                  <th className="p-3 text-left">성별</th>
+                  <th
+                    onClick={() => toggleSort("phone")}
+                    className="p-3 text-left cursor-pointer select-none hover:text-text"
+                  >
+                    연락처 <SortIcon field="phone" />
+                  </th>
+                  <th
+                    onClick={() => toggleSort("created_at")}
+                    className="p-3 text-left cursor-pointer select-none hover:text-text"
+                  >
+                    등록일 <SortIcon field="created_at" />
+                  </th>
+                  <th className="p-3 text-center">액션</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayed.map((patient) => {
+                  const anonymized = patient.name === "익명";
+                  const age = calcAge(patient.birth_date);
+                  return (
+                    <tr
+                      key={patient.id}
+                      className={`border-t border-border hover:bg-fill transition-colors ${
+                        anonymized ? "opacity-50" : ""
+                      }`}
+                    >
+                      <td className="p-3 text-text font-medium">{patient.name}</td>
+                      <td className="p-3 text-subtext">
+                        {patient.birth_date ? `${patient.birth_date}${age !== null ? ` (${age}세)` : ""}` : "-"}
+                      </td>
+                      <td className="p-3 text-subtext">{genderLabel(patient.gender)}</td>
+                      <td className="p-3 text-subtext">{patient.phone || "-"}</td>
+                      <td className="p-3 text-subtext">{patient.created_at?.slice(0, 10) || "-"}</td>
+                      <td className="p-3">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => router.push(`/diagnosis?patientId=${patient.id}`)}
+                            className="px-2.5 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors"
+                          >
+                            진료 시작
+                          </button>
+                          <button
+                            onClick={() => openEditModal(patient)}
+                            disabled={anonymized}
+                            className="px-2.5 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            수정
+                          </button>
+                          {isOwner && (
+                            <button
+                              onClick={() => setAnonymizeTarget(patient)}
+                              disabled={anonymized}
+                              className="px-2.5 py-1 text-xs rounded-md border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              익명화
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div ref={sentinelRef} className="h-2" />
+          </>
+        )}
       </div>
 
       {/* 신규 환자 등록 모달 */}
@@ -335,6 +478,109 @@ export default function PatientsPage() {
                 {addLoading ? "등록 중..." : "등록"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 환자 정보 수정 모달 */}
+      {editTarget && (
+        <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="text-sm font-medium text-text">환자 정보 수정</div>
+              <button
+                onClick={() => setEditTarget(null)}
+                className="text-subtext hover:text-text transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleEditSave} className="p-5 flex flex-col gap-3">
+              <div>
+                <label className="text-xs text-subtext mb-1 block">이름 *</label>
+                <input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  required
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">생년월일</label>
+                <input
+                  type="date"
+                  value={editForm.birth_date}
+                  onChange={(e) => setEditForm((f) => ({ ...f, birth_date: e.target.value }))}
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">성별</label>
+                <div className="flex gap-4">
+                  {[
+                    { value: "M", label: "남" },
+                    { value: "F", label: "여" },
+                  ].map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="edit-gender"
+                        value={opt.value}
+                        checked={editForm.gender === opt.value}
+                        onChange={() => setEditForm((f) => ({ ...f, gender: opt.value }))}
+                        className="accent-[#EF6600]"
+                      />
+                      <span className="text-sm text-text">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">전화번호</label>
+                <input
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  placeholder="010-0000-0000"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={editLoading || !editForm.name}
+                className="w-full bg-[#EF6600] text-white rounded-md py-2.5 text-sm mt-1 disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                {editLoading ? "저장 중..." : "저장"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 익명화 확인 모달 */}
+      {anonymizeTarget && (
+        <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
+            <div className="text-sm font-medium text-text mb-2">
+              {anonymizeTarget.name} 님을 익명화하시겠습니까?
+            </div>
+            <div className="text-xs text-red-500 mb-5">
+              이 작업은 되돌릴 수 없습니다.
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAnonymizeTarget(null)}
+                className="flex-1 border border-border text-text rounded-md py-2 text-sm hover:bg-bg transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleAnonymizeConfirm}
+                disabled={anonymizeLoading}
+                className="flex-1 bg-red-500 text-white rounded-md py-2 text-sm disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                {anonymizeLoading ? "처리 중..." : "익명화"}
+              </button>
+            </div>
           </div>
         </div>
       )}
