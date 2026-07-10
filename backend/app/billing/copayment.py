@@ -34,6 +34,12 @@ def _ceil_won(amount: Decimal) -> int:
     return int(amount.quantize(Decimal("1"), rounding=ROUND_UP))
 
 
+def _truncate_copay(amount: int, visit_type: "VisitType") -> int:
+    """본인일부부담금 총액 원단위 절사: 외래는 100원 미만, 입원은 10원 미만 절사."""
+    unit = 100 if visit_type == VisitType.OUTPATIENT else 10
+    return (amount // unit) * unit
+
+
 def _is_under_15(birth_date: Optional[date], ref: date) -> bool:
     if not birth_date:
         return False
@@ -227,12 +233,14 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                 )
             else:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.15"))
+            copay = _truncate_copay(copay, inp.visit_type)
             result.medical_aid_outpatient_copay = copay
         else:
             if inp.medical_aid_grade == MedicalAidGrade.GRADE_1:
                 copay = 0     # 1종 입원: 전액 급여
             else:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.10"))
+            copay = _truncate_copay(copay, inp.visit_type)
             result.medical_aid_inpatient_copay = copay
 
     elif inp.insurance_type == InsuranceType.HEALTH:
@@ -241,20 +249,24 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
         if special.startswith("C001"):
             # 차상위1종: 외래 2,000원 정액 (의원급)
             copay = 2000
+            copay = _truncate_copay(copay, inp.visit_type)
             result.near_poverty_1_copay = copay
 
         elif special.startswith("C002"):
             if inp.visit_type == VisitType.OUTPATIENT:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.15"))
+                copay = _truncate_copay(copay, inp.visit_type)
                 result.near_poverty_2_outpatient_copay = copay
             else:
                 copay = _ceil_won(Decimal(total1) * Decimal("0.10"))
+                copay = _truncate_copay(copay, inp.visit_type)
                 result.near_poverty_2_inpatient_copay = copay
 
         elif special.startswith("V") or special.startswith("F"):
             # 산정특례 (V코드: 별표3/4/4의2 특정기호, F코드: 신체기능저하군 등)
             rate = _special_rate(special)
             copay = _ceil_won(Decimal(total1) * rate)
+            copay = _truncate_copay(copay, inp.visit_type)
             result.special_exception_copay = copay
 
         else:
@@ -263,6 +275,7 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                 if _is_65_or_older(inp.birth_date, ref_date) and total1 <= 15000:
                     # 65세 이상 노인외래 정액제 (의원급, 시행령 별표2): 15,000원 이하 → 1,500원
                     copay = min(1500, total1)
+                    copay = _truncate_copay(copay, inp.visit_type)
                     result.senior_outpatient_copay = copay
                 else:
                     chuna_50 = inp.chuna_total
@@ -272,6 +285,7 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                     chuna_copay = _ceil_won(Decimal(chuna_50) * Decimal("0.50"))
                     chuna_80_copay = _ceil_won(Decimal(chuna_80) * Decimal("0.80"))
                     copay = normal_copay + chuna_copay + chuna_80_copay
+                    copay = _truncate_copay(copay, inp.visit_type)
                     result.chuna_copay = chuna_copay
                     result.chuna_80_copay = chuna_80_copay
                     result.health_outpatient_copay = copay
@@ -279,9 +293,11 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
                 if _is_under_15(inp.birth_date, ref_date):
                     # 15세 미만 입원: 5%
                     copay = _ceil_won(Decimal(total1) * Decimal("0.05"))
+                    copay = _truncate_copay(copay, inp.visit_type)
                     result.under_15_inpatient_copay = copay
                 else:
                     copay = _ceil_won(Decimal(total1) * Decimal("0.20"))
+                    copay = _truncate_copay(copay, inp.visit_type)
                     result.health_inpatient_copay = copay
 
     result.copayment = copay
