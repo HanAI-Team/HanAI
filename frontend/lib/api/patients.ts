@@ -1,3 +1,5 @@
+import { Patient } from "@/types";
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function getHeaders() {
@@ -8,17 +10,27 @@ function getHeaders() {
   };
 }
 
-export async function getPatients(search?: string, page = 1, size = 20) {
+export async function getPatients(search?: string, page = 1, size = 20): Promise<{
+  items: Patient[];
+  total: number;
+  page: number;
+  size: number;
+}> {
   const params = new URLSearchParams();
   if (search) params.set("search", search);
   params.set("page", String(page));
   params.set("size", String(size));
   const url = `${BASE_URL}/api/patients/?${params.toString()}`;
   const res = await fetch(url, { headers: getHeaders() });
-  if (res.status === 404) return [];
+  if (res.status === 404) return { items: [], total: 0, page, size };
   if (!res.ok) throw new Error("환자 목록 조회 실패");
   const data = await res.json();
-  return Array.isArray(data) ? data : data.items || [];
+  return {
+    items: Array.isArray(data) ? data : data.items || [],
+    total: data.total || 0,
+    page: data.page || page,
+    size: data.size || size,
+  };
 }
 
 export async function getPatient(id: string) {

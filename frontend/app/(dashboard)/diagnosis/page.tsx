@@ -212,9 +212,9 @@ export default function DiagnosisPage() {
 
   useEffect(() => {
     getPatients(undefined, 1, PAGE_SIZE)
-      .then((p) => {
-        setPatients(p);
-        setPatientHasMore(p.length === PAGE_SIZE);
+      .then((result) => {
+        setPatients(result.items);
+        setPatientHasMore(result.items.length === PAGE_SIZE);
       })
       .catch(console.error)
       .finally(() => setPatientsLoading(false));
@@ -232,7 +232,8 @@ export default function DiagnosisPage() {
     if (patientLoadingMore || !patientHasMore) return;
     const nextPage = patientPage + 1;
     setPatientLoadingMore(true);
-    const newItems: Patient[] = await getPatients(undefined, nextPage, PAGE_SIZE).catch(() => [] as Patient[]);
+    const result = await getPatients(undefined, nextPage, PAGE_SIZE).catch(() => ({ items: [] as Patient[], total: 0, page: nextPage, size: PAGE_SIZE }));
+    const newItems = result.items;
     setPatients((prev) => {
       const existingIds = new Set(prev.map((p) => p.id));
       const deduped = newItems.filter((p) => !existingIds.has(p.id));
@@ -586,7 +587,7 @@ ${r.acupuncture?.join(", ")}`;
       const result = await importPatientsFromExcel(file);
       setImportResult(result);
       const updated = await getPatients();
-      setPatients(updated);
+      setPatients(updated.items);
     } catch {
       // silent fail — user sees nothing if import errors
     } finally {
@@ -605,7 +606,7 @@ ${r.acupuncture?.join(", ")}`;
       }
       setPatientsLoading(true);
       const updated = await getPatients();
-      setPatients(updated);
+      setPatients(updated.items);
       setShowAddModal(false);
       setNewPatient({ name: "", birth_date: "", gender: "", phone: "", rrn: "" });
     } catch (e: any) {
