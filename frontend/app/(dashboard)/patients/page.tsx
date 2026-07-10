@@ -551,6 +551,130 @@ export default function PatientsPage() {
         </div>
       )}
 
+      {/* 환자 정보 수정 모달 */}
+      {editTarget && (
+        <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="text-sm font-medium text-text">
+                환자 정보 수정
+              </div>
+              <button
+                onClick={() => setEditTarget(null)}
+                className="text-subtext hover:text-text transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleEditSave} className="p-5 flex flex-col gap-3">
+              <div>
+                <label className="text-xs text-subtext mb-1 block">
+                  이름 *
+                </label>
+                <input
+                  value={editForm.name}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, name: e.target.value }))
+                  }
+                  required
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">
+                  생년월일
+                </label>
+                <input
+                  type="date"
+                  value={editForm.birth_date}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, birth_date: e.target.value }))
+                  }
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">
+                  성별
+                </label>
+                <div className="flex gap-4">
+                  {[
+                    { value: "M", label: "남" },
+                    { value: "F", label: "여" },
+                  ].map((opt) => (
+                    <label
+                      key={opt.value}
+                      className="flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        name="edit-gender"
+                        value={opt.value}
+                        checked={editForm.gender === opt.value}
+                        onChange={() =>
+                          setEditForm((p) => ({ ...p, gender: opt.value }))
+                        }
+                        className="accent-[#EF6600]"
+                      />
+                      <span className="text-sm text-text">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">
+                  전화번호
+                </label>
+                <input
+                  value={editForm.phone}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, phone: e.target.value }))
+                  }
+                  placeholder="010-0000-0000"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={editLoading || !editForm.name}
+                className="w-full bg-[#EF6600] text-white rounded-md py-2.5 text-sm mt-1 disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                {editLoading ? "저장 중..." : "저장"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 익명화 확인 모달 */}
+      {anonymizeTarget && (
+        <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-6 w-full max-w-xs shadow-xl text-center">
+            <div className="text-sm font-medium text-text mb-2">
+              {anonymizeTarget.name} 환자를 익명화하시겠습니까?
+            </div>
+            <div className="text-xs text-red-500 mb-4">
+              이 작업은 되돌릴 수 없습니다
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAnonymizeTarget(null)}
+                className="flex-1 border border-border text-text rounded-md py-2.5 text-sm hover:bg-bg transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleAnonymizeConfirm}
+                disabled={anonymizeLoading}
+                className="flex-1 bg-red-500 text-white rounded-md py-2.5 text-sm disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                {anonymizeLoading ? "처리 중..." : "확인"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 에러 모달 */}
       {errorMessage && (
         <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
