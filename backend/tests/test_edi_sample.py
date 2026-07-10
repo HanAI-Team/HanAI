@@ -165,6 +165,7 @@ async def test_EDI_레코드_수와_길이(db, 한의원_외래_사례):
 
     assert len(records) == 9, f"레코드 수 불일치: {len(records)}"
 
+    # 레코드3(진료내역) 마지막 필드는 가감 등 구분 an(10), pos 66 → 75바이트
     expected = [2096, 325, 43, 75, 75, 739, 739, 739, 739]
     for i, (rec, exp) in enumerate(zip(records, expected)):
         assert len(rec) == exp, (
