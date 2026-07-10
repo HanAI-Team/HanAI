@@ -60,6 +60,14 @@ from app.billing.service import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
+from app.core.models import (
+    Claim,
+    ClaimLineItem,
+    DoctorWorkDays,
+    FeeMaster,
+    MedicalRecord,
+    Patient,
+)
 from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, DrugMaster, FeeMaster, MedicalRecord, Patient
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
@@ -89,6 +97,7 @@ class ClaimCreateRequest(BaseModel):
     claim_period_year: int
     claim_period_month: int
     visit_type: str = "외래"  # "외래" 또는 "입원" (VisitType enum과 일치)
+    approval_no: str | None
     approval_no: str | None = None
 
 
