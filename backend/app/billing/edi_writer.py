@@ -338,10 +338,8 @@ def build_procedure_record(p: ProcedureDetail) -> str:
         _fmt9(p.days, 3),                   # 53-55  총투여일수·실시횟수
         _fmt9(p.amount, 10),                # 56-65  금액
         _fmtx(p.gamigam_gubun, 10),         # 66-75  가감 등 구분
-        _fmtx(p.license_kind, 1),           # 76     면허종류
-        _fmtx(p.license_no, 10),            # 77-86  면허번호
     ]
-    return _build(parts, 86)
+    return _build(parts, 75)
 
 
 # ---------------------------------------------------------------------------
