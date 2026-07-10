@@ -478,7 +478,8 @@ async def create_claim(
         support_fund=billing_result.support_fund,
         status="draft",
         special_case_review_reason=review_reason,
-        approval_no=approval_no
+        approval_no=approval_no,
+        warn_notices=warn_notices if warn_notices else None,
     )
     db.add(claim)
 
@@ -629,6 +630,12 @@ async def _build_claim_edi_file(
         approval_no=claim.approval_no or "",
     )
 
+    if not patient or not patient.rrn:
+        raise HTTPException(
+            status_code=400,
+            detail="환자 주민등록번호가 누락되어 청구파일을 생성할 수 없습니다.",
+        )
+
     # 3. PatientRecord / DiagnosisRecord / ProcedureDetail 조립
     patient_records = []
     diagnosis_records = []
@@ -696,7 +703,7 @@ async def _build_claim_edi_file(
             cert_no="",
             subscriber_name=patient.name if patient else "",
             patient_name=patient.name if patient else "",
-            patient_rrn=patient.rrn if patient and patient.rrn else "0000000000000",
+            patient_rrn=patient.rrn,
             inpatient_days=1,
             benefit_days=1,
             medical_aid_type=medical_aid_type,
@@ -810,6 +817,14 @@ async def _build_claim_edi_file(
 
         # DiagnosisRecord
         if record.chart_structured and record.kcd_code:
+            r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
+            kcd = r_kcd.scalar_one_or_none()
+            today = date.today()
+            if not kcd or (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"진료기록({record.id})의 상병코드 '{record.kcd_code}'는 청구 가능한 KCD 완전코드가 아닙니다.",
+                )
             diagnosis_records.append((serial, DiagnosisRecord(
                 key=rec_key,
                 kcd_code=record.kcd_code,

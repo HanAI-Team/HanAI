@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
+from sqlalchemy import select
 
 from app.billing.service import generate_claim_edi
 from app.core.models import (
@@ -35,6 +37,7 @@ from app.core.models import (
     ClaimLineItem,
     DoctorWorkDays,
     Hospital,
+    KcdUCode,
     MedicalRecord,
     Patient,
     SaturdayHolidayStaffing,
@@ -60,8 +63,13 @@ async def 한의원_외래_사례(db, approved_doctor):
         hospital_id=hospital.id,
         name="한의외1",
         insurance_type="health",
+        rrn="900101-1234567",
     )
     db.add(patient)
+    db.add(KcdUCode(
+        code="M5459", korean_name="요통, 상세불명의 부위",
+        effective_date=date(2000, 1, 1), expired_date=None,
+    ))
     await db.flush()
 
     record = MedicalRecord(
@@ -413,6 +421,34 @@ async def test_최초청구는_접수번호_공란(db, 한의원_외래_사례):
     assert c2_11[42:49].decode("euc-kr") == "0000000"
     assert c2_11[49:54].decode("euc-kr") == "00000"
     assert c2_11[54:56].decode("euc-kr") == "  "
+
+
+# ── 테스트: 상병분류기호/주민등록번호 방어 검증 (MCPoS 04-04/10-02 회귀) ──────
+
+async def test_상병분류기호_미등록코드면_SAM생성_차단(db, 한의원_외래_사례):
+    """kcd_code가 완전코드 목록(KcdUCode)에 없으면(예: "초진" 같은 오염값) SAM 생성을 막는다."""
+    claim, hospital = 한의원_외래_사례
+    r = await db.execute(select(MedicalRecord).where(MedicalRecord.claim_id == claim.id))
+    record = r.scalars().first()
+    record.kcd_code = "초진"
+    await db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await generate_claim_edi(db, hospital.id, claim.id)
+    assert exc_info.value.status_code == 400
+
+
+async def test_수진자_주민등록번호_누락시_SAM생성_차단(db, 한의원_외래_사례):
+    """환자 주민등록번호가 없으면 더미값(0)으로 채우지 않고 SAM 생성을 막는다."""
+    claim, hospital = 한의원_외래_사례
+    r = await db.execute(select(Patient).where(Patient.id == claim.patient_id))
+    patient = r.scalar_one()
+    patient.rrn = None
+    await db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await generate_claim_edi(db, hospital.id, claim.id)
+    assert exc_info.value.status_code == 400
 
 
 # ── 테스트: HIRA 기대 출력값 정확 일치 (파일 있을 때만 실행) ──────────────────

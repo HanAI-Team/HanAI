@@ -2,13 +2,14 @@
 import AccessTab from '@/components/settings/AccessTab'
 import FaqTab from '@/components/settings/FaqTab'
 import GeneralTab from '@/components/settings/GeneralTab'
+import PurgeTab from '@/components/settings/PurgeTab'
 import StaffTab from '@/components/settings/StaffTab'
 import WorkDaysTab from '@/components/settings/WorkDaysTab'
 import { jwtDecode } from 'jwt-decode'
 import { useEffect, useState } from 'react'
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'general' | 'staff' | 'access' | 'workdays' | 'faq' | null>(null)
+  const [tab, setTab] = useState<'general' | 'staff' | 'access' | 'workdays' | 'purge' | 'faq' | null>(null)
 
   useEffect(() => {
     setTab('general')
@@ -39,6 +40,7 @@ export default function SettingsPage() {
               { value: 'staff', label: '하위 계정' },
               { value: 'access', label: '접근 기록' },
               { value: 'workdays', label: '진료일수' },
+              { value: 'purge', label: '파기대장' },
               { value: 'faq', label: 'FAQ' },
             ].map((t) => (
               <button
@@ -58,6 +60,7 @@ export default function SettingsPage() {
         {tab === 'staff' && isOwner && <StaffTab />}
         {tab === 'access' && isOwner && <AccessTab />}
         {tab === 'workdays' && isOwner && <WorkDaysTab />}
+        {tab === 'purge' && isOwner && <PurgeTab />}
         {tab === 'faq' && <FaqTab />}
       </div>
     </div>

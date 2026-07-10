@@ -235,6 +235,7 @@ class Claim(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     approval_no = Column(String(35), nullable=True)  # 검사승인번호 an(35)
+    warn_notices = Column(JSON, nullable=True)
 
     medical_records = relationship("MedicalRecord", back_populates="claim")
     line_items = relationship("ClaimLineItem", back_populates="claim", cascade="all, delete-orphan")
@@ -452,6 +453,19 @@ class DataDownloadLog(Base):
     reason = Column(String(500), nullable=False)
     ip_address = Column(String(45), nullable=True)
     downloaded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class DataPurgeLog(Base):
+    __tablename__ = "data_purge_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), nullable=True)  # 익명화 후 참조 불가할 수 있음
+    patient_name_before = Column(String, nullable=True)  # 파기 전 이름 보존
+    reason = Column(String, nullable=False)
+    purge_type = Column(String, nullable=False, default="anonymize")  # anonymize | delete
+    purged_at = Column(String, nullable=False)  # YYYYMMDDHHMMSS (기존 audit_logs 패턴)
 
 
 # ================================================================

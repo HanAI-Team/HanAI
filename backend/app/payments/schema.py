@@ -30,6 +30,12 @@ class PaymentConfirmResponse(BaseModel):
     message: str
 
 
+# 토스페이먼츠 웹훅 payload
+class TossWebhookPayload(BaseModel):
+    event_type: str
+    data: dict
+
+
 
 
 TIER_CONFIG = {
