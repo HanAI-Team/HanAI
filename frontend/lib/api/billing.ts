@@ -72,6 +72,23 @@ export async function downloadEdi(claimId: string, testMode = false): Promise<vo
   URL.revokeObjectURL(objectUrl);
 }
 
+export async function downloadSamFiles(claimId: string, testMode = false): Promise<void> {
+  const token = localStorage.getItem("token");
+  const endpoint = `${BASE_URL}/api/billing/claims/${claimId}/sam-files${testMode ? "?test=true" : ""}`;
+  const res = await fetch(endpoint, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("SAM File 생성 실패");
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = testMode ? `claim_${claimId}_TEST_sam_files.zip` : `claim_${claimId}_sam_files.zip`;
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export async function bulkDownloadEdi(ids: string[], testMode = false): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/billing/claims/bulk-edi`, {
     method: "POST",
