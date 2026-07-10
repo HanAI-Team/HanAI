@@ -1,7 +1,14 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getPatients, createPatient, updatePatient, importPatientsFromExcel } from "@/lib/api/patients";
+import {
+  getPatients,
+  createPatient,
+  updatePatient,
+  importPatientsFromExcel,
+  downloadPatientsCsv,
+  downloadRecordsCsv,
+} from "@/lib/api/patients";
 import { Patient } from "@/types";
 import { Search, Plus, ChevronRight, X } from "lucide-react";
 
@@ -25,6 +32,9 @@ export default function PatientsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [downloadTarget, setDownloadTarget] = useState<"patient_list" | "medical_records" | null>(null);
+  const [downloadReason, setDownloadReason] = useState("");
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const excelInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -76,6 +86,25 @@ export default function PatientsPage() {
       setErrorMessage("엑셀 파일 가져오기에 실패했습니다.");
     } finally {
       setImportLoading(false);
+    }
+  }
+
+  async function handleDownloadCsv(e: React.FormEvent) {
+    e.preventDefault();
+    if (!downloadTarget || !downloadReason.trim()) return;
+    setDownloadLoading(true);
+    try {
+      if (downloadTarget === "patient_list") {
+        await downloadPatientsCsv(downloadReason.trim());
+      } else {
+        await downloadRecordsCsv(downloadReason.trim());
+      }
+      setDownloadTarget(null);
+      setDownloadReason("");
+    } catch (e: any) {
+      setErrorMessage(e.message || "CSV 다운로드에 실패했습니다.");
+    } finally {
+      setDownloadLoading(false);
     }
   }
 
@@ -186,6 +215,20 @@ export default function PatientsPage() {
           className="hidden"
           onChange={handleExcelImport}
         />
+        <div className="flex gap-2">
+          <button
+            onClick={() => setDownloadTarget("patient_list")}
+            className="flex-1 border border-border text-text rounded-md py-2.5 text-xs hover:bg-bg transition-colors"
+          >
+            환자 목록 CSV 다운로드
+          </button>
+          <button
+            onClick={() => setDownloadTarget("medical_records")}
+            className="flex-1 border border-border text-text rounded-md py-2.5 text-xs hover:bg-bg transition-colors"
+          >
+            진료기록 CSV 다운로드
+          </button>
+        </div>
       </div>
 
       {/* 신규 환자 등록 모달 */}
@@ -291,6 +334,59 @@ export default function PatientsPage() {
               >
                 {addLoading ? "등록 중..." : "등록"}
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CSV 다운로드 사유 입력 모달 */}
+      {downloadTarget && (
+        <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="text-sm font-medium text-text">다운로드 사유 입력</div>
+              <button
+                onClick={() => {
+                  setDownloadTarget(null);
+                  setDownloadReason("");
+                }}
+                className="text-subtext hover:text-text transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleDownloadCsv} className="p-5 flex flex-col gap-3">
+              <div>
+                <label className="text-xs text-subtext mb-1 block">사유 *</label>
+                <textarea
+                  value={downloadReason}
+                  onChange={(e) => setDownloadReason(e.target.value)}
+                  required
+                  minLength={1}
+                  rows={3}
+                  placeholder="다운로드 사유를 입력하세요"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors resize-none"
+                />
+              </div>
+              <div className="flex gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDownloadTarget(null);
+                    setDownloadReason("");
+                  }}
+                  className="flex-1 border border-border text-text rounded-md py-2.5 text-sm hover:bg-bg transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={downloadLoading || !downloadReason.trim()}
+                  className="flex-1 bg-[#EF6600] text-white rounded-md py-2.5 text-sm disabled:opacity-50 hover:opacity-90 transition-opacity"
+                >
+                  {downloadLoading ? "다운로드 중..." : "확인"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
