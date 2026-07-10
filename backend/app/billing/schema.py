@@ -336,6 +336,7 @@ class DrugMasterResponse(BaseModel):
     unit_price: int
     administration_route: Optional[str]
     is_prescription: Optional[bool]
+    effective_date: Optional[date]
 
     class Config:
         from_attributes = True
