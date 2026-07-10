@@ -29,6 +29,17 @@ export async function getPatient(id: string) {
   return res.json();
 }
 
+
+export async function anonymizePatient(id: string) {
+  const res = await fetch(`${BASE_URL}/api/patients/${id}/anonymize`, {
+    method: "PATCH",
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("환자 익명화에 실패했습니다.");
+  return res.json();
+}
+
+
 export async function saveRecord(
   patientId: string,
   chartStructured: string,
