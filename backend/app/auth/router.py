@@ -30,6 +30,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import (
     AccountHistory,
+    AuditLog,
     Doctor,
     Hospital,
     LoginLog,
@@ -47,7 +48,7 @@ from app.core.redis import (
     set_verify_pending,
 )
 from app.subscription.service import get_subscription
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -533,5 +534,42 @@ async def get_account_histories(db:AsyncSession=Depends(get_db),
 
     result = await db.execute(select(AccountHistory)
 .where(AccountHistory.account_id.in_(all_ids))
-.order_by(AccountHistory.started_at.desc()))  
+.order_by(AccountHistory.started_at.desc()))
+    return result.scalars().all()
+
+
+@router.get("/audit-logs")
+async def get_audit_logs(
+    table_name: str | None = Query(None, description="patients / medical_records 등 테이블명 필터"),
+    action: str | None = Query(None, description="create / update / delete 등"),
+    start_date: str | None = Query(None, description="YYYYMMDD, changed_at 시작 범위"),
+    end_date: str | None = Query(None, description="YYYYMMDD, changed_at 종료 범위"),
+    limit: int = Query(200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    user: Union[Doctor, StaffAccount] = Depends(get_current_user),
+):
+    """개인정보(환자·진료기록 등) 조회·변경 이력. 오너 계정만 접근 가능."""
+    if user.role != "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="오너 계정만 접근 가능합니다.")
+
+    doctor_ids = (await db.execute(
+        select(Doctor.id).where(Doctor.hospital_id == user.hospital_id)
+    )).scalars().all()
+    staff_ids = (await db.execute(
+        select(StaffAccount.id).where(StaffAccount.hospital_id == user.hospital_id)
+    )).scalars().all()
+    all_ids = list(doctor_ids) + list(staff_ids)
+
+    stmt = select(AuditLog).where(AuditLog.actor_id.in_(all_ids))
+    if table_name:
+        stmt = stmt.where(AuditLog.table_name == table_name)
+    if action:
+        stmt = stmt.where(AuditLog.action == action)
+    if start_date:
+        stmt = stmt.where(AuditLog.changed_at >= start_date + "000000")
+    if end_date:
+        stmt = stmt.where(AuditLog.changed_at <= end_date + "235959")
+    stmt = stmt.order_by(AuditLog.changed_at.desc()).limit(limit)
+
+    result = await db.execute(stmt)
     return result.scalars().all()
