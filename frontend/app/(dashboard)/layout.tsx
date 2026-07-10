@@ -3,7 +3,7 @@ import PwaInstallGuide from "@/components/PwaInstallGuide";
 import ThemeToggle from "@/components/ThemeToggle";
 import { UserInfoForNav } from "@/components/userInfo";
 import { SubscriptionContext } from "@/contexts/SubscriptionContext";
-import { useIdleLogout } from "@/hooks/useIdleLogout";
+import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 import { getMe } from "@/lib/api/get-me";
 import { Me } from "@/types";
 import Image from "next/image";
@@ -20,7 +20,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
-  useIdleLogout();
+  const { showWarning, extendSession } = useIdleTimeout();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -32,6 +32,11 @@ export default function DashboardLayout({
       if (data) setIsExpired(!!data.is_expired);
     });
   }, []);
+
+  const handleIdleLogout = () => {
+    localStorage.removeItem("token");
+    router.push("/login");
+  };
 
   const navLinks = [
     { label: "홈", path: "/home" },
@@ -169,6 +174,34 @@ export default function DashboardLayout({
           </div>
         </div>
       </div>
+
+      {/* 세션 만료 경고 모달 */}
+      {showWarning && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden p-6">
+            <p className="text-sm font-medium text-text mb-2">
+              30분간 활동이 없어 자동 로그아웃됩니다.
+            </p>
+            <p className="text-xs text-subtext mb-5">
+              세션이 곧 만료됩니다. 계속 사용하시겠습니까?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleIdleLogout}
+                className="flex-1 border border-border rounded-xl py-2.5 text-sm text-subtext hover:text-text transition-colors"
+              >
+                로그아웃
+              </button>
+              <button
+                onClick={extendSession}
+                className="flex-1 bg-[#EF6600] text-white rounded-xl py-2.5 text-sm font-medium hover:opacity-90 transition-colors"
+              >
+                계속 사용
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PwaInstallGuide />
 

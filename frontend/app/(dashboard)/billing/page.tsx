@@ -9,6 +9,7 @@ import {
   getClaims,
   resubmitClaim,
   statusLabel,
+  updateClaimApproval,
 } from "@/lib/api/billing";
 import { useIsExpired } from "@/contexts/SubscriptionContext";
 import { useEffect, useState } from "react";
@@ -36,6 +37,21 @@ export default function BillingPage() {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [resubmitTarget, setResubmitTarget] = useState<ClaimListItem | null>(null);
   const [testMode, setTestMode] = useState(false);
+  const [editingApprovalId, setEditingApprovalId] = useState<string | null>(null);
+  const [approvalDraft, setApprovalDraft] = useState("");
+
+  async function saveApproval(claimId: string) {
+    const trimmed = approvalDraft.trim();
+    setEditingApprovalId(null);
+    try {
+      const res = await updateClaimApproval(claimId, trimmed || null);
+      setClaims((prev) =>
+        prev.map((c) => (c.id === claimId ? { ...c, approval_no: res.approval_no } : c))
+      );
+    } catch {
+      // 저장 실패 시 값은 그대로 두고 다음 클릭에서 재시도
+    }
+  }
 
   function reload() {
     setLoading(true);
@@ -421,6 +437,7 @@ export default function BillingPage() {
               <th className="p-3 text-right">급여합계</th>
               <th className="p-3 text-right">본인부담</th>
               <th className="p-3 text-right">청구금액</th>
+              <th className="p-3 text-left">검사승인번호</th>
               <th className="p-3 text-center">EDI</th>
               <th className="p-3 text-center">영수증</th>
               <th className="p-3 text-center">명세서</th>
@@ -429,13 +446,13 @@ export default function BillingPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={11} className="p-8 text-center text-subtext text-xs">
                   불러오는 중...
                 </td>
               </tr>
             ) : claims.length === 0 ? (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={11} className="p-8 text-center text-subtext text-xs">
                   청구 내역이 없습니다.
                 </td>
               </tr>
@@ -480,6 +497,32 @@ export default function BillingPage() {
                   </td>
                   <td className="p-3 text-right text-text font-medium">
                     {claim.claim_amount.toLocaleString()}원
+                  </td>
+                  <td className="p-3">
+                    {editingApprovalId === claim.id ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        maxLength={35}
+                        value={approvalDraft}
+                        onChange={(e) => setApprovalDraft(e.target.value)}
+                        onBlur={() => saveApproval(claim.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                        }}
+                        className="w-full bg-fill border border-[#EF6600] rounded-md px-2 py-1 text-xs text-text outline-none"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setEditingApprovalId(claim.id);
+                          setApprovalDraft(claim.approval_no || "");
+                        }}
+                        className="w-full text-left px-2 py-1 text-xs text-subtext hover:text-text hover:bg-fill rounded-md transition-colors"
+                      >
+                        {claim.approval_no || "-"}
+                      </button>
+                    )}
                   </td>
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-1.5">
