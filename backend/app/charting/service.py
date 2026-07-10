@@ -11,10 +11,10 @@ from app.pipeline.deidentifier import deidentifier
 from app.pipeline.postprocessor import postprocessor
 from app.core.audit import write_audit
 from uuid import UUID
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from sqlalchemy import select
 from fastapi import HTTPException, status
-from app.core.models import MedicalRecord, Patient, Doctor
+from app.core.models import KcdUCode, MedicalRecord, Patient, Doctor
 
 
 async def create_medical_record(db, doctor, patient_id: UUID) -> MedicalRecord:
@@ -285,6 +285,24 @@ async def update_kcd_code(
     db: AsyncSession, doctor: Doctor, record_id: UUID, kcd_code: str | None
 ) -> MedicalRecord:
     medical_record = await get_medical_record(db, doctor, record_id)
+
+    if kcd_code:
+        # 완전코드 목록(KcdUCode) 검증 — 청구 불가능한 상위 분류코드나 존재하지
+        # 않는 코드가 진료기록에 들어가는 걸 여기서 막는다 (착오청구 예방).
+        result = await db.execute(select(KcdUCode).where(KcdUCode.code == kcd_code))
+        kcd = result.scalar_one_or_none()
+        if not kcd:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{kcd_code}'는 완전코드 목록에 없는 상병코드입니다. 청구 가능한 KCD 완전코드를 입력해주세요.",
+            )
+        today = date.today()
+        if (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{kcd_code}'는 현재 유효기간이 아닌 상병코드입니다.",
+            )
+
     medical_record.kcd_code = kcd_code  # type: ignore
     await write_audit(
         db,
