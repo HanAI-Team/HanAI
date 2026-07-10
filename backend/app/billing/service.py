@@ -815,24 +815,28 @@ async def _build_claim_edi_file(
                     content=f"{special_case.registered_disease_code}/{special_case.disease_name}",
                 )))
 
-        # DiagnosisRecord
-        if record.chart_structured and record.kcd_code:
-            r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
-            kcd = r_kcd.scalar_one_or_none()
-            today = date.today()
-            if not kcd or (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"진료기록({record.id})의 상병코드 '{record.kcd_code}'는 청구 가능한 KCD 완전코드가 아닙니다.",
-                )
-            diagnosis_records.append((serial, DiagnosisRecord(
-                key=rec_key,
-                kcd_code=record.kcd_code,
-                onset_date=record.recorded_at.strftime("%Y%m%d") if record.recorded_at else "00000000",
-                treatment_dept=9,  # 진료과목: 09=한의과
-                license_kind="3",
-                license_no=doctor.license_number if doctor else "",
-            )))
+        # DiagnosisRecord — 레코드 2-1(상병내역)은 명세서(레코드2)마다 최소 1건 필수(HIRA 규격).
+        if not record.kcd_code:
+            raise HTTPException(
+                status_code=400,
+                detail=f"진료기록({record.id})에 상병코드(KCD)가 입력되지 않아 청구파일을 생성할 수 없습니다.",
+            )
+        r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
+        kcd = r_kcd.scalar_one_or_none()
+        today = date.today()
+        if not kcd or (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
+            raise HTTPException(
+                status_code=400,
+                detail=f"진료기록({record.id})의 상병코드 '{record.kcd_code}'는 청구 가능한 KCD 완전코드가 아닙니다.",
+            )
+        diagnosis_records.append((serial, DiagnosisRecord(
+            key=rec_key,
+            kcd_code=record.kcd_code,
+            onset_date=record.recorded_at.strftime("%Y%m%d") if record.recorded_at else "00000000",
+            treatment_dept=9,  # 진료과목: 09=한의과
+            license_kind="3",
+            license_no=doctor.license_number if doctor else "",
+        )))
 
         record_line_items = line_items_by_record.get(record.id, [])
         if record_line_items:
