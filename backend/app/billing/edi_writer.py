@@ -399,3 +399,29 @@ def generate_edi(edi: EDIFile) -> bytes:
                 lines.append(build_special_record(special))
 
     return "".join(lines).encode("euc-kr", errors="replace")
+
+
+def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
+    """SAM File 생성 디렉토리(/HIRA/DDMD/SAM/IN/)에 들어갈 개별 파일들을
+    레코드 종류별로 나눠 생성한다 (한방은 청구서+명세서가 한 파일로
+    합쳐지는 의·치과와 달리 H010 + K020.1~4로 분리해야 함).
+
+    H010: 요양급여비용(의료급여비용)심사청구서 (헤더, 공통)
+    K020.1: 일반내역 (환자/청구 기본정보)
+    K020.2: 상병내역 (진단)
+    K020.3: 진료내역 (시술·처치)
+    K020.4: 특정내역
+
+    해당 레코드가 없는 파일도 0바이트 더미 파일로 포함한다 (SAM File
+    작성 규칙 — 발생하지 않는 SAM File이라도 Dummy file을 생성해야 함).
+    """
+    def _join(lines: list[str]) -> bytes:
+        return "".join(lines).encode("euc-kr", errors="replace")
+
+    return {
+        "H010": _join([build_claim_header(edi.header)]),
+        "K020.1": _join([build_patient_record(p) for p in edi.patient_records]),
+        "K020.2": _join([build_diagnosis_record(d) for _, d in edi.diagnosis_records]),
+        "K020.3": _join([build_procedure_record(p) for _, p in edi.procedure_records]),
+        "K020.4": _join([build_special_record(s) for _, s in edi.special_records]),
+    }

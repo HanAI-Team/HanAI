@@ -24,6 +24,7 @@ from app.billing.edi_writer import (
     RecordKey,
     SpecialRecord,
     generate_edi,
+    generate_sam_files,
 )
 from app.core.models import (
     Claim,
@@ -530,12 +531,12 @@ async def update_claim_resubmission(
     return claim
 
 
-async def generate_claim_edi(
+async def _build_claim_edi_file(
     db: AsyncSession,
     hospital_id: UUID,
     claim_id: UUID,
     test_mode: bool = False,
-) -> bytes:
+) -> EDIFile:
     # 1. 데이터 조회
     result = await db.execute(select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id))
     claim = result.scalar_one_or_none()
@@ -877,7 +878,7 @@ async def generate_claim_edi(
                         content=proc.special_detail,
                     )))
 
-    edi_file = EDIFile(
+    return EDIFile(
         header=header,
         patient_records=patient_records,
         diagnosis_records=diagnosis_records,
@@ -885,7 +886,36 @@ async def generate_claim_edi(
         special_records=special_records,
     )
 
+
+async def generate_claim_edi(
+    db: AsyncSession,
+    hospital_id: UUID,
+    claim_id: UUID,
+    test_mode: bool = False,
+) -> bytes:
+    edi_file = await _build_claim_edi_file(db, hospital_id, claim_id, test_mode)
     return generate_edi(edi_file)
+
+
+async def generate_claim_sam_files(
+    db: AsyncSession,
+    hospital_id: UUID,
+    claim_id: UUID,
+    test_mode: bool = False,
+) -> dict[str, bytes]:
+    """SAM File 생성 디렉토리(/HIRA/DDMD/SAM/IN/)에 들어갈 개별 파일들.
+
+    한방 명세서는 H010(청구서, 공통) + K020.1(일반내역)~K020.4(특정내역)
+    4개 파일로 나뉜다 (의·치과처럼 청구서+명세서가 한 파일로 합쳐지지
+    않음). 압축·암호화는 별도의 전자청구 프로그램이 담당하므로 여기서는
+    원본 파일 생성까지만 다룬다.
+
+    ※ K020.1~4가 정확히 어떤 레코드에 대응하는지는 SAM File Layout
+    원문으로 확정한 게 아니라 "일반내역/상병내역/진료내역/특정내역"
+    순서 정황상 추정한 매핑이다 (2026-07-10). 확정 자료 확보 시 재검증 필요.
+    """
+    edi_file = await _build_claim_edi_file(db, hospital_id, claim_id, test_mode)
+    return generate_sam_files(edi_file)
 
 
 async def build_claim_statement(
