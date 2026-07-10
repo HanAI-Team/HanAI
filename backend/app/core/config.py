@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     TESTING: bool = False
 
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 60
+    JWT_EXPIRE_MINUTES: int = 30
 
     ANTHROPIC_API_KEY: Optional[str] = None
     CLOVA_CLIENT_ID: Optional[str] = None
