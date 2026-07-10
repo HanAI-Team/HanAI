@@ -150,8 +150,8 @@ async def test_EDI_레코드_수와_길이(db, 한의원_외래_사례):
       1  레코드1    심사청구서(헤더)    2096 bytes
       2  레코드2    명세서일반내역       325 bytes
       3  레코드2-1  명세서상병내역        43 bytes
-      4  레코드3    초진진찰료            86 bytes
-      5  레코드3    투자법침술            86 bytes
+      4  레코드3    초진진찰료            75 bytes
+      5  레코드3    투자법침술            75 bytes
       6  레코드4    MT032 접수일시       739 bytes
       7  레코드4    JS010 줄1           739 bytes
       8  레코드4    JS010 줄2           739 bytes
@@ -165,8 +165,8 @@ async def test_EDI_레코드_수와_길이(db, 한의원_외래_사례):
 
     assert len(records) == 9, f"레코드 수 불일치: {len(records)}"
 
-    # 레코드3(진료내역)은 면허종류(1)+면허번호(10) 필드 추가로 75 -> 86바이트
-    expected = [2096, 325, 43, 86, 86, 739, 739, 739, 739]
+    # 레코드3(진료내역) 마지막 필드는 가감 등 구분 an(10), pos 66 → 75바이트
+    expected = [2096, 325, 43, 75, 75, 739, 739, 739, 739]
     for i, (rec, exp) in enumerate(zip(records, expected)):
         assert len(rec) == exp, (
             f"레코드[{i}] 길이 불일치: 기대={exp}, 실제={len(rec)}"
