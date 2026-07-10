@@ -68,6 +68,24 @@ class PatientDetailResponse(PatientResponse):
     recent_records: list[RecentRecordSummary]
 
 
+class DataPurgeLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    doctor_id: UUID
+    patient_name_before: Optional[str] = None
+    reason: str
+    purge_type: str
+    purged_at: str
+
+
+class DataPurgeLogListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    items: list[DataPurgeLogResponse]
+
+
 class RecordCreate(BaseModel):
     chart_structured: str
     raw_transcription: Optional[str] = None

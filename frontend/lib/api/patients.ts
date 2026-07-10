@@ -33,6 +33,22 @@ export async function getPatients(search?: string, page = 1, size = 20): Promise
   };
 }
 
+export type DataPurgeLog = {
+  id: number;
+  doctor_id: string;
+  patient_name_before: string | null;
+  reason: string;
+  purge_type: string;
+  purged_at: string;
+};
+
+export async function getPurgeLogs(): Promise<DataPurgeLog[]> {
+  const res = await fetch(`${BASE_URL}/api/patients/purge-logs`, { headers: getHeaders() });
+  if (!res.ok) throw new Error("파기대장 조회 실패");
+  const data = await res.json();
+  return data.items || [];
+}
+
 export async function getPatient(id: string) {
   const res = await fetch(`${BASE_URL}/api/patients/${id}`, {
     headers: getHeaders(),
