@@ -433,3 +433,7 @@ class ClaimStatementResponse(BaseModel):
     under_full_copay: int
     under_full_claim: int
     under_full_veterans_claim: int
+
+
+class ClaimApprovalUpdateRequest(BaseModel):
+    approval_no: str | None = None

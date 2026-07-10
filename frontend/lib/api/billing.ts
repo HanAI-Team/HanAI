@@ -20,6 +20,7 @@ export interface ClaimListItem {
   patient_copay: number;
   claim_amount: number;
   created_at: string;
+  approval_no?: string | null;
 }
 
 export interface ClaimResubmissionRequest {
@@ -202,4 +203,14 @@ export async function updateClaimSupportFund(
     body: JSON.stringify({ support_fund: supportFund }),
   });
   return mapClaimSummary(raw);
+}
+
+export async function updateClaimApproval(
+  claimId: string,
+  approvalNo: string | null,
+): Promise<{ id: string; approval_no: string | null }> {
+  return apiCall(`/api/billing/claims/${claimId}/approval`, {
+    method: "PATCH",
+    body: JSON.stringify({ approval_no: approvalNo }),
+  });
 }

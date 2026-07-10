@@ -1,6 +1,13 @@
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
+from app.billing.catalog import (
+    BILLABLE_CATALOG,
+    CHUNA_50_CODES,
+    CHUNA_80_CODES,
+    get_catalog_item,
+)
 from app.billing.copayment import (
     BillingInput,
     InsuranceType,
@@ -10,9 +17,6 @@ from app.billing.copayment import (
 )
 from app.core.csv_export import csv_response
 from app.billing.pediatric_dosage import get_max_allowed_ratio
-from decimal import Decimal
-
-from app.billing.catalog import BILLABLE_CATALOG, CHUNA_50_CODES, CHUNA_80_CODES, get_catalog_item
 from app.billing.schema import (
     INSURANCE_TYPE_CHOICES,
     MEDICAL_AID_GRADE_CHOICES,
@@ -20,6 +24,7 @@ from app.billing.schema import (
     BillableItemResponse,
     BillingCalcRequest,
     BillingCalcResponse,
+    ClaimApprovalUpdateRequest,
     ClaimLineItemResponse,
     ClaimRejectionCodeCreate,
     ClaimRejectionCodeResponse,
@@ -52,10 +57,10 @@ from app.billing.service import (
     resolve_active_special_code,
     update_claim_resubmission,
 )
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, DrugMaster, FeeMaster, MedicalRecord, Patient
-from app.core.config import settings
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
@@ -75,6 +80,7 @@ class ClaimListItem(BaseModel):
     claim_amount: int
     created_at: str
     special_case_review_reason: str | None = None
+    approval_no: str | None = None
 
 
 class ClaimCreateRequest(BaseModel):
@@ -83,6 +89,7 @@ class ClaimCreateRequest(BaseModel):
     claim_period_year: int
     claim_period_month: int
     visit_type: str = "외래"  # "외래" 또는 "입원" (VisitType enum과 일치)
+    approval_no: str | None = None
 
 
 class ClaimCreateResponse(BaseModel):
@@ -115,6 +122,7 @@ async def create_new_claim(
         claim_period_year=body.claim_period_year,
         claim_period_month=body.claim_period_month,
         visit_type=body.visit_type,
+        approval_no=body.approval_no
     )
     return ClaimCreateResponse(
         id=str(claim.id),
@@ -167,6 +175,7 @@ async def list_claims(
             claim_amount=claim.claim_amount,
             created_at=claim.created_at.strftime("%Y-%m-%d") if claim.created_at else "",
             special_case_review_reason=claim.special_case_review_reason,
+            approval_no=claim.approval_no,
         )
         for claim, patient in results
     ]
@@ -1079,6 +1088,21 @@ async def add_line_items(
             for i in all_items
         ],
     )
+
+
+@router.patch("/claims/{claim_id}/approval")
+async def update_claim_approval(
+    claim_id: UUID,
+    body: ClaimApprovalUpdateRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await db.get(Claim, claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구를 찾을 수 없습니다.")
+    claim.approval_no = body.approval_no
+    await db.commit()
+    return {"id": str(claim_id), "approval_no": claim.approval_no}
 
 
 class SupportFundBody(BaseModel):
