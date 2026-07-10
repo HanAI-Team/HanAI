@@ -91,6 +91,7 @@ class BillingCalcRequest(BaseModel):
     graduated_fee_index: Decimal = Field(
         Decimal("0"), description="차등지수 (0=미적용, 0 초과 1 이하=차등 적용)"
     )
+    exam_fee: int = Field(0, ge=0, description="진찰료 (원). 차등수가청구액 계산에 필요")
     procedures: list[ProcedureItem] = Field(
         default_factory=list,
         description="진료내역 목록. EDI 명세서진료내역 + 특정내역 생성에 사용",
@@ -314,6 +315,124 @@ class NeedsReviewClaimItem(BaseModel):
 class NeedsReviewClaimsResponse(BaseModel):
     total: int
     items: list[NeedsReviewClaimItem]
+
+
+class ClaimRejectionCodeResponse(BaseModel):
+    category: str
+    code: str
+    detail_code: str
+    description: str
+
+    class Config:
+        from_attributes = True
+
+
+class DrugMasterResponse(BaseModel):
+    product_code: str
+    product_name: str
+    ingredient_name: Optional[str]
+    company_name: Optional[str]
+    spec: Optional[str]
+    unit: Optional[str]
+    unit_price: int
+    administration_route: Optional[str]
+    is_prescription: Optional[bool]
+    effective_date: Optional[date]
+
+    class Config:
+        from_attributes = True
+
+
+class DrugMasterCreate(BaseModel):
+    product_code: str
+    product_name: str
+    ingredient_code: Optional[str] = None
+    ingredient_name: Optional[str] = None
+    company_name: Optional[str] = None
+    spec: Optional[str] = None
+    unit: Optional[str] = None
+    unit_price: int
+    administration_route: Optional[str] = None
+    classification_code: Optional[str] = None
+    is_prescription: Optional[bool] = None
+    effective_date: Optional[date] = None
+
+
+class DrugMasterUpdate(BaseModel):
+    product_name: Optional[str] = None
+    ingredient_code: Optional[str] = None
+    ingredient_name: Optional[str] = None
+    company_name: Optional[str] = None
+    spec: Optional[str] = None
+    unit: Optional[str] = None
+    unit_price: Optional[int] = None
+    administration_route: Optional[str] = None
+    classification_code: Optional[str] = None
+    is_prescription: Optional[bool] = None
+    effective_date: Optional[date] = None
+
+
+class ClaimRejectionCodeCreate(BaseModel):
+    category: str
+    code: str
+    detail_code: str = ""
+    description: str
+
+
+class ClaimRejectionCodeUpdate(BaseModel):
+    description: Optional[str] = None
+
+
+class StatementProcedureRow(BaseModel):
+    """요양급여비용명세서(한방외래, 별지18호/GI013) 진료내역 한 줄. 같은
+    (hang, mok, code) 청구항목을 합산한 결과."""
+    hang: str
+    mok: str
+    code: str
+    name: str
+    unit_price: int
+    count: int
+    amount: int
+    is_non_benefit: bool
+    copay_rate_label: Optional[Literal["A", "B"]] = Field(
+        None, description="A=추나 100분의50, B=추나 100분의80. 그 외 일반 항목은 None"
+    )
+
+
+class ClaimStatementResponse(BaseModel):
+    """요양급여비용명세서(한방외래, 별지18호/GI013) 출력용 데이터."""
+    hospital_name: str
+    institution_code: str
+    patient_name: str
+    birth_masked: str
+    disease_names: list[str]
+    special_code: Optional[str]
+    doctor_name: str
+    license_type: str
+    license_no: str
+    visit_dates: list[str]
+    visit_count: int
+
+    procedures: list[StatementProcedureRow]
+
+    # 심사내역 (13~26번 및 소계/가산율/비급여총액)
+    subtotal: int
+    surcharge_rate: float
+    benefit_total_1: int
+    copayment: int
+    support_fund: int
+    disability_medical_cost: int
+    claim_amount: int
+    upper_limit_excess: int
+    non_benefit_total: int
+    benefit_total_2: int
+    veterans_claim: int
+    full_price_copay_total: int
+    veterans_copay: int
+    under_full_total: int
+    under_full_copay: int
+    under_full_claim: int
+    under_full_veterans_claim: int
 
 
 class ClaimApprovalUpdateRequest(BaseModel):

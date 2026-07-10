@@ -1,8 +1,11 @@
 "use client";
 import {
   ClaimListItem,
+  ClaimStatement,
+  StatementProcedureRow,
   bulkDownloadEdi,
-  downloadEdi,
+  downloadSamFiles,
+  getClaimStatement,
   getClaims,
   resubmitClaim,
   statusLabel,
@@ -86,9 +89,9 @@ export default function BillingPage() {
   async function handleDownload(id: string) {
     setDownloading(id);
     try {
-      await downloadEdi(id, testMode);
+      await downloadSamFiles(id, testMode);
     } catch {
-      alert("EDI 다운로드에 실패했습니다.");
+      alert("SAM File 다운로드에 실패했습니다.");
     } finally {
       setDownloading(null);
     }
@@ -182,6 +185,142 @@ export default function BillingPage() {
       + `<div class="t-row bold"><span>본인부담금 합계</span><span>${claim.patient_copay.toLocaleString()}원</span></div>`
       + `</div>`
       + `<div class="notice">본 영수증은 보험 청구 목적으로 발급된 것입니다.</div>`
+      + `</body></html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onafterprint = () => printWindow.close();
+    printWindow.print();
+  }
+
+  async function handleStatementPrint(claim: ClaimListItem) {
+    const printWindow = window.open("", "_blank", "width=900,height=1000");
+    if (!printWindow) {
+      alert("팝업이 차단되어 인쇄할 수 없습니다. 팝업 차단을 해제해주세요.");
+      return;
+    }
+
+    let s: ClaimStatement;
+    try {
+      s = await getClaimStatement(claim.id);
+    } catch {
+      printWindow.close();
+      alert("명세서 데이터를 불러오지 못했습니다.");
+      return;
+    }
+
+    const won = (n: number) => n.toLocaleString() + "원";
+
+    // 진찰료(01) / 투약료(11) / 시술및처치료(04, mok별) / 검사료(05) / 비급여(09) 로 재분류
+    const exam = s.procedures.filter((p) => p.hang === "01");
+    const med = s.procedures.filter((p) => p.hang === "11");
+    const treat = s.procedures.filter((p) => p.hang === "04");
+    const test = s.procedures.filter((p) => p.hang === "05");
+    const nonBenefit = s.procedures.filter((p) => p.hang === "09" || p.is_non_benefit);
+
+    const treatByMok: Record<string, { label: string; rows: StatementProcedureRow[] }> = {
+      "01": { label: "침술", rows: [] },
+      "02": { label: "구술", rows: [] },
+      "03": { label: "부항술", rows: [] },
+      "04": { label: "처치료", rows: [] },
+      기타: { label: "기타", rows: [] },
+    };
+    for (const p of treat) {
+      (treatByMok[p.mok] ?? treatByMok["기타"]).rows.push(p);
+    }
+
+    const rowHtml = (label: string, p: StatementProcedureRow) =>
+      `<tr><td class="left">${label}</td><td>${p.count}</td><td>${won(p.unit_price)}</td><td>${won(p.amount)}</td></tr>`;
+
+    const sectionRows = (rows: StatementProcedureRow[]) =>
+      rows.length === 0
+        ? `<tr><td class="left">-</td><td>-</td><td>-</td><td>-</td></tr>`
+        : rows.map((p) => rowHtml(p.name, p)).join("");
+
+    const treatSectionHtml = Object.values(treatByMok)
+      .filter((g) => g.rows.length > 0)
+      .map((g) => `<tr class="group"><td class="left" colspan="4">${g.label}</td></tr>` + sectionRows(g.rows))
+      .join("") || `<tr><td class="left">-</td><td>-</td><td>-</td><td>-</td></tr>`;
+
+    const copayRows: { label: string; amount: number }[] = [
+      { label: "A. 100분의50 본인부담", amount: s.procedures.filter((p) => p.copay_rate_label === "A").reduce((a, p) => a + p.amount, 0) },
+      { label: "B. 100분의80 본인부담", amount: s.procedures.filter((p) => p.copay_rate_label === "B").reduce((a, p) => a + p.amount, 0) },
+      { label: "D. 100분의30 본인부담", amount: 0 },
+      { label: "E. 100분의90 본인부담", amount: 0 },
+      { label: "U. 건강보험(의료급여) 100분의100 본인부담", amount: 0 },
+      { label: "V. 보훈 등 100분의100 본인부담", amount: 0 },
+      { label: "W. 비급여", amount: nonBenefit.reduce((a, p) => a + p.amount, 0) },
+    ];
+
+    const html = "<!DOCTYPE html>"
+      + `<html lang="ko"><head><meta charset="UTF-8"/>`
+      + `<title>요양급여비용명세서 - ${s.patient_name}</title>`
+      + `<style>`
+      + `*{margin:0;padding:0;box-sizing:border-box}`
+      + `body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#000;background:#fff;padding:20px 28px;font-size:12px}`
+      + `h1{font-size:16px;font-weight:bold;text-align:center;margin-bottom:2px}`
+      + `.subtitle{text-align:center;font-size:10px;color:#555;margin-bottom:10px}`
+      + `table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0}`
+      + `th,td{border:1px solid #999;padding:4px 6px;text-align:center}`
+      + `th{background:#f0f0f0;font-weight:500}`
+      + `td.left{text-align:left}`
+      + `tr.group td{background:#fafafa;font-weight:600;text-align:left}`
+      + `.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;margin-bottom:8px}`
+      + `.info-item{display:flex;gap:6px}`
+      + `.info-item span.lbl{color:#444;min-width:80px;font-weight:500}`
+      + `.section-title{font-weight:bold;margin:10px 0 2px;font-size:12px}`
+      + `@media print{body{padding:0}@page{margin:10mm;size:A4}}`
+      + `</style></head><body>`
+      + `<h1>요양급여비용명세서 (한방외래)</h1>`
+      + `<div class="subtitle">별지 제18호서식 (서식번호 GI013)</div>`
+      + `<div class="info-grid">`
+      + `<div class="info-item"><span class="lbl">요양기관명</span><span>${s.hospital_name}</span></div>`
+      + `<div class="info-item"><span class="lbl">요양기관기호</span><span>${s.institution_code}</span></div>`
+      + `<div class="info-item"><span class="lbl">환자성명</span><span>${s.patient_name}</span></div>`
+      + `<div class="info-item"><span class="lbl">주민등록번호</span><span>${s.birth_masked}</span></div>`
+      + `<div class="info-item"><span class="lbl">상병명</span><span>${s.disease_names.join(", ") || "-"}</span></div>`
+      + `<div class="info-item"><span class="lbl">특정기호</span><span>${s.special_code || "-"}</span></div>`
+      + `<div class="info-item"><span class="lbl">진료과목</span><span>한방</span></div>`
+      + `<div class="info-item"><span class="lbl">청구기간</span><span>${claim.claim_period}</span></div>`
+      + `<div class="info-item"><span class="lbl">면허종류/번호</span><span>${s.license_type} / ${s.license_no}</span></div>`
+      + `<div class="info-item"><span class="lbl">내원일수</span><span>${s.visit_count}일 (${s.visit_dates.join(", ")})</span></div>`
+      + `</div>`
+
+      + `<div class="section-title">1. 진찰료</div>`
+      + `<table><thead><tr><th class="left">구분</th><th>실시횟수</th><th>단가</th><th>금액</th></tr></thead><tbody>${sectionRows(exam)}</tbody></table>`
+
+      + `<div class="section-title">3. 투약료</div>`
+      + `<table><thead><tr><th class="left">구분</th><th>실시횟수</th><th>단가</th><th>금액</th></tr></thead><tbody>${sectionRows(med)}</tbody></table>`
+
+      + `<div class="section-title">4. 시술 및 처치료</div>`
+      + `<table><thead><tr><th class="left">구분</th><th>실시횟수</th><th>단가</th><th>금액</th></tr></thead><tbody>${treatSectionHtml}</tbody></table>`
+
+      + `<div class="section-title">5. 검사료</div>`
+      + `<table><thead><tr><th class="left">구분</th><th>실시횟수</th><th>단가</th><th>금액</th></tr></thead><tbody>${sectionRows(test)}</tbody></table>`
+
+      + (nonBenefit.length > 0
+        ? `<div class="section-title">비급여</div>`
+          + `<table><thead><tr><th class="left">구분</th><th>실시횟수</th><th>단가</th><th>금액</th></tr></thead><tbody>${sectionRows(nonBenefit)}</tbody></table>`
+        : "")
+
+      + `<div class="section-title">본인부담구분별 금액</div>`
+      + `<table><thead><tr><th class="left">구분</th><th>진료행위 금액</th></tr></thead><tbody>`
+      + copayRows.map((r) => `<tr><td class="left">${r.label}</td><td>${won(r.amount)}</td></tr>`).join("")
+      + `</tbody></table>`
+
+      + `<div class="section-title">심사내역</div>`
+      + `<table><tbody>`
+      + `<tr><td class="left">11. 소계</td><td>${won(s.subtotal)}</td><td class="left">19. 요양급여비용총액2·진료비총액</td><td>${won(s.benefit_total_2)}</td></tr>`
+      + `<tr><td class="left">12. 가산율</td><td>${(s.surcharge_rate * 100).toFixed(0)}%</td><td class="left">20. 보훈청구액</td><td>${won(s.veterans_claim)}</td></tr>`
+      + `<tr><td class="left">13. 요양급여비용총액1</td><td>${won(s.benefit_total_1)}</td><td class="left">21. 건강보험 100분의100본인부담금총액</td><td>${won(s.full_price_copay_total)}</td></tr>`
+      + `<tr><td class="left">14. 본인일부부담금</td><td>${won(s.copayment)}</td><td class="left">22. 보훈본인일부부담금</td><td>${won(s.veterans_copay)}</td></tr>`
+      + `<tr><td class="left">15. 지원금</td><td>${won(s.support_fund)}</td><td class="left">23. 100분의100미만 총액</td><td>${won(s.under_full_total)}</td></tr>`
+      + `<tr><td class="left">16. 장애인의료비</td><td>${won(s.disability_medical_cost)}</td><td class="left">24. 100분의100미만 본인일부부담금</td><td>${won(s.under_full_copay)}</td></tr>`
+      + `<tr><td class="left">17. 청구액</td><td>${won(s.claim_amount)}</td><td class="left">25. 100분의100미만 청구액</td><td>${won(s.under_full_claim)}</td></tr>`
+      + `<tr><td class="left">18. 본인부담상한액초과금</td><td>${won(s.upper_limit_excess)}</td><td class="left">26. 100분의100미만 보훈청구액</td><td>${won(s.under_full_veterans_claim)}</td></tr>`
+      + `<tr><td class="left">비급여총액</td><td>${won(s.non_benefit_total)}</td><td></td><td></td></tr>`
+      + `</tbody></table>`
       + `</body></html>`;
 
     printWindow.document.write(html);
@@ -301,18 +440,19 @@ export default function BillingPage() {
               <th className="p-3 text-left">검사승인번호</th>
               <th className="p-3 text-center">EDI</th>
               <th className="p-3 text-center">영수증</th>
+              <th className="p-3 text-center">명세서</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={11} className="p-8 text-center text-subtext text-xs">
                   불러오는 중...
                 </td>
               </tr>
             ) : claims.length === 0 ? (
               <tr>
-                <td colSpan={10} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={11} className="p-8 text-center text-subtext text-xs">
                   청구 내역이 없습니다.
                 </td>
               </tr>
@@ -422,6 +562,14 @@ export default function BillingPage() {
                   <td className="p-3 text-center">
                     <button
                       onClick={() => handleReceiptPrint(claim)}
+                      className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                    >
+                      출력
+                    </button>
+                  </td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => handleStatementPrint(claim)}
                       className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
                     >
                       출력

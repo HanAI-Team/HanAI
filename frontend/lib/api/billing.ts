@@ -72,6 +72,23 @@ export async function downloadEdi(claimId: string, testMode = false): Promise<vo
   URL.revokeObjectURL(objectUrl);
 }
 
+export async function downloadSamFiles(claimId: string, testMode = false): Promise<void> {
+  const token = localStorage.getItem("token");
+  const endpoint = `${BASE_URL}/api/billing/claims/${claimId}/sam-files${testMode ? "?test=true" : ""}`;
+  const res = await fetch(endpoint, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("SAM File 생성 실패");
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = testMode ? `claim_${claimId}_TEST_sam_files.zip` : `claim_${claimId}_sam_files.zip`;
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export async function bulkDownloadEdi(ids: string[], testMode = false): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/billing/claims/bulk-edi`, {
     method: "POST",
@@ -102,6 +119,58 @@ export function statusLabel(status: string): string {
 
 export async function getBillableCatalog(): Promise<BillableItem[]> {
   return apiCall("/api/billing/catalog");
+}
+
+export interface StatementProcedureRow {
+  hang: string;
+  mok: string;
+  code: string;
+  name: string;
+  unit_price: number;
+  count: number;
+  amount: number;
+  is_non_benefit: boolean;
+  copay_rate_label: "A" | "B" | null;
+}
+
+export interface ClaimStatement {
+  hospital_name: string;
+  institution_code: string;
+  patient_name: string;
+  birth_masked: string;
+  disease_names: string[];
+  special_code: string | null;
+  doctor_name: string;
+  license_type: string;
+  license_no: string;
+  visit_dates: string[];
+  visit_count: number;
+  procedures: StatementProcedureRow[];
+  subtotal: number;
+  surcharge_rate: number;
+  benefit_total_1: number;
+  copayment: number;
+  support_fund: number;
+  disability_medical_cost: number;
+  claim_amount: number;
+  upper_limit_excess: number;
+  non_benefit_total: number;
+  benefit_total_2: number;
+  veterans_claim: number;
+  full_price_copay_total: number;
+  veterans_copay: number;
+  under_full_total: number;
+  under_full_copay: number;
+  under_full_claim: number;
+  under_full_veterans_claim: number;
+}
+
+export async function getClaimStatement(claimId: string): Promise<ClaimStatement> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/statement`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("명세서 조회 실패");
+  return res.json();
 }
 
 function mapClaimSummary(raw: any): ClaimSummary {

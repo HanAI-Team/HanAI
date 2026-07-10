@@ -81,6 +81,7 @@ def _calc(
     support_fund: int = 0,
     treatment_days: Decimal = Decimal("0"),
     graduated_fee_index: Decimal = Decimal("0"),
+    exam_fee: int = 0,
 ):
     return calculate_billing(BillingInput(
         insurance_type=InsuranceType(insurance_type),
@@ -96,6 +97,7 @@ def _calc(
         support_fund=support_fund,
         treatment_days=treatment_days,
         graduated_fee_index=graduated_fee_index,
+        exam_fee=exam_fee,
     ))
 
 
@@ -465,10 +467,12 @@ class TestS11_지원금:
 
 class TestS12_차등수가:
     def setup_method(self):
+        # 차등수가는 진찰료에만 적용된다: 청구액 - {진찰료×(1-차등지수)}
         self.r = _calc(
             "4", "외래", benefit_total=60000,
             treatment_days=Decimal("30"),
             graduated_fee_index=Decimal("0.800"),
+            exam_fee=10000,
         )
 
     def test_항목25_진료일수(self):
@@ -478,14 +482,14 @@ class TestS12_차등수가:
         assert self.r.graduated_index == Decimal("0.800")
 
     def test_항목26_차등수가청구액(self):
-        # claim_amount = 60000 - ceil(60000*0.3) = 60000 - 18000 = 42000
-        # graduated_claim = ceil(42000 * 0.800) = 33600
-        assert self.r.graduated_claim == 33600
+        # claim_amount = 60000 - ceil(60000*0.3) = 60000 - 18000 = 42000 (100원 미만 절사 대상 아님, 이미 배수)
+        # graduated_claim = 42000 - {10000×(1-0.8)} = 42000 - 2000 = 40000
+        assert self.r.graduated_claim == 40000
 
     def test_C2_00_차등수가청구액_바이트234_245(self):
         # 0-indexed 233-245: 차등수가청구액 9(12)
         raw = _c2_00_bytes(self.r)
-        assert raw[233:245].decode("euc-kr") == "000000033600"
+        assert raw[233:245].decode("euc-kr") == "000000040000"
 
     def test_C2_00_차등지수_바이트226_233(self):
         # 0-indexed 225-233: 차등지수 (1+7=8자리), 0.800 → 스케일 10^7 → "08000000"

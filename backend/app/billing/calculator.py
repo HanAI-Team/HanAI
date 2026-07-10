@@ -1,5 +1,5 @@
 from datetime import date
-from decimal import ROUND_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.billing.pediatric_dosage import get_max_allowed_ratio
 
@@ -10,15 +10,18 @@ def calculate_prescription_price(
     total_dosage_days: int,
     birth_date: date | None = None,
 )-> int:
-    #    공식: unit_price × daily_dosage_ratio × total_dosage_days 그치만만 얼라면 할인 
+    # 공식: unit_price × daily_dosage_ratio × total_dosage_days.
+    # 약가/치료재료 항목은 원미만 4사5입, 결과가 1원 미만이면 1원으로 보정.
     ratio = Decimal(str(daily_dosage_ratio))
 
     if birth_date:
         pediatric_ratio = Decimal(str(get_max_allowed_ratio(birth_date)))
         ratio = min(daily_dosage_ratio, pediatric_ratio)
-    
+
     total = Decimal(str(unit_price)) * ratio * Decimal(str(total_dosage_days))
-    return int(total.quantize(Decimal("1"), rounding=ROUND_UP))
+    if total <= 0:
+        return 0
+    return max(int(total.quantize(Decimal("1"), rounding=ROUND_HALF_UP)), 1)
 
 
 
