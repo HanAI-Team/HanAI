@@ -832,6 +832,8 @@ async def generate_claim_edi(
                     qty=Decimal(str(li.qty or 1)),
                     days=li.days or 1,
                     amount=li.amount or 0,
+                    license_kind="3",
+                    license_no=doctor.license_number if doctor else "",
                 )))
                 # JS010: 진료일시 (줄 단위 — 발생단위구분='2' 줄번호단위)
                 if record.recorded_at:
@@ -868,6 +870,8 @@ async def generate_claim_edi(
                     qty=Decimal(str(proc.qty or 1)),
                     days=proc.days or 1,
                     amount=proc.amount or 0,
+                    license_kind="3",
+                    license_no=doctor.license_number if doctor else "",
                 )))
                 if proc.special_detail:
                     special_records.append((serial, SpecialRecord(
