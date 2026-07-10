@@ -12,20 +12,17 @@ import {
   anonymizePatient
 } from "@/lib/api/patients";
 import { Patient } from "@/types";
-import { Search, Plus, X, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, Plus, X } from "lucide-react";
 
 const PAGE_SIZE = 20;
-
-type SortField = "name" | "birth_date" | "phone" | "created_at";
 
 export default function PatientsPage() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [sortField, setSortField] = useState<SortField>("name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [isOwner, setIsOwner] = useState(false);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -51,64 +48,51 @@ export default function PatientsPage() {
   const [downloadTarget, setDownloadTarget] = useState<"patient_list" | "medical_records" | null>(null);
   const [downloadReason, setDownloadReason] = useState("");
   const [downloadLoading, setDownloadLoading] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const excelInputRef = useRef<HTMLInputElement | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filtered = patients.filter((p) => p.name.includes(search));
-  const sorted = [...filtered].sort((a, b) => {
-    const dir = sortDir === "asc" ? 1 : -1;
-    switch (sortField) {
-      case "birth_date":
-        return (a.birth_date || "").localeCompare(b.birth_date || "") * dir;
-      case "phone":
-        return (a.phone || "").localeCompare(b.phone || "") * dir;
-      case "created_at":
-        return (a.created_at || "").localeCompare(b.created_at || "") * dir;
-      default:
-        return a.name.localeCompare(b.name, "ko") * dir;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  function getPageNumbers(current: number, total: number): (number | "...")[] {
+    const pages = new Set<number>();
+    pages.add(1);
+    pages.add(total);
+    for (let i = current - 2; i <= current + 2; i++) {
+      if (i >= 1 && i <= total) pages.add(i);
     }
-  });
-  const displayed = sorted.slice(0, page * PAGE_SIZE);
-  const hasMore = sorted.length > page * PAGE_SIZE;
+    const sorted = Array.from(pages).sort((a, b) => a - b);
+    const result: (number | "...")[] = [];
+    let prev = 0;
+    for (const p of sorted) {
+      if (prev && p - prev > 1) result.push("...");
+      result.push(p);
+      prev = p;
+    }
+    return result;
+  }
+
+  async function fetchPatients(pg: number, s: string) {
+    const result = await getPatients(s, pg, PAGE_SIZE);
+    setPatients(result.items);
+    setTotalCount(result.total);
+  }
 
   useEffect(() => {
-    getPatients()
-      .then(setPatients)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchPatients(page, search)
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [page, search]);
 
   useEffect(() => {
     getMe().then((me) => setIsOwner(me?.role === "owner"));
   }, []);
-
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && hasMore) setPage((p) => p + 1);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore]);
-
-  function toggleSort(field: SortField) {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
-  }
-
-  function SortIcon({ field }: { field: SortField }) {
-    if (sortField !== field) return null;
-    return sortDir === "asc" ? (
-      <ChevronUp className="w-3 h-3 inline ml-0.5" />
-    ) : (
-      <ChevronDown className="w-3 h-3 inline ml-0.5" />
-    );
-  }
 
   function calcAge(birth?: string) {
     if (!birth) return null;
@@ -127,8 +111,7 @@ export default function PatientsPage() {
     try {
       const result = await importPatientsFromExcel(file);
       setImportResult(result);
-      const updated = await getPatients();
-      setPatients(updated);
+      await fetchPatients(page, search);
     } catch {
       setErrorMessage("엑셀 파일 가져오기에 실패했습니다.");
     } finally {
@@ -170,8 +153,7 @@ export default function PatientsPage() {
       if (rrn.trim()) {
         await updatePatient(created.id, { rrn: rrn.trim() });
       }
-      const updated = await getPatients();
-      setPatients(updated);
+      await fetchPatients(page, search);
       setShowAddModal(false);
       setNewPatient({ name: "", birth_date: "", gender: "", phone: "", rrn: "" });
       router.push(`/diagnosis?patientId=${created.id}`);
@@ -283,7 +265,7 @@ export default function PatientsPage() {
       <div className="flex-1 overflow-x-auto">
         {loading ? (
           <div className="text-sm text-muted text-center py-16">불러오는 중...</div>
-        ) : displayed.length === 0 ? (
+        ) : patients.length === 0 ? (
           <div className="text-sm text-muted text-center py-16">
             {search ? "검색 결과가 없습니다" : "등록된 환자가 없습니다"}
           </div>
@@ -292,36 +274,16 @@ export default function PatientsPage() {
             <table className="w-full text-sm">
               <thead className="border-b border-border">
                 <tr className="text-xs text-subtext">
-                  <th
-                    onClick={() => toggleSort("name")}
-                    className="p-3 text-left cursor-pointer select-none hover:text-text"
-                  >
-                    이름 <SortIcon field="name" />
-                  </th>
-                  <th
-                    onClick={() => toggleSort("birth_date")}
-                    className="p-3 text-left cursor-pointer select-none hover:text-text"
-                  >
-                    생년월일(나이) <SortIcon field="birth_date" />
-                  </th>
+                  <th className="p-3 text-left">이름</th>
+                  <th className="p-3 text-left">생년월일(나이)</th>
                   <th className="p-3 text-left">성별</th>
-                  <th
-                    onClick={() => toggleSort("phone")}
-                    className="p-3 text-left cursor-pointer select-none hover:text-text"
-                  >
-                    연락처 <SortIcon field="phone" />
-                  </th>
-                  <th
-                    onClick={() => toggleSort("created_at")}
-                    className="p-3 text-left cursor-pointer select-none hover:text-text"
-                  >
-                    등록일 <SortIcon field="created_at" />
-                  </th>
+                  <th className="p-3 text-left">연락처</th>
+                  <th className="p-3 text-left">등록일</th>
                   <th className="p-3 text-center">액션</th>
                 </tr>
               </thead>
               <tbody>
-                {displayed.map((patient) => {
+                {patients.map((patient) => {
                   const anonymized = patient.name === "익명";
                   const age = calcAge(patient.birth_date);
                   return (
@@ -369,47 +331,44 @@ export default function PatientsPage() {
                 })}
               </tbody>
             </table>
-            <div ref={sentinelRef} className="h-2" />
+            <div className="flex items-center justify-center gap-3 py-4">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                &lt; 이전
+              </button>
+              {getPageNumbers(page, totalPages).map((p, i) =>
+                p === "..." ? (
+                  <span key={`ellipsis-${i}`} className="px-1.5 text-xs text-subtext">
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`px-2.5 py-1.5 text-xs rounded-md transition-colors ${
+                      p === page
+                        ? "bg-[#EF6600] text-white"
+                        : "border border-border text-subtext hover:text-text"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1.5 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                다음 &gt;
+              </button>
+              <span className="text-xs text-subtext ml-2">총 {totalCount}명</span>
+            </div>
           </>
         )}
-      </div>
-
-      {/* 하단 버튼 */}
-      <div className="p-4 bg-card border-t border-border sticky bottom-0 flex flex-col gap-2">
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="w-full bg-[#EF6600] text-white rounded-md py-3 text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-        >
-          <Plus className="w-4 h-4" /> 신규 환자 등록
-        </button>
-        <button
-          onClick={() => excelInputRef.current?.click()}
-          disabled={importLoading}
-          className="w-full border border-border text-text rounded-md py-3 text-sm flex items-center justify-center gap-2 hover:bg-bg transition-colors disabled:opacity-50"
-        >
-          {importLoading ? "가져오는 중..." : "📂 엑셀로 환자 가져오기"}
-        </button>
-        <input
-          ref={excelInputRef}
-          type="file"
-          accept=".xls,.xlsx"
-          className="hidden"
-          onChange={handleExcelImport}
-        />
-        <div className="flex gap-2">
-          <button
-            onClick={() => setDownloadTarget("patient_list")}
-            className="flex-1 border border-border text-text rounded-md py-2.5 text-xs hover:bg-bg transition-colors"
-          >
-            환자 목록 CSV 다운로드
-          </button>
-          <button
-            onClick={() => setDownloadTarget("medical_records")}
-            className="flex-1 border border-border text-text rounded-md py-2.5 text-xs hover:bg-bg transition-colors"
-          >
-            진료기록 CSV 다운로드
-          </button>
-        </div>
       </div>
 
       {/* 신규 환자 등록 모달 */}

@@ -31,12 +31,12 @@ export default function HomePage() {
 
   useEffect(() => {
     Promise.all([
-      getPatients(undefined, 1, PAGE_SIZE).catch(() => [] as Patient[]),
+      getPatients(undefined, 1, PAGE_SIZE).catch(() => ({ items: [] as Patient[], total: 0, page: 1, size: PAGE_SIZE })),
       getStats().catch(() => null),
       getTodayQueue().catch(() => [] as QueueItem[]),
     ]).then(([p, s, q]) => {
-      setPatients(p);
-      setPatientHasMore(p.length === PAGE_SIZE);
+      setPatients(p.items);
+      setPatientHasMore(p.items.length === PAGE_SIZE);
       setStats(s);
       setTodayQueue(q);
     }).finally(() => {
@@ -64,7 +64,7 @@ export default function HomePage() {
     setSearchLoading(true);
     searchTimerRef.current = setTimeout(() => {
       getPatients(search)
-        .then(setSearchResults)
+        .then((result) => setSearchResults(result.items))
         .catch(() => setSearchResults([]))
         .finally(() => setSearchLoading(false));
     }, 300);
@@ -75,7 +75,8 @@ export default function HomePage() {
     if (patientLoadingMore || !patientHasMore) return;
     const nextPage = patientPage + 1;
     setPatientLoadingMore(true);
-    const newItems: Patient[] = await getPatients(undefined, nextPage, PAGE_SIZE).catch(() => [] as Patient[]);
+    const result = await getPatients(undefined, nextPage, PAGE_SIZE).catch(() => ({ items: [] as Patient[], total: 0, page: nextPage, size: PAGE_SIZE }));
+    const newItems = result.items;
     setPatients((prev) => {
       const existingIds = new Set(prev.map((p) => p.id));
       const deduped = newItems.filter((p) => !existingIds.has(p.id));
