@@ -91,6 +91,7 @@ class BillingCalcRequest(BaseModel):
     graduated_fee_index: Decimal = Field(
         Decimal("0"), description="차등지수 (0=미적용, 0 초과 1 이하=차등 적용)"
     )
+    exam_fee: int = Field(0, ge=0, description="진찰료 (원). 차등수가청구액 계산에 필요")
     procedures: list[ProcedureItem] = Field(
         default_factory=list,
         description="진료내역 목록. EDI 명세서진료내역 + 특정내역 생성에 사용",
