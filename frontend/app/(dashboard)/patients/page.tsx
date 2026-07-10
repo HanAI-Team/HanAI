@@ -335,7 +335,7 @@ export default function PatientsPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1.5 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-xs rounded-md cursor-pointer border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 &lt; 이전
               </button>
@@ -348,7 +348,7 @@ export default function PatientsPage() {
                   <button
                     key={p}
                     onClick={() => setPage(p)}
-                    className={`px-2.5 py-1.5 text-xs rounded-md transition-colors ${
+                    className={`px-2.5 py-1.5 text-xs cursor-pointer rounded-md transition-colors ${
                       p === page
                         ? "bg-[#EF6600] text-white"
                         : "border border-border text-subtext hover:text-text"
@@ -361,7 +361,7 @@ export default function PatientsPage() {
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="px-3 py-1.5 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 cursor-pointer text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 다음 &gt;
               </button>
