@@ -48,6 +48,7 @@ from app.billing.service import (
     build_claim_statement,
     create_claim,
     generate_claim_edi,
+    generate_claim_sam_files,
     resolve_active_special_code,
     update_claim_resubmission,
 )
@@ -867,6 +868,37 @@ async def download_claim_edi(
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}.sam",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/claims/{claim_id}/sam-files")
+async def download_claim_sam_files(
+    claim_id: UUID,
+    test: bool = Query(False, description="True이면 작성자란에 '상시점검' 기재한 테스트 SAM FILE 생성"),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """SAM File 생성 디렉토리(/HIRA/DDMD/SAM/IN/)에 그대로 넣을 개별 파일들
+    (H010, K020.1~4)을 ZIP으로 묶어 반환한다. 압축·암호화(.GHP)는 별도의
+    전자청구 프로그램이 담당하므로 여기서는 원본 파일까지만 제공한다."""
+    import io
+    import zipfile
+
+    files = await generate_claim_sam_files(db, current_user.hospital_id, claim_id, test_mode=test)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, content in files.items():
+            zf.writestr(filename, content)
+    buf.seek(0)
+
+    suffix = "_TEST" if test else ""
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}_sam_files.zip",
             "Cache-Control": "no-store",
         },
     )
