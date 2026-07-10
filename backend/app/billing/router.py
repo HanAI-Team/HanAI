@@ -23,6 +23,7 @@ from app.billing.schema import (
     ClaimRejectionCodeResponse,
     ClaimResubmissionResponse,
     ClaimResubmissionUpdate,
+    ClaimStatementResponse,
     ClaimSummaryResponse,
     DoctorWorkDaysCreate,
     DoctorWorkDaysItem,
@@ -39,6 +40,7 @@ from app.billing.schema import (
 )
 from app.billing.service import (
     _INSURANCE_MAP,
+    build_claim_statement,
     create_claim,
     generate_claim_edi,
     resolve_active_special_code,
@@ -688,6 +690,17 @@ async def download_claim_edi(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.get("/claims/{claim_id}/statement", response_model=ClaimStatementResponse)
+async def get_claim_statement(
+    claim_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """요양급여비용명세서(한방외래, 별지18호/GI013) 출력용 데이터."""
+    return await build_claim_statement(db, current_user.hospital_id, claim_id)
+
 
 @router.get("/catalog", response_model=list[BillableItemResponse])
 async def get_billable_catalog(current_user=Depends(get_current_user)):

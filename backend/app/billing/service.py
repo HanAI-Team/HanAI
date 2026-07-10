@@ -40,6 +40,7 @@ from app.core.models import (
     SpecialCaseRegistration,
     Subscription,
 )
+from app.billing.schema import ClaimStatementResponse, StatementProcedureRow
 from app.core.config import settings
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -885,3 +886,153 @@ async def generate_claim_edi(
     )
 
     return generate_edi(edi_file)
+
+
+async def build_claim_statement(
+    db: AsyncSession, hospital_id: UUID, claim_id: UUID
+) -> ClaimStatementResponse:
+    """요양급여비용명세서(한방외래, 별지18호/GI013) 출력용 데이터 조립.
+
+    본인일부부담금(copayment)·청구액(claim_amount)은 실제 EDI 제출에 쓰인
+    claim.patient_copay/claim_amount를 그대로 사용한다 (재계산 값이 아님 —
+    support_fund 변경(PATCH /support-fund) 등으로 생성 시점과 달라졌더라도
+    실제 청구된 금액과 명세서가 항상 일치하도록). 그 외 보험자종별에 따른
+    세부 항목(건강보험/의료급여/보훈 등 버킷 분류)은 claim.total_amount/
+    non_benefit_total로 calculate_billing()을 다시 호출해 판별한다.
+    """
+    result = await db.execute(
+        select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id)
+    )
+    claim = result.scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+
+    r2 = await db.execute(select(MedicalRecord).where(MedicalRecord.claim_id == claim_id))
+    medical_records = r2.scalars().all()
+
+    r_li = await db.execute(
+        select(ClaimLineItem)
+        .where(ClaimLineItem.claim_id == claim_id)
+        .order_by(ClaimLineItem.created_at)
+    )
+    all_line_items = r_li.scalars().all()
+    line_items_by_record: dict = defaultdict(list)
+    for li in all_line_items:
+        line_items_by_record[li.medical_record_id].append(li)
+
+    procedures = []
+    for record in medical_records:
+        if not line_items_by_record.get(record.id):
+            r3 = await db.execute(
+                select(MedicalRecordProcedure).where(MedicalRecordProcedure.medical_record_id == record.id)
+            )
+            procedures.extend(r3.scalars().all())
+
+    patient = await db.get(Patient, claim.patient_id)
+    doctor = await db.get(Doctor, claim.doctor_id)
+    hospital = await db.get(Hospital, hospital_id)
+
+    # 상병명 (진료기록에 연결된 KCD 코드 전체, 중복 제거)
+    kcd_codes = sorted({r.kcd_code for r in medical_records if r.kcd_code})
+    disease_names = []
+    for code in kcd_codes:
+        r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == code))
+        kcd = r_kcd.scalar_one_or_none()
+        disease_names.append(f"{code} {kcd.korean_name}" if kcd else code)
+
+    # 내원일자
+    visit_dates = sorted({
+        (r.recorded_at or r.created_at).date()
+        for r in medical_records if r.recorded_at or r.created_at
+    })
+
+    # 진료내역 (hang, mok, code) 단위 합산 — ClaimLineItem 우선, 없으면 MedicalRecordProcedure 폴백
+    grouped: dict = {}
+
+    def _add_row(hang, mok, code, name, unit_price, amount, is_non_benefit):
+        key = (hang, mok, code)
+        if key not in grouped:
+            copay_label = "A" if code in CHUNA_50_CODES else ("B" if code in CHUNA_80_CODES else None)
+            grouped[key] = {
+                "hang": hang or "04", "mok": mok or "99", "code": code or "",
+                "name": name or "", "unit_price": int(unit_price or 0),
+                "count": 0, "amount": 0, "is_non_benefit": is_non_benefit,
+                "copay_rate_label": copay_label,
+            }
+        grouped[key]["count"] += 1
+        grouped[key]["amount"] += int(amount or 0)
+
+    for li in all_line_items:
+        _add_row(li.hang, li.mok, li.code, li.name, li.unit_price, li.amount, li.is_non_benefit)
+    for proc in procedures:
+        _add_row(
+            proc.hang, proc.mok, proc.fee_master_code,
+            proc.fee_master.name if proc.fee_master else proc.procedure_type,
+            proc.unit_price, proc.amount, proc.is_non_benefit,
+        )
+
+    procedure_rows = [StatementProcedureRow(**v) for v in grouped.values()]
+
+    special_case = await resolve_active_special_code(db, claim.patient_id)
+
+    chuna_total = sum(v["amount"] for v in grouped.values() if v["copay_rate_label"] == "A")
+    chuna_80_total = sum(v["amount"] for v in grouped.values() if v["copay_rate_label"] == "B")
+
+    ins = _INSURANCE_MAP.get((patient.insurance_type if patient else None) or "health", InsuranceType.HEALTH)
+    aid_grade = None
+    if patient and patient.medical_aid_grade == "1":
+        aid_grade = MedicalAidGrade.GRADE_1
+    elif patient and patient.medical_aid_grade == "2":
+        aid_grade = MedicalAidGrade.GRADE_2
+
+    billing_result = calculate_billing(BillingInput(
+        insurance_type=ins,
+        # Claim에 방문유형(외래/입원)을 저장하는 필드가 없어 항상 외래로 고정
+        # (EDI writer와 동일한 기존 제약, 위 generate_claim_edi 주석 참고).
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=claim.total_amount - claim.non_benefit_total,
+        non_benefit_total=claim.non_benefit_total,
+        medical_aid_grade=aid_grade,
+        has_disability=bool(patient.disability_grade) if patient else False,
+        birth_date=patient.birth_date if patient else None,
+        special_code=special_case.special_code,
+        support_fund=claim.support_fund,
+        chuna_total=chuna_total,
+        chuna_80_total=chuna_80_total,
+    ))
+
+    birth_masked = (
+        f"{patient.birth_date.strftime('%y%m%d')}-XXXXXXX" if patient and patient.birth_date else "-"
+    )
+
+    return ClaimStatementResponse(
+        hospital_name=hospital.name if hospital else "-",
+        institution_code=hospital.institution_code if hospital and hospital.institution_code else "-",
+        patient_name=patient.name if patient else "-",
+        birth_masked=birth_masked,
+        disease_names=disease_names,
+        special_code=special_case.special_code,
+        doctor_name=doctor.name if doctor else "-",
+        license_type="한의사",
+        license_no=doctor.license_number if doctor else "-",
+        visit_dates=[d.strftime("%Y-%m-%d") for d in visit_dates],
+        visit_count=len(visit_dates),
+        procedures=procedure_rows,
+        subtotal=billing_result.benefit_total_1,
+        surcharge_rate=0.0,
+        benefit_total_1=billing_result.benefit_total_1,
+        copayment=claim.patient_copay,
+        support_fund=claim.support_fund,
+        disability_medical_cost=claim.disability_medical_aid,
+        claim_amount=claim.claim_amount,
+        upper_limit_excess=billing_result.upper_limit_excess,
+        non_benefit_total=claim.non_benefit_total,
+        benefit_total_2=billing_result.benefit_total_2,
+        veterans_claim=billing_result.veterans_claim,
+        full_price_copay_total=billing_result.full_price_copay_total,
+        veterans_copay=billing_result.veterans_copay,
+        under_full_total=billing_result.under_full_total,
+        under_full_copay=billing_result.under_full_copay,
+        under_full_claim=billing_result.under_full_claim,
+        under_full_veterans_claim=billing_result.under_full_veterans_claim,
+    )
