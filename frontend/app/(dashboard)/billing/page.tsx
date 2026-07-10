@@ -4,7 +4,7 @@ import {
   ClaimStatement,
   StatementProcedureRow,
   bulkDownloadEdi,
-  downloadEdi,
+  downloadSamFiles,
   getClaimStatement,
   getClaims,
   resubmitClaim,
@@ -89,9 +89,9 @@ export default function BillingPage() {
   async function handleDownload(id: string) {
     setDownloading(id);
     try {
-      await downloadEdi(id, testMode);
+      await downloadSamFiles(id, testMode);
     } catch {
-      alert("EDI 다운로드에 실패했습니다.");
+      alert("SAM File 다운로드에 실패했습니다.");
     } finally {
       setDownloading(null);
     }
