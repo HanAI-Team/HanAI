@@ -13,7 +13,9 @@ from app.billing.copayment import (
 
 
 def test_추나_50퍼센트_단독():
-    # 40710/40720/40730 (단순/복잡/특수) — 50%
+    # 40710/40720/40730 (단순/복잡/특수) — 50%. chuna_copay는 절사 전 세부값을
+    # 그대로 보여주는 내역 필드라 ceil(44450*0.50)=22225 그대로지만, 본인일부
+    # 부담금 총액(copayment)은 외래 100원 미만 절사 → 22200
     result = calculate_billing(BillingInput(
         insurance_type=InsuranceType.HEALTH,
         visit_type=VisitType.OUTPATIENT,
@@ -23,11 +25,12 @@ def test_추나_50퍼센트_단독():
     ))
     assert result.chuna_copay == 22225  # ceil(44450*0.50)
     assert result.chuna_80_copay == 0
-    assert result.copayment == 22225
+    assert result.copayment == 22200
 
 
 def test_추나_80퍼센트_단독():
-    # 40721 (복잡추나 중 디스크·협착증 외 근골격계 질환) — 80%
+    # 40721 (복잡추나 중 디스크·협착증 외 근골격계 질환) — 80%.
+    # ceil(44450*0.80)=35560 → 외래 100원 미만 절사 → 35500
     result = calculate_billing(BillingInput(
         insurance_type=InsuranceType.HEALTH,
         visit_type=VisitType.OUTPATIENT,
@@ -37,11 +40,12 @@ def test_추나_80퍼센트_단독():
     ))
     assert result.chuna_copay == 0
     assert result.chuna_80_copay == 35560  # ceil(44450*0.80)
-    assert result.copayment == 35560
+    assert result.copayment == 35500
 
 
 def test_추나_50퍼센트와_80퍼센트_동시_청구():
-    # 같은 날 40720(50%)과 40721(80%)을 같이 시행한 경우 (재시행 등)
+    # 같은 날 40720(50%)과 40721(80%)을 같이 시행한 경우 (재시행 등).
+    # 22225+35560=57785 → 외래 100원 미만 절사 → 57700
     result = calculate_billing(BillingInput(
         insurance_type=InsuranceType.HEALTH,
         visit_type=VisitType.OUTPATIENT,
@@ -49,15 +53,14 @@ def test_추나_50퍼센트와_80퍼센트_동시_청구():
         chuna_total=44450,
         chuna_80_total=44450,
     ))
-    expected_50 = 22225   # ceil(44450*0.50)
-    expected_80 = 35560   # ceil(44450*0.80)
-    assert result.chuna_copay == expected_50
-    assert result.chuna_80_copay == expected_80
-    assert result.copayment == expected_50 + expected_80
+    assert result.chuna_copay == 22225   # ceil(44450*0.50)
+    assert result.chuna_80_copay == 35560   # ceil(44450*0.80)
+    assert result.copayment == 57700
 
 
 def test_추나와_일반진료_혼재():
-    # 일반 진료(30%) + 추나 50% + 추나 80% 셋 다 섞인 경우
+    # 일반 진료(30%) + 추나 50% + 추나 80% 셋 다 섞인 경우.
+    # 3000+13165+35560=51725 → 외래 100원 미만 절사 → 51700
     normal = 10000
     chuna_50 = 26330   # 40710 단순추나
     chuna_80 = 44450   # 40721
@@ -68,10 +71,7 @@ def test_추나와_일반진료_혼재():
         chuna_total=chuna_50,
         chuna_80_total=chuna_80,
     ))
-    expected_normal_copay = 3000    # ceil(10000*0.30)
-    expected_50_copay = 13165       # ceil(26330*0.50)
-    expected_80_copay = 35560       # ceil(44450*0.80)
-    assert result.copayment == expected_normal_copay + expected_50_copay + expected_80_copay
+    assert result.copayment == 51700
 
 
 def test_추나_없으면_기존과_동일하게_동작():
