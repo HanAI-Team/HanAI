@@ -6,6 +6,7 @@ from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.csv_export import csv_response
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import KcdUCode
@@ -138,6 +139,32 @@ async def list_categories(
         select(KcdUCode.category).distinct().order_by(KcdUCode.category)
     )
     return [r for r in result.scalars().all() if r]
+
+
+@router.get("/export")
+async def export_kcd_codes(
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    """KCD 상병코드 마스터 전체를 CSV(TEXT/Excel)로 추출.
+
+    ※ /{code} 조회 라우트보다 먼저 등록해야 함 — 아래에 있으면 "export"가
+    코드값으로 잘못 매칭됨.
+    """
+    _check_admin(x_admin_key)
+    result = await db.execute(select(KcdUCode).order_by(KcdUCode.code))
+    rows = [
+        [
+            r.code, r.korean_name, r.hanja, r.category,
+            r.effective_date, r.expired_date, r.sex_restriction, r.is_notifiable,
+        ]
+        for r in result.scalars().all()
+    ]
+    header = [
+        "code", "korean_name", "hanja", "category",
+        "effective_date", "expired_date", "sex_restriction", "is_notifiable",
+    ]
+    return csv_response("kcd_codes.csv", header, rows)
 
 
 @router.get("/{code}", response_model=KcdUCodeResponse)
