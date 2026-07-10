@@ -5,6 +5,7 @@
 """
 
 from datetime import date
+from decimal import Decimal
 
 from app.billing.copayment import (
     BillingInput,
@@ -314,3 +315,41 @@ def test_심장질환_V192_5퍼센트():
     ))
     assert result.special_exception_copay == 5000  # ceil(100000*0.05)
     assert result.copayment == 5000
+
+
+# ── 차등수가청구액: 청구액 - {진찰료×(1-차등지수)} ────────────────────────
+
+def test_차등지수_미적용시_청구액_그대로():
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=60000,
+        exam_fee=10000,
+    ))
+    assert result.graduated_claim == result.claim_amount
+
+
+def test_차등지수_적용시_진찰료에만_차등적용():
+    # claim_amount = 60000 - ceil(60000*0.3) = 42000
+    # graduated_claim = 42000 - {10000×(1-0.8)} = 42000 - 2000 = 40000
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=60000,
+        graduated_fee_index=Decimal("0.8"),
+        exam_fee=10000,
+    ))
+    assert result.claim_amount == 42000
+    assert result.graduated_claim == 40000
+
+
+def test_차등지수_소수점_여덟째자리에서_반올림():
+    # 0.123456785 → 소수점 8째자리(5)에서 반올림 → 0.12345679(7자리)
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=60000,
+        graduated_fee_index=Decimal("0.123456785"),
+        exam_fee=10000,
+    ))
+    assert result.graduated_index == Decimal("0.1234568")

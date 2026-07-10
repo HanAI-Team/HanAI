@@ -418,6 +418,7 @@ async def calculate_copayment(
         support_fund=body.support_fund,
         treatment_days=body.treatment_days,
         graduated_fee_index=body.graduated_fee_index,
+        exam_fee=body.exam_fee,
     )
     result = calculate_billing(inp)
     return BillingCalcResponse(special_code=special_code, needs_review=needs_review, **result.__dict__)
