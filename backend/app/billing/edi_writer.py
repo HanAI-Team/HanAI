@@ -315,31 +315,36 @@ class ProcedureDetail:
     days: int = 0                # 총투여일수·실시횟수 n(3)
     amount: int = 0              # 금액 n(10)
     gamigam_gubun: str = ""      # 가감 등 구분 an(10): 기준처방B### 가미제A### 감미제S### 임의처방H###
-    license_kind: str = "3"      # 면허종류 an(1): 3=한의사
-    license_no: str = ""         # 면허번호 an(10)
+    change_date: str = ""        # 변경일 an(8) CCYYMMDD: 당월요양개시일 이후 단가 변경/신설 시 최초 투여(실시)일자. 해당없으면 공란
+    license_kind: str = "3"      # 면허종류 an(1): 3=한의사 6=간호사 7=사회복지사 (실제 시행한 사람 기준)
+    license_no: str = ""         # 면허번호 an(100): 실제 시행한 사람의 면허번호. 2개 이상이면 "/"로 구분
 
 
 def build_procedure_record(p: ProcedureDetail) -> str:
-    """레코드 3 생성 (75 bytes + CRLF).
+    """레코드 3 생성 (184 bytes + CRLF).
 
-    면허종류·면허번호는 이 레코드가 아니라 레코드 2-1(상병내역,
-    DiagnosisRecord)에 기재한다 — 진료내역 레코드엔 없음 (SAM(EDI)
-    레코드규격 문서로 확인, 2026-07-10).
+    면허종류·면허번호는 변경일(pos76) 뒤에 온다 — 「요양급여비용 청구방법,
+    심사청구서·명세서서식 및 작성요령」 p.134~136 "3) 명세서 진료내역"
+    원문으로 재확인, 2026-07-11. 0bc5b51에서 제거했던 건 위치/길이(면허번호
+    an(10))가 틀렸던 걸 "필드 자체가 없어야 한다"고 오판한 것이었음.
     """
     parts = [
-        *_key_parts(p.key),                 # 1-15   청구번호+명세서일련번호
-        _fmtx(p.hang, 2),                   # 16-17  항번호
-        _fmt9(int(p.mok), 2),               # 18-19  목번호
-        _fmt9(p.line_no, 4),                # 20-23  줄번호
-        _fmtx(p.code_gubun, 1),             # 24     코드구분
-        _fmtx(p.code, 9),                   # 25-33  코드
-        _fmt9v9(p.unit_price, 10, 2),       # 34-45  단가
-        _fmt9v9(p.qty, 5, 2),               # 46-52  1일투여량·투여(실시)횟수
-        _fmt9(p.days, 3),                   # 53-55  총투여일수·실시횟수
-        _fmt9(p.amount, 10),                # 56-65  금액
-        _fmtx(p.gamigam_gubun, 10),         # 66-75  가감 등 구분
+        *_key_parts(p.key),                 # 1-15    청구번호+명세서일련번호
+        _fmtx(p.hang, 2),                   # 16-17   항번호
+        _fmt9(int(p.mok), 2),               # 18-19   목번호
+        _fmt9(p.line_no, 4),                # 20-23   줄번호
+        _fmtx(p.code_gubun, 1),             # 24      코드구분
+        _fmtx(p.code, 9),                   # 25-33   코드
+        _fmt9v9(p.unit_price, 10, 2),       # 34-45   단가
+        _fmt9v9(p.qty, 5, 2),               # 46-52   1일투여량·투여(실시)횟수
+        _fmt9(p.days, 3),                   # 53-55   총투여일수·실시횟수
+        _fmt9(p.amount, 10),                # 56-65   금액
+        _fmtx(p.gamigam_gubun, 10),         # 66-75   가감 등 구분
+        _fmtx(p.change_date, 8),            # 76-83   변경일
+        _fmtx(p.license_kind, 1),           # 84      면허종류
+        _fmtx(p.license_no, 100),           # 85-184  면허번호
     ]
-    return _build(parts, 75)
+    return _build(parts, 184)
 
 
 # ---------------------------------------------------------------------------

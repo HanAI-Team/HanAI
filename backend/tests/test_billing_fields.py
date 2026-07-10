@@ -551,10 +551,10 @@ class TestC2_13_진료내역:
             amount=6260,
         )
 
-    def test_항목29_레코드_길이_75_plus_CRLF(self):
-        # 레코드3(진료내역) 마지막 필드는 가감 등 구분 an(10), pos 66 → 75바이트
+    def test_항목29_레코드_길이_184_plus_CRLF(self):
+        # 레코드3(진료내역) 마지막 필드는 면허번호 an(100), pos 85 → 184바이트
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
-        assert len(raw) == 77
+        assert len(raw) == 186
 
     def test_항목29_항번호_바이트16_17(self):
         raw = build_procedure_record(self._make_proc()).encode("euc-kr")
