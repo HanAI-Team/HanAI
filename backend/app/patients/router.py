@@ -7,9 +7,11 @@ import pandas as pd
 from app.core.audit import write_audit
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import AIResult, DataDownloadLog, Doctor, MedicalRecord, Patient, StaffAccount
+from app.core.models import AIResult, DataDownloadLog, DataPurgeLog, Doctor, MedicalRecord, Patient, StaffAccount
 from app.patients import service
 from app.patients.schema import (
+    DataPurgeLogListResponse,
+    DataPurgeLogResponse,
     PatientCreate,
     PatientListResponse,
     PatientResponse,
@@ -252,6 +254,43 @@ async def import_excel(
         await db.commit()
 
     return {"inserted": len(rows_to_insert), "skipped": skipped}
+
+
+@router.get("/purge-logs", response_model=DataPurgeLogListResponse)
+async def get_purge_logs(
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+    page: int = 1,
+    size: int = 20,
+):
+    """개인정보 파기대장 조회. owner 전용, 자기 병원 것만 조회.
+
+    ※ /{patient_id} 조회 라우트보다 먼저 등록해야 함 — 아래에 있으면 "purge-logs"가
+    patient_id로 잘못 매칭됨.
+    """
+    if str(doctor.role) != "owner":
+        raise HTTPException(status_code=403, detail="owner 계정만 접근 가능합니다.")
+
+    total_result = await db.execute(
+        select(func.count(DataPurgeLog.id)).where(DataPurgeLog.hospital_id == doctor.hospital_id)
+    )
+    total = total_result.scalar() or 0
+
+    result = await db.execute(
+        select(DataPurgeLog)
+        .where(DataPurgeLog.hospital_id == doctor.hospital_id)
+        .order_by(DataPurgeLog.purged_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    logs = result.scalars().all()
+
+    return DataPurgeLogListResponse(
+        total=total,
+        page=page,
+        size=size,
+        items=[DataPurgeLogResponse.model_validate(log) for log in logs],
+    )
 
 
 @router.get("/{patient_id}", response_model=PatientResponse)
