@@ -441,6 +441,19 @@ class AuditLog(Base):
     detail = Column(Text, nullable=True)
 
 
+class DataDownloadLog(Base):
+    """개인정보 CSV 다운로드 사유 기록 (HIRA 인증 체크리스트 대응)."""
+    __tablename__ = "data_download_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), nullable=True)
+    download_type = Column(String(50), nullable=False)  # "patient_list" / "medical_records"
+    reason = Column(String(500), nullable=False)
+    ip_address = Column(String(45), nullable=True)
+    downloaded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 # ================================================================
 # 수가 / 코드 마스터
 # ================================================================
