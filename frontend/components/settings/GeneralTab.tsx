@@ -24,6 +24,10 @@ export default function GeneralTab() {
   const [bdError, setBdError] = useState<string | null>(null)
   const [bdSuccess, setBdSuccess] = useState(false)
 
+  const [chunaCertified, setChunaCertified] = useState(false)
+  const [ccLoading, setCcLoading] = useState(false)
+  const [ccError, setCcError] = useState<string | null>(null)
+
   const handleChangePassword = async () => {
     if (pwForm.new_password !== pwForm.confirm) {
       setPwError('새 비밀번호가 일치하지 않습니다.')
@@ -86,6 +90,7 @@ export default function GeneralTab() {
         setHospitalId(me.hospital_id)
         setInstitutionCode(me.institution_code || '')
         setBirthDate(me.birth_date || '')
+        setChunaCertified(!!me.chuna_training_certified)
       })
       .catch(() => {})
   }, [])
@@ -105,6 +110,20 @@ export default function GeneralTab() {
       setBdError(e.message || '생년월일 저장에 실패했습니다.')
     } finally {
       setBdLoading(false)
+    }
+  }
+
+  const handleToggleChunaCertified = async (checked: boolean) => {
+    setChunaCertified(checked)
+    setCcLoading(true)
+    setCcError(null)
+    try {
+      await updateMyProfile({ chuna_training_certified: checked })
+    } catch (e: any) {
+      setChunaCertified(!checked)
+      setCcError(e.message || '저장에 실패했습니다.')
+    } finally {
+      setCcLoading(false)
     }
   }
 
@@ -194,6 +213,23 @@ export default function GeneralTab() {
               >
                 {bdSuccess ? '✓ 저장 완료' : bdLoading ? '저장중...' : '저장'}
               </button>
+
+              <label className="flex items-start gap-3 pt-2 border-t border-border cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={chunaCertified}
+                  disabled={ccLoading}
+                  onChange={(e) => handleToggleChunaCertified(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-[#EF6600]"
+                />
+                <span>
+                  <span className="block text-sm text-text">추나요법 사전교육 이수</span>
+                  <span className="block text-xs text-subtext mt-0.5">
+                    온라인 9시간 + 오프라인 6시간 (총 15시간) 이수 시 체크하세요
+                  </span>
+                </span>
+              </label>
+              {ccError && <div className="text-red-500 text-sm">{ccError}</div>}
             </div>
           </div>
 

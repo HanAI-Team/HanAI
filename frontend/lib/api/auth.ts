@@ -25,7 +25,7 @@ export async function getAccountHistories(): Promise<AccountHistory[]> {
   return apiCall('/api/auth/account-histories')
 }
 
-export async function updateMyProfile(data: { birth_date?: string }) {
+export async function updateMyProfile(data: { birth_date?: string; chuna_training_certified?: boolean }) {
   return apiCall('/api/auth/me', {
     method: 'PATCH',
     body: JSON.stringify(data),

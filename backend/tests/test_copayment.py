@@ -5,6 +5,7 @@
 """
 
 from datetime import date
+from decimal import Decimal
 
 from app.billing.copayment import (
     BillingInput,
@@ -29,31 +30,32 @@ def test_건강보험_외래_일반_30퍼센트():
 
 
 def test_건강보험_외래_추나만_50퍼센트():
-    # benefit_total == chuna_total → 전액 추나 50%
+    # benefit_total == chuna_total → 전액 추나 50%. ceil(20060*0.50)=10030인데
+    # 외래 본인일부부담금 총액은 100원 미만 절사 → 10000
     result = calculate_billing(BillingInput(
         insurance_type=InsuranceType.HEALTH,
         visit_type=VisitType.OUTPATIENT,
         benefit_total=20060,
         chuna_total=20060,
     ))
-    assert result.health_outpatient_copay == 10030  # ceil(20060*0.50)
-    assert result.copayment == 10030
-    assert result.claim_amount == 10030
+    assert result.health_outpatient_copay == 10000
+    assert result.copayment == 10000
+    assert result.claim_amount == 10060
 
 
 def test_건강보험_외래_혼재_체침과_추나_합산():
-    # 체침 6,260원(30%) + 추나 20,060원(50%) 합산
+    # 체침 6,260원(30%) + 추나 20,060원(50%) 합산. 합산 전 각 항목은
+    # ceil(6260*0.30)=1878, ceil(20060*0.50)=10030 이지만 최종 본인일부부담금
+    # 총액(외래)은 100원 미만 절사 → 1878+10030=11908 → 11900
     result = calculate_billing(BillingInput(
         insurance_type=InsuranceType.HEALTH,
         visit_type=VisitType.OUTPATIENT,
         benefit_total=6260 + 20060,
         chuna_total=20060,
     ))
-    expected_normal_copay = 1878   # ceil(6260*0.30)
-    expected_chuna_copay = 10030   # ceil(20060*0.50)
-    assert result.health_outpatient_copay == expected_normal_copay + expected_chuna_copay
-    assert result.copayment == 11908
-    assert result.claim_amount == 26320 - 11908
+    assert result.health_outpatient_copay == 11900
+    assert result.copayment == 11900
+    assert result.claim_amount == 26320 - 11900
 
 
 def test_의료급여_1종_외래_정액():
@@ -236,16 +238,16 @@ def test_65세이상_산정특례_있으면_산정특례_우선():
 
 
 def test_chuna_total이_benefit_total보다_큰_경우_normal_total_음수방어():
-    # chuna_total(20060) > benefit_total(5000) → normal_total은 음수가 아닌 0으로 방어
+    # chuna_total(20060) > benefit_total(5000) → normal_total은 음수가 아닌 0으로 방어.
+    # ceil(20060*0.50)=10030 → 외래 100원 미만 절사 → 10000
     result = calculate_billing(BillingInput(
         insurance_type=InsuranceType.HEALTH,
         visit_type=VisitType.OUTPATIENT,
         benefit_total=5000,
         chuna_total=20060,
     ))
-    expected_chuna_copay = 10030  # ceil(20060*0.50)
-    assert result.health_outpatient_copay == expected_chuna_copay  # normal_copay=0 기여
-    assert result.copayment == expected_chuna_copay
+    assert result.health_outpatient_copay == 10000  # normal_copay=0 기여
+    assert result.copayment == 10000
     # claim_amount도 음수 방어로 0
     assert result.claim_amount == 0
 
@@ -313,3 +315,41 @@ def test_심장질환_V192_5퍼센트():
     ))
     assert result.special_exception_copay == 5000  # ceil(100000*0.05)
     assert result.copayment == 5000
+
+
+# ── 차등수가청구액: 청구액 - {진찰료×(1-차등지수)} ────────────────────────
+
+def test_차등지수_미적용시_청구액_그대로():
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=60000,
+        exam_fee=10000,
+    ))
+    assert result.graduated_claim == result.claim_amount
+
+
+def test_차등지수_적용시_진찰료에만_차등적용():
+    # claim_amount = 60000 - ceil(60000*0.3) = 42000
+    # graduated_claim = 42000 - {10000×(1-0.8)} = 42000 - 2000 = 40000
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=60000,
+        graduated_fee_index=Decimal("0.8"),
+        exam_fee=10000,
+    ))
+    assert result.claim_amount == 42000
+    assert result.graduated_claim == 40000
+
+
+def test_차등지수_소수점_여덟째자리에서_반올림():
+    # 0.123456785 → 소수점 8째자리(5)에서 반올림 → 0.12345679(7자리)
+    result = calculate_billing(BillingInput(
+        insurance_type=InsuranceType.HEALTH,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=60000,
+        graduated_fee_index=Decimal("0.123456785"),
+        exam_fee=10000,
+    ))
+    assert result.graduated_index == Decimal("0.1234568")

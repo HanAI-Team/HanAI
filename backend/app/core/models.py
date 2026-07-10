@@ -234,6 +234,7 @@ class Claim(Base):
     submitted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    approval_no = Column(String(35), nullable=True)  # 검사승인번호 an(35)
 
     medical_records = relationship("MedicalRecord", back_populates="claim")
     line_items = relationship("ClaimLineItem", back_populates="claim", cascade="all, delete-orphan")
@@ -252,6 +253,27 @@ class ClaimResubmissionHistory(Base):
     record_serial = Column(Integer, nullable=True)
     reason_code = Column(String(2), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ClaimRejectionCode(Base):
+    """요양급여비용 심사보류·불능 및 반송 사유별 코드 (별첨6), 수탁기관 통보 사유코드 (별첨7).
+
+    category="반송"|"심사불능"|"수탁기관통보". detail_code=""(빈 문자열)이면 상위 코드
+    자체의 포괄 설명(세부코드 없는 행), 별첨7은 세부코드 구조가 없어 항상 "".
+    (NULL 대신 ""을 쓰는 이유: Postgres 유니크 제약은 NULL끼리 서로 다른 값으로 취급해
+    재시딩 시 ON CONFLICT가 매칭되지 않기 때문.)
+    """
+    __tablename__ = "claim_rejection_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category = Column(String(10), nullable=False)
+    code = Column(String(2), nullable=False)
+    detail_code = Column(String(2), nullable=False, server_default="")
+    description = Column(String(500), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("category", "code", "detail_code", name="uq_claim_rejection_code"),
+    )
 
 
 class ClaimLineItem(Base):
@@ -465,6 +487,28 @@ class FeeMaster(Base):
     effective_date = Column(Date, nullable=True)
     expired_date = Column(Date, nullable=True)
     is_standalone = Column(Boolean, default=False, nullable=False, server_default="false")
+
+
+class DrugMaster(Base):
+    """약제급여목록 및 급여상한금액표 (HIRA, 매월 고시). 전국 공통(양·한방 구분 없음)."""
+
+    __tablename__ = "drug_master"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_code = Column(String(20), unique=True, nullable=False, index=True)   # 제품코드
+    product_name = Column(String(300), nullable=False)                            # 제품명
+    ingredient_code = Column(String(20), nullable=True)                           # 주성분코드
+    ingredient_name = Column(String(1500), nullable=True)                         # 주성분명
+    company_name = Column(String(100), nullable=True)                            # 업체명
+    spec = Column(String(50), nullable=True)                                      # 규격
+    unit = Column(String(30), nullable=True)                                      # 단위
+    unit_price = Column(Integer, nullable=False)                                  # 상한금액표 금액(원)
+    administration_route = Column(String(20), nullable=True)                      # 투여 (내복/외용/주사/기타)
+    classification_code = Column(String(10), nullable=True)                       # 분류(식약분류) 코드
+    # 전문/일반 구분. 원본 엑셀 헤더는 이 컬럼을 "전일"이라고 표기하지만 실제
+    # 값은 항상 "전문"|"일반"이라 헤더 자체가 오기임 — 값 기준으로 매핑.
+    is_prescription = Column(Boolean, nullable=True)
+    effective_date = Column(Date, nullable=True)                                  # 고시 적용일 (파일 스냅샷 기준)
 
 
 # ================================================================

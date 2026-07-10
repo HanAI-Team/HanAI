@@ -159,7 +159,7 @@ async def test_이수한_한의사는_추나_청구_정상통과(db, approved_do
         visit_type="외래",
     )
     assert claim.status == "draft"
-    assert claim.patient_copay == 13165  # ceil(26330*0.50)
+    assert claim.patient_copay == 13100  # ceil(26330*0.50)=13165 → 외래 100원 미만 절사
 
 
 async def test_추나_없는_청구는_미이수여도_정상통과(db, approved_doctor):

@@ -94,8 +94,8 @@ async def test_추나_50_80_요율_실제_DB_계산(db, approved_doctor, chuna_f
         claim_period_year=now.year, claim_period_month=now.month, visit_type="외래",
     )
 
-    expected = 13165 + 35560  # ceil(26330*0.5) + ceil(44450*0.8)
-    assert claim.patient_copay == expected
+    # ceil(26330*0.5)+ceil(44450*0.8)=13165+35560=48725 → 외래 100원 미만 절사 → 48700
+    assert claim.patient_copay == 48700
     assert claim.total_amount == 26330 + 44450
 
 

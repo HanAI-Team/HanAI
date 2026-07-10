@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from app.billing.calculator import calculate_prescription_price
 from app.billing.pediatric_dosage import (
@@ -80,9 +81,24 @@ def test_소아_비율_적용시_가격_계산():
     assert calculate_prescription_price(1800, 0.5, 7) == 6300
 
 
-def test_올림_처리_확인():
-    # 7 * 0.5 * 3 = 10.5 -> ROUND_UP으로 11
+def test_반올림_처리_확인():
+    # 7 * 0.5 * 3 = 10.5 -> 원미만 4사5입(ROUND_HALF_UP)으로 11 (.5는 올림)
     assert calculate_prescription_price(7, 0.5, 3) == 11
+
+
+def test_사사오입_버림_사례():
+    # 1003 * 0.1 * 1 = 100.3 -> 4사5입(ROUND_HALF_UP)이면 100.
+    # 무조건 올림(ROUND_UP)이었다면 101이 나와야 하므로 규칙 차이를 구분하는 케이스.
+    assert calculate_prescription_price(1003, Decimal("0.1"), 1) == 100
+
+
+def test_1원_미만이면_1원으로_보정():
+    # 1 * 0.2 * 1 = 0.2 -> 반올림하면 0원이지만 규칙상 최소 1원
+    assert calculate_prescription_price(1, Decimal("0.2"), 1) == 1
+
+
+def test_단가_0원이면_0원():
+    assert calculate_prescription_price(0, Decimal("1.0"), 7) == 0
 
 
 # ── /prescription/check 라우터 테스트 ──────────────────────────

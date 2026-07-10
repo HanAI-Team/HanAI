@@ -1,5 +1,13 @@
+from decimal import Decimal
+from typing import Optional
 from uuid import UUID
 
+from app.billing.catalog import (
+    BILLABLE_CATALOG,
+    CHUNA_50_CODES,
+    CHUNA_80_CODES,
+    get_catalog_item,
+)
 from app.billing.copayment import (
     BillingInput,
     InsuranceType,
@@ -7,10 +15,8 @@ from app.billing.copayment import (
     VisitType,
     calculate_billing,
 )
+from app.core.csv_export import csv_response
 from app.billing.pediatric_dosage import get_max_allowed_ratio
-from decimal import Decimal
-
-from app.billing.catalog import BILLABLE_CATALOG, CHUNA_50_CODES, CHUNA_80_CODES, get_catalog_item
 from app.billing.schema import (
     INSURANCE_TYPE_CHOICES,
     MEDICAL_AID_GRADE_CHOICES,
@@ -18,13 +24,21 @@ from app.billing.schema import (
     BillableItemResponse,
     BillingCalcRequest,
     BillingCalcResponse,
+    ClaimApprovalUpdateRequest,
     ClaimLineItemResponse,
+    ClaimRejectionCodeCreate,
+    ClaimRejectionCodeResponse,
+    ClaimRejectionCodeUpdate,
     ClaimResubmissionResponse,
     ClaimResubmissionUpdate,
+    ClaimStatementResponse,
     ClaimSummaryResponse,
     DoctorWorkDaysCreate,
     DoctorWorkDaysItem,
     DoctorWorkDaysUpdate,
+    DrugMasterCreate,
+    DrugMasterResponse,
+    DrugMasterUpdate,
     FeeCreate,
     FeeItem,
     FeeUpdate,
@@ -36,18 +50,20 @@ from app.billing.schema import (
 )
 from app.billing.service import (
     _INSURANCE_MAP,
+    build_claim_statement,
     create_claim,
     generate_claim_edi,
+    generate_claim_sam_files,
     resolve_active_special_code,
     update_claim_resubmission,
 )
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
-from app.core.models import Claim, ClaimLineItem, DoctorWorkDays, FeeMaster, MedicalRecord, Patient
-from app.core.config import settings
+from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, DrugMaster, FeeMaster, MedicalRecord, Patient
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -64,6 +80,7 @@ class ClaimListItem(BaseModel):
     claim_amount: int
     created_at: str
     special_case_review_reason: str | None = None
+    approval_no: str | None = None
 
 
 class ClaimCreateRequest(BaseModel):
@@ -72,6 +89,7 @@ class ClaimCreateRequest(BaseModel):
     claim_period_year: int
     claim_period_month: int
     visit_type: str = "외래"  # "외래" 또는 "입원" (VisitType enum과 일치)
+    approval_no: str | None = None
 
 
 class ClaimCreateResponse(BaseModel):
@@ -104,6 +122,7 @@ async def create_new_claim(
         claim_period_year=body.claim_period_year,
         claim_period_month=body.claim_period_month,
         visit_type=body.visit_type,
+        approval_no=body.approval_no
     )
     return ClaimCreateResponse(
         id=str(claim.id),
@@ -156,6 +175,7 @@ async def list_claims(
             claim_amount=claim.claim_amount,
             created_at=claim.created_at.strftime("%Y-%m-%d") if claim.created_at else "",
             special_case_review_reason=claim.special_case_review_reason,
+            approval_no=claim.approval_no,
         )
         for claim, patient in results
     ]
@@ -408,6 +428,7 @@ async def calculate_copayment(
         support_fund=body.support_fund,
         treatment_days=body.treatment_days,
         graduated_fee_index=body.graduated_fee_index,
+        exam_fee=body.exam_fee,
     )
     result = calculate_billing(inp)
     return BillingCalcResponse(special_code=special_code, needs_review=needs_review, **result.__dict__)
@@ -420,6 +441,198 @@ async def list_insurance_types(current_doctor=Depends(get_current_doctor)):
         "insurance_types": INSURANCE_TYPE_CHOICES,
         "medical_aid_grades": MEDICAL_AID_GRADE_CHOICES,
     }
+
+
+@router.get("/rejection-codes", response_model=list[ClaimRejectionCodeResponse])
+async def search_rejection_codes(
+    q: str = Query(..., min_length=1, description="코드 또는 사유 내용 검색어"),
+    category: Optional[str] = Query(None, description="반송 | 심사불능 | 수탁기관통보"),
+    limit: int = Query(20, ge=1, le=100),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """요양급여비용 심사보류·불능·반송 사유별 코드(별첨6) 및 수탁기관 통보 사유코드(별첨7) 검색."""
+    stmt = select(ClaimRejectionCode).where(
+        or_(
+            ClaimRejectionCode.code.ilike(f"{q}%"),
+            ClaimRejectionCode.description.ilike(f"%{q}%"),
+        )
+    )
+    if category:
+        stmt = stmt.where(ClaimRejectionCode.category == category)
+    stmt = stmt.order_by(ClaimRejectionCode.category, ClaimRejectionCode.code, ClaimRejectionCode.detail_code).limit(limit)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.post("/rejection-codes", response_model=ClaimRejectionCodeResponse, status_code=201)
+async def create_rejection_code(
+    body: ClaimRejectionCodeCreate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    existing = await db.execute(
+        select(ClaimRejectionCode).where(
+            ClaimRejectionCode.category == body.category,
+            ClaimRejectionCode.code == body.code,
+            ClaimRejectionCode.detail_code == body.detail_code,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 존재하는 코드입니다.")
+    item = ClaimRejectionCode(**body.model_dump())
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+@router.put("/rejection-codes/{item_id}", response_model=ClaimRejectionCodeResponse)
+async def update_rejection_code(
+    item_id: int,
+    body: ClaimRejectionCodeUpdate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    # detail_code가 ""(빈 문자열)인 행이 많아 category/code/detail_code 복합키 대신
+    # 정수 id를 식별자로 사용 (빈 문자열은 URL 경로 세그먼트로 다루기 까다로움).
+    _check_admin(x_admin_key)
+    item = await db.get(ClaimRejectionCode, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="코드를 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(item, field, value)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+@router.delete("/rejection-codes/{item_id}", status_code=204)
+async def delete_rejection_code(
+    item_id: int,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    item = await db.get(ClaimRejectionCode, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="코드를 찾을 수 없습니다.")
+    await db.delete(item)
+    await db.commit()
+
+
+@router.get("/rejection-codes/export")
+async def export_rejection_codes(
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    """반송·심사불능 코드 마스터 전체를 CSV(TEXT/Excel)로 추출."""
+    _check_admin(x_admin_key)
+    result = await db.execute(
+        select(ClaimRejectionCode).order_by(
+            ClaimRejectionCode.category, ClaimRejectionCode.code, ClaimRejectionCode.detail_code
+        )
+    )
+    rows = [[r.category, r.code, r.detail_code, r.description] for r in result.scalars().all()]
+    return csv_response(
+        "rejection_codes.csv", ["category", "code", "detail_code", "description"], rows
+    )
+
+
+@router.get("/drugs", response_model=list[DrugMasterResponse])
+async def search_drugs(
+    q: str = Query(..., min_length=1, description="제품코드, 제품명 또는 주성분명 검색어"),
+    limit: int = Query(20, ge=1, le=100),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """약제급여목록 및 급여상한금액표 검색 (제품코드/제품명/주성분명)."""
+    stmt = select(DrugMaster).where(
+        or_(
+            DrugMaster.product_code.ilike(f"{q}%"),
+            DrugMaster.product_name.ilike(f"%{q}%"),
+            DrugMaster.ingredient_name.ilike(f"%{q}%"),
+        )
+    )
+    stmt = stmt.order_by(DrugMaster.product_name).limit(limit)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.post("/drugs", response_model=DrugMasterResponse, status_code=201)
+async def create_drug(
+    body: DrugMasterCreate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    existing = await db.execute(select(DrugMaster).where(DrugMaster.product_code == body.product_code))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 존재하는 제품코드입니다.")
+    drug = DrugMaster(**body.model_dump())
+    db.add(drug)
+    await db.commit()
+    await db.refresh(drug)
+    return drug
+
+
+@router.put("/drugs/{product_code}", response_model=DrugMasterResponse)
+async def update_drug(
+    product_code: str,
+    body: DrugMasterUpdate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(DrugMaster).where(DrugMaster.product_code == product_code))
+    drug = result.scalar_one_or_none()
+    if not drug:
+        raise HTTPException(status_code=404, detail="제품코드를 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(drug, field, value)
+    await db.commit()
+    await db.refresh(drug)
+    return drug
+
+
+@router.delete("/drugs/{product_code}", status_code=204)
+async def delete_drug(
+    product_code: str,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(DrugMaster).where(DrugMaster.product_code == product_code))
+    drug = result.scalar_one_or_none()
+    if not drug:
+        raise HTTPException(status_code=404, detail="제품코드를 찾을 수 없습니다.")
+    await db.delete(drug)
+    await db.commit()
+
+
+@router.get("/drugs/export")
+async def export_drugs(
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    """약가 마스터 전체를 CSV(TEXT/Excel)로 추출."""
+    _check_admin(x_admin_key)
+    result = await db.execute(select(DrugMaster).order_by(DrugMaster.product_code))
+    rows = [
+        [
+            r.product_code, r.product_name, r.ingredient_code, r.ingredient_name,
+            r.company_name, r.spec, r.unit, r.unit_price, r.administration_route,
+            r.classification_code, r.is_prescription, r.effective_date,
+        ]
+        for r in result.scalars().all()
+    ]
+    header = [
+        "product_code", "product_name", "ingredient_code", "ingredient_name",
+        "company_name", "spec", "unit", "unit_price", "administration_route",
+        "classification_code", "is_prescription", "effective_date",
+    ]
+    return csv_response("drug_master.csv", header, rows)
 
 
 @router.get("/fees", response_model=list[FeeItem])
@@ -511,6 +724,30 @@ async def delete_fee(
         raise HTTPException(status_code=404, detail="수가 코드를 찾을 수 없습니다.")
     await db.delete(fee)
     await db.commit()
+
+
+@router.get("/fees/export")
+async def export_fees(
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    """한방 행위코드 수가 마스터 전체를 CSV(TEXT/Excel)로 추출."""
+    _check_admin(x_admin_key)
+    result = await db.execute(select(FeeMaster).order_by(FeeMaster.category, FeeMaster.code))
+    rows = [
+        [
+            r.code, r.name, r.category, r.insured_health, r.insured_medical_aid,
+            r.insured_veterans, r.unit_price, r.is_insured, r.is_standalone,
+            r.effective_date, r.expired_date,
+        ]
+        for r in result.scalars().all()
+    ]
+    header = [
+        "code", "name", "category", "insured_health", "insured_medical_aid",
+        "insured_veterans", "unit_price", "is_insured", "is_standalone",
+        "effective_date", "expired_date",
+    ]
+    return csv_response("fee_master.csv", header, rows)
 
 
 def _work_days_to_item(r: DoctorWorkDays) -> DoctorWorkDaysItem:
@@ -643,6 +880,48 @@ async def download_claim_edi(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.get("/claims/{claim_id}/sam-files")
+async def download_claim_sam_files(
+    claim_id: UUID,
+    test: bool = Query(False, description="True이면 작성자란에 '상시점검' 기재한 테스트 SAM FILE 생성"),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """SAM File 생성 디렉토리(/HIRA/DDMD/SAM/IN/)에 그대로 넣을 개별 파일들
+    (H010, K020.1~4)을 ZIP으로 묶어 반환한다. 압축·암호화(.GHP)는 별도의
+    전자청구 프로그램이 담당하므로 여기서는 원본 파일까지만 제공한다."""
+    import io
+    import zipfile
+
+    files = await generate_claim_sam_files(db, current_user.hospital_id, claim_id, test_mode=test)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, content in files.items():
+            zf.writestr(filename, content)
+    buf.seek(0)
+
+    suffix = "_TEST" if test else ""
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename=claim_{claim_id}{suffix}_sam_files.zip",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/claims/{claim_id}/statement", response_model=ClaimStatementResponse)
+async def get_claim_statement(
+    claim_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """요양급여비용명세서(한방외래, 별지18호/GI013) 출력용 데이터."""
+    return await build_claim_statement(db, current_user.hospital_id, claim_id)
+
 
 @router.get("/catalog", response_model=list[BillableItemResponse])
 async def get_billable_catalog(current_user=Depends(get_current_user)):
@@ -809,6 +1088,21 @@ async def add_line_items(
             for i in all_items
         ],
     )
+
+
+@router.patch("/claims/{claim_id}/approval")
+async def update_claim_approval(
+    claim_id: UUID,
+    body: ClaimApprovalUpdateRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await db.get(Claim, claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구를 찾을 수 없습니다.")
+    claim.approval_no = body.approval_no
+    await db.commit()
+    return {"id": str(claim_id), "approval_no": claim.approval_no}
 
 
 class SupportFundBody(BaseModel):

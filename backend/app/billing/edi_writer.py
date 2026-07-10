@@ -315,10 +315,12 @@ class ProcedureDetail:
     days: int = 0                # 총투여일수·실시횟수 n(3)
     amount: int = 0              # 금액 n(10)
     gamigam_gubun: str = ""      # 가감 등 구분 an(10): 기준처방B### 가미제A### 감미제S### 임의처방H###
+    license_kind: str = "3"      # 면허종류 an(1): 3=한의사
+    license_no: str = ""         # 면허번호 an(10)
 
 
 def build_procedure_record(p: ProcedureDetail) -> str:
-    """레코드 3 생성 (75 bytes + CRLF)."""
+    """레코드 3 생성 (86 bytes + CRLF)."""
     parts = [
         *_key_parts(p.key),                 # 1-15   청구번호+명세서일련번호
         _fmtx(p.hang, 2),                   # 16-17  항번호
@@ -331,8 +333,10 @@ def build_procedure_record(p: ProcedureDetail) -> str:
         _fmt9(p.days, 3),                   # 53-55  총투여일수·실시횟수
         _fmt9(p.amount, 10),                # 56-65  금액
         _fmtx(p.gamigam_gubun, 10),         # 66-75  가감 등 구분
+        _fmtx(p.license_kind, 1),           # 76     면허종류
+        _fmtx(p.license_no, 10),            # 77-86  면허번호
     ]
-    return _build(parts, 75)
+    return _build(parts, 86)
 
 
 # ---------------------------------------------------------------------------
@@ -399,3 +403,29 @@ def generate_edi(edi: EDIFile) -> bytes:
                 lines.append(build_special_record(special))
 
     return "".join(lines).encode("euc-kr", errors="replace")
+
+
+def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
+    """SAM File 생성 디렉토리(/HIRA/DDMD/SAM/IN/)에 들어갈 개별 파일들을
+    레코드 종류별로 나눠 생성한다 (한방은 청구서+명세서가 한 파일로
+    합쳐지는 의·치과와 달리 H010 + K020.1~4로 분리해야 함).
+
+    H010: 요양급여비용(의료급여비용)심사청구서 (헤더, 공통)
+    K020.1: 일반내역 (환자/청구 기본정보)
+    K020.2: 상병내역 (진단)
+    K020.3: 진료내역 (시술·처치)
+    K020.4: 특정내역
+
+    해당 레코드가 없는 파일도 0바이트 더미 파일로 포함한다 (SAM File
+    작성 규칙 — 발생하지 않는 SAM File이라도 Dummy file을 생성해야 함).
+    """
+    def _join(lines: list[str]) -> bytes:
+        return "".join(lines).encode("euc-kr", errors="replace")
+
+    return {
+        "H010": _join([build_claim_header(edi.header)]),
+        "K020.1": _join([build_patient_record(p) for p in edi.patient_records]),
+        "K020.2": _join([build_diagnosis_record(d) for _, d in edi.diagnosis_records]),
+        "K020.3": _join([build_procedure_record(p) for _, p in edi.procedure_records]),
+        "K020.4": _join([build_special_record(s) for _, s in edi.special_records]),
+    }
