@@ -8,6 +8,7 @@ from app.billing.copayment import (
     VisitType,
     calculate_billing,
 )
+from app.core.csv_export import csv_response
 from app.billing.pediatric_dosage import get_max_allowed_ratio
 from decimal import Decimal
 
@@ -510,6 +511,24 @@ async def delete_rejection_code(
     await db.commit()
 
 
+@router.get("/rejection-codes/export")
+async def export_rejection_codes(
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    """반송·심사불능 코드 마스터 전체를 CSV(TEXT/Excel)로 추출."""
+    _check_admin(x_admin_key)
+    result = await db.execute(
+        select(ClaimRejectionCode).order_by(
+            ClaimRejectionCode.category, ClaimRejectionCode.code, ClaimRejectionCode.detail_code
+        )
+    )
+    rows = [[r.category, r.code, r.detail_code, r.description] for r in result.scalars().all()]
+    return csv_response(
+        "rejection_codes.csv", ["category", "code", "detail_code", "description"], rows
+    )
+
+
 @router.get("/drugs", response_model=list[DrugMasterResponse])
 async def search_drugs(
     q: str = Query(..., min_length=1, description="제품코드, 제품명 또는 주성분명 검색어"),
@@ -579,6 +598,30 @@ async def delete_drug(
         raise HTTPException(status_code=404, detail="제품코드를 찾을 수 없습니다.")
     await db.delete(drug)
     await db.commit()
+
+
+@router.get("/drugs/export")
+async def export_drugs(
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    """약가 마스터 전체를 CSV(TEXT/Excel)로 추출."""
+    _check_admin(x_admin_key)
+    result = await db.execute(select(DrugMaster).order_by(DrugMaster.product_code))
+    rows = [
+        [
+            r.product_code, r.product_name, r.ingredient_code, r.ingredient_name,
+            r.company_name, r.spec, r.unit, r.unit_price, r.administration_route,
+            r.classification_code, r.is_prescription, r.effective_date,
+        ]
+        for r in result.scalars().all()
+    ]
+    header = [
+        "product_code", "product_name", "ingredient_code", "ingredient_name",
+        "company_name", "spec", "unit", "unit_price", "administration_route",
+        "classification_code", "is_prescription", "effective_date",
+    ]
+    return csv_response("drug_master.csv", header, rows)
 
 
 @router.get("/fees", response_model=list[FeeItem])
@@ -670,6 +713,30 @@ async def delete_fee(
         raise HTTPException(status_code=404, detail="수가 코드를 찾을 수 없습니다.")
     await db.delete(fee)
     await db.commit()
+
+
+@router.get("/fees/export")
+async def export_fees(
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    """한방 행위코드 수가 마스터 전체를 CSV(TEXT/Excel)로 추출."""
+    _check_admin(x_admin_key)
+    result = await db.execute(select(FeeMaster).order_by(FeeMaster.category, FeeMaster.code))
+    rows = [
+        [
+            r.code, r.name, r.category, r.insured_health, r.insured_medical_aid,
+            r.insured_veterans, r.unit_price, r.is_insured, r.is_standalone,
+            r.effective_date, r.expired_date,
+        ]
+        for r in result.scalars().all()
+    ]
+    header = [
+        "code", "name", "category", "insured_health", "insured_medical_aid",
+        "insured_veterans", "unit_price", "is_insured", "is_standalone",
+        "effective_date", "expired_date",
+    ]
+    return csv_response("fee_master.csv", header, rows)
 
 
 def _work_days_to_item(r: DoctorWorkDays) -> DoctorWorkDaysItem:
