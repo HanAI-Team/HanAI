@@ -61,7 +61,10 @@ export async function downloadEdi(claimId: string, testMode = false): Promise<vo
   const res = await fetch(endpoint, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error("EDI 생성 실패");
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "EDI 생성 실패");
+  }
 
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
@@ -78,7 +81,10 @@ export async function downloadSamFiles(claimId: string, testMode = false): Promi
   const res = await fetch(endpoint, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error("SAM File 생성 실패");
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "SAM File 생성 실패");
+  }
 
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
@@ -95,7 +101,10 @@ export async function bulkDownloadEdi(ids: string[], testMode = false): Promise<
     headers: getHeaders(),
     body: JSON.stringify({ ids, test_mode: testMode }),
   });
-  if (!res.ok) throw new Error("일괄 EDI 생성 실패");
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "일괄 EDI 생성 실패");
+  }
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
