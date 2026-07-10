@@ -478,7 +478,8 @@ async def create_claim(
         support_fund=billing_result.support_fund,
         status="draft",
         special_case_review_reason=review_reason,
-        approval_no=approval_no
+        approval_no=approval_no,
+        warn_notices=warn_notices if warn_notices else None,
     )
     db.add(claim)
 
