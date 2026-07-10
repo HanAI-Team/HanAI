@@ -90,8 +90,8 @@ export default function BillingPage() {
     setDownloading(id);
     try {
       await downloadSamFiles(id, testMode);
-    } catch {
-      alert("SAM File 다운로드에 실패했습니다.");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "SAM File 다운로드에 실패했습니다.");
     } finally {
       setDownloading(null);
     }
@@ -102,8 +102,8 @@ export default function BillingPage() {
     setDownloading("bulk");
     try {
       await bulkDownloadEdi([...selected], testMode);
-    } catch {
-      alert("일괄 EDI 다운로드에 실패했습니다.");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "일괄 EDI 다운로드에 실패했습니다.");
     } finally {
       setDownloading(null);
     }

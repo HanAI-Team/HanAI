@@ -36,7 +36,7 @@ export default function PatientsPage() {
   const [addLoading, setAddLoading] = useState(false);
 
   const [editTarget, setEditTarget] = useState<Patient | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", birth_date: "", gender: "", phone: "" });
+  const [editForm, setEditForm] = useState({ name: "", birth_date: "", gender: "", phone: "", rrn: "" });
   const [editLoading, setEditLoading] = useState(false);
 
   const [anonymizeTarget, setAnonymizeTarget] = useState<Patient | null>(null);
@@ -171,6 +171,7 @@ export default function PatientsPage() {
       birth_date: p.birth_date || "",
       gender: p.gender || "",
       phone: p.phone || "",
+      rrn: "",
     });
   }
 
@@ -179,7 +180,11 @@ export default function PatientsPage() {
     if (!editTarget) return;
     setEditLoading(true);
     try {
-      const updated = await updatePatient(editTarget.id, editForm);
+      const { rrn, ...basicFields } = editForm;
+      const updated = await updatePatient(editTarget.id, {
+        ...basicFields,
+        ...(rrn.trim() ? { rrn: rrn.trim() } : {}),
+      });
       setPatients((prev) =>
         prev.map((p) => (p.id === editTarget.id ? { ...p, ...updated } : p))
       );
@@ -631,6 +636,19 @@ export default function PatientsPage() {
                     setEditForm((p) => ({ ...p, phone: e.target.value }))
                   }
                   placeholder="010-0000-0000"
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">
+                  주민번호
+                </label>
+                <input
+                  value={editForm.rrn}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, rrn: formatRrn(e.target.value) }))
+                  }
+                  placeholder="변경할 때만 입력 (미입력 시 기존 값 유지)"
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
