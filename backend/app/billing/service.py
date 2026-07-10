@@ -284,6 +284,7 @@ async def create_claim(
     claim_period_year: int,
     claim_period_month: int,
     visit_type: str = "외래",  # "외래" 또는 "입원" (VisitType enum과 일치)
+    approval_no: str | None = None,
 ) -> Claim:
     # 환자 조회 및 권한 확인
     r_patient = await db.execute(
@@ -475,6 +476,7 @@ async def create_claim(
         support_fund=billing_result.support_fund,
         status="draft",
         special_case_review_reason=review_reason,
+        approval_no=approval_no
     )
     db.add(claim)
 
@@ -622,6 +624,7 @@ async def generate_claim_edi(
         benefit_total_1=claim.total_amount,
         copayment=claim.patient_copay,
         claim_amount=claim.claim_amount,
+        approval_no=claim.approval_no or "",
     )
 
     # 3. PatientRecord / DiagnosisRecord / ProcedureDetail 조립

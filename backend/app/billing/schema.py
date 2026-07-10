@@ -314,3 +314,7 @@ class NeedsReviewClaimItem(BaseModel):
 class NeedsReviewClaimsResponse(BaseModel):
     total: int
     items: list[NeedsReviewClaimItem]
+
+
+class ClaimApprovalUpdateRequest(BaseModel):
+    approval_no: str | None = None
