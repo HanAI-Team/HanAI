@@ -603,36 +603,35 @@ class TestC2_08_특정내역:
         return SpecialRecord(
             key=_DUMMY_KEY,
             record_group_type="2",  # 줄단위 — JS011은 줄 단위 특정내역
-            prescription_no=0,
             line_no=1,
             special_code="JS011",
             content=content,
         )
 
-    def test_항목31_발생단위구분_바이트17(self):
-        # 0-indexed 16: 발생단위구분 X(1)
+    def test_항목31_발생단위구분_바이트16(self):
+        # 0-indexed 15: 발생단위구분 X(1)
         raw = build_special_record(self._make_special(["합곡"])).encode("euc-kr")
-        assert raw[16:17].decode("euc-kr") == "2"
+        assert raw[15:16].decode("euc-kr") == "2"
 
     def test_항목31_JS011_혈명코드_기록(self):
         names = ["합곡", "족삼리", "내관"]
         raw = build_special_record(self._make_special(names)).encode("euc-kr")
-        # 레코드 4: 0-indexed 39부터 특정내역 700바이트
-        content_start = 39
+        # 레코드 4: 0-indexed 25부터 특정내역 700바이트
+        content_start = 25
         content_raw = raw[content_start:content_start + 700]
         content_str = content_raw.decode("euc-kr").rstrip()
         assert "합곡" in content_str
         assert "족삼리" in content_str
         assert "내관" in content_str
 
-    def test_항목31_특정내역구분_JS011_바이트35_39(self):
-        # 0-indexed 34-39: 특정내역구분 X(5) = "JS011"
+    def test_항목31_특정내역구분_JS011_바이트21_25(self):
+        # 0-indexed 20-25: 특정내역구분 X(5) = "JS011"
         raw = build_special_record(self._make_special(["합곡"])).encode("euc-kr")
-        assert raw[34:39].decode("euc-kr") == "JS011"
+        assert raw[20:25].decode("euc-kr") == "JS011"
 
-    def test_C2_08_레코드_길이_739_plus_CRLF(self):
+    def test_C2_08_레코드_길이_725_plus_CRLF(self):
         raw = build_special_record(self._make_special(["합곡"])).encode("euc-kr")
-        assert len(raw) == 741
+        assert len(raw) == 727
 
 class TestS12b_차등수가_범위검증:
     def test_차등지수_0_미적용_통과(self):

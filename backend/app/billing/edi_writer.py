@@ -355,24 +355,26 @@ def build_procedure_record(p: ProcedureDetail) -> str:
 class SpecialRecord:
     key: RecordKey
     record_group_type: str  # 발생단위구분 an(1): 1명세서단위 2줄번호단위 3처방내역줄번호단위 4처방내역단위
-    prescription_no: int    # 처방전발급번호 n(13)
     line_no: int             # 줄번호 n(4)
     special_code: str        # 특정내역구분 an(5): 별표8 (예: JS011 경혈코드)
     content: str              # 특정내역 an(700)
 
 
 def build_special_record(s: SpecialRecord) -> str:
-    """레코드 4 생성 (739 bytes + CRLF)."""
+    """레코드 4 생성 (725 bytes + CRLF).
+
+    한방은 「요양급여비용 청구방법, 심사청구서·명세서서식 및 작성요령」
+    p.137 "4) 명세서 특정내역기재란" 기준 내역구분·처방전발급번호 필드가
+    없다 — 2026-07-11 MCPoS 실측(최소/최대 725바이트)으로 확인.
+    """
     parts = [
         *_key_parts(s.key),                 # 1-15   청구번호+명세서일련번호
-        _fmtx("E", 1),                      # 16     내역구분
-        _fmtx(s.record_group_type, 1),      # 17     발생단위구분
-        _fmt9(s.prescription_no, 13),       # 18-30  처방전발급번호
-        _fmt9(s.line_no, 4),                # 31-34  줄번호
-        _fmtx(s.special_code, 5),           # 35-39  특정내역구분
-        _fmtx(s.content, 700),              # 40-739 특정내역
+        _fmtx(s.record_group_type, 1),      # 16     발생단위구분
+        _fmt9(s.line_no, 4),                # 17-20  줄번호
+        _fmtx(s.special_code, 5),           # 21-25  특정내역구분
+        _fmtx(s.content, 700),              # 26-725 특정내역
     ]
-    return _build(parts, 739)
+    return _build(parts, 725)
 
 
 # ---------------------------------------------------------------------------

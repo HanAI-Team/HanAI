@@ -733,7 +733,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",  # 명세서단위
-                prescription_no=0,
                 line_no=0,
                 special_code="MT032",
                 content=record.recorded_at.strftime("%Y%m%d%H%M"),
@@ -747,7 +746,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT019",
                 content=patient.confirmation_no,
@@ -758,7 +756,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT050",
                 content=mt050_content,
@@ -769,7 +766,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT008",
                 content=mt008_content,
@@ -781,7 +777,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT002",
                 content=special_case.special_code,
@@ -798,7 +793,6 @@ async def _build_claim_edi_file(
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     record_group_type="1",
-                    prescription_no=0,
                     line_no=0,
                     special_code="MT014",
                     content=mt014_content,
@@ -809,7 +803,6 @@ async def _build_claim_edi_file(
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     record_group_type="1",
-                    prescription_no=0,
                     line_no=0,
                     special_code="MT028",
                     content=f"{special_case.registered_disease_code}/{special_case.disease_name}",
@@ -861,7 +854,6 @@ async def _build_claim_edi_file(
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
-                        prescription_no=0,
                         line_no=line_no,
                         special_code="JS010",
                         content=record.recorded_at.strftime("%Y%m%d%H%M"),
@@ -870,7 +862,6 @@ async def _build_claim_edi_file(
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
-                        prescription_no=0,
                         line_no=line_no,
                         special_code="JS011",
                         content="/".join(li.hyeolmyeong_names),
@@ -898,7 +889,6 @@ async def _build_claim_edi_file(
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="1",  # 줄 번호를 특정 못해 명세서단위로 기재 (구 경로 한계)
-                        prescription_no=0,
                         line_no=0,
                         special_code="JS011",
                         content=proc.special_detail,
