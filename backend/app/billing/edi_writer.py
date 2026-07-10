@@ -134,8 +134,8 @@ class ClaimHeader:
 def build_claim_header(h: ClaimHeader) -> str:
     """레코드 1 생성 (2096 bytes + CRLF)."""
     parts = [
-        _fmtx("092", 3),                          # 1-3     청구서서식버전
-        _fmtx("092", 3),                          # 4-6     명세서서식버전
+        _fmtx("091", 3),                          # 1-3     청구서서식버전
+        _fmtx("091", 3),                          # 4-6     명세서서식버전
         _fmtx(h.claim_no, 10),                    # 7-16    청구번호
         _fmtx(h.form_no, 4),                      # 17-20   서식번호
         _fmt9(int(h.institution_code), 8),        # 21-28   요양기관기호
@@ -320,7 +320,12 @@ class ProcedureDetail:
 
 
 def build_procedure_record(p: ProcedureDetail) -> str:
-    """레코드 3 생성 (86 bytes + CRLF)."""
+    """레코드 3 생성 (75 bytes + CRLF).
+
+    면허종류·면허번호는 이 레코드가 아니라 레코드 2-1(상병내역,
+    DiagnosisRecord)에 기재한다 — 진료내역 레코드엔 없음 (SAM(EDI)
+    레코드규격 문서로 확인, 2026-07-10).
+    """
     parts = [
         *_key_parts(p.key),                 # 1-15   청구번호+명세서일련번호
         _fmtx(p.hang, 2),                   # 16-17  항번호
@@ -333,10 +338,8 @@ def build_procedure_record(p: ProcedureDetail) -> str:
         _fmt9(p.days, 3),                   # 53-55  총투여일수·실시횟수
         _fmt9(p.amount, 10),                # 56-65  금액
         _fmtx(p.gamigam_gubun, 10),         # 66-75  가감 등 구분
-        _fmtx(p.license_kind, 1),           # 76     면허종류
-        _fmtx(p.license_no, 10),            # 77-86  면허번호
     ]
-    return _build(parts, 86)
+    return _build(parts, 75)
 
 
 # ---------------------------------------------------------------------------
