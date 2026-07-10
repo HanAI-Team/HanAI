@@ -134,8 +134,8 @@ class ClaimHeader:
 def build_claim_header(h: ClaimHeader) -> str:
     """레코드 1 생성 (2096 bytes + CRLF)."""
     parts = [
-        _fmtx("092", 3),                          # 1-3     청구서서식버전
-        _fmtx("092", 3),                          # 4-6     명세서서식버전
+        _fmtx("091", 3),                          # 1-3     청구서서식버전
+        _fmtx("091", 3),                          # 4-6     명세서서식버전
         _fmtx(h.claim_no, 10),                    # 7-16    청구번호
         _fmtx(h.form_no, 4),                      # 17-20   서식번호
         _fmt9(int(h.institution_code), 8),        # 21-28   요양기관기호
