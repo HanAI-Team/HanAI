@@ -1,7 +1,8 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from app.core.audit import write_audit
-from app.core.models import Doctor, MedicalRecord, Patient
+from app.core.models import DataPurgeLog, Doctor, MedicalRecord, Patient
 from app.patients.schema import PatientCreate, PatientUpdate
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -104,6 +105,8 @@ async def anonymize_patient  (
 )->Patient:
     patient = await get_patient(db, doctor, patient_id)
 
+    name_before = patient.name
+
     patient.name = "익명"
     patient.phone = None
     patient.rrn = None
@@ -115,7 +118,16 @@ async def anonymize_patient  (
     actor_id=doctor.id,
     actor_type="doctor",
     detail="개인정보 파기: name, phone, rrn 익명화",
-)   
+)
+    db.add(DataPurgeLog(
+        hospital_id=doctor.hospital_id,
+        doctor_id=doctor.id,
+        patient_id=patient_id,
+        patient_name_before=name_before,
+        reason="환자 요청에 의한 개인정보 파기",
+        purge_type="anonymize",
+        purged_at=datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"),
+    ))
     await db.commit()
     await db.refresh(patient)
     return patient
