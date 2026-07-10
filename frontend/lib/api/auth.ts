@@ -9,7 +9,9 @@ export type LoginLog = {
   ip_address: string | null
   attempted_at: string
 }
-
+export async function getMe() {
+  return apiCall('/api/auth/me')
+}
 export type AccountHistory = {
   id: string
   account_type: string
