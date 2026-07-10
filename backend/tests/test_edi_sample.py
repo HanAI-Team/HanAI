@@ -438,6 +438,19 @@ async def test_상병분류기호_미등록코드면_SAM생성_차단(db, 한의
     assert exc_info.value.status_code == 400
 
 
+async def test_상병코드_누락시_SAM생성_차단(db, 한의원_외래_사례):
+    """kcd_code가 아예 비어있으면(레코드2-1 부재) 더미 SAM을 만들지 않고 차단한다."""
+    claim, hospital = 한의원_외래_사례
+    r = await db.execute(select(MedicalRecord).where(MedicalRecord.claim_id == claim.id))
+    record = r.scalars().first()
+    record.kcd_code = None
+    await db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await generate_claim_edi(db, hospital.id, claim.id)
+    assert exc_info.value.status_code == 400
+
+
 async def test_수진자_주민등록번호_누락시_SAM생성_차단(db, 한의원_외래_사례):
     """환자 주민등록번호가 없으면 더미값(0)으로 채우지 않고 SAM 생성을 막는다."""
     claim, hospital = 한의원_외래_사례
