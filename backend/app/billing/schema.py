@@ -339,3 +339,55 @@ class DrugMasterResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class StatementProcedureRow(BaseModel):
+    """요양급여비용명세서(한방외래, 별지18호/GI013) 진료내역 한 줄. 같은
+    (hang, mok, code) 청구항목을 합산한 결과."""
+    hang: str
+    mok: str
+    code: str
+    name: str
+    unit_price: int
+    count: int
+    amount: int
+    is_non_benefit: bool
+    copay_rate_label: Optional[Literal["A", "B"]] = Field(
+        None, description="A=추나 100분의50, B=추나 100분의80. 그 외 일반 항목은 None"
+    )
+
+
+class ClaimStatementResponse(BaseModel):
+    """요양급여비용명세서(한방외래, 별지18호/GI013) 출력용 데이터."""
+    hospital_name: str
+    institution_code: str
+    patient_name: str
+    birth_masked: str
+    disease_names: list[str]
+    special_code: Optional[str]
+    doctor_name: str
+    license_type: str
+    license_no: str
+    visit_dates: list[str]
+    visit_count: int
+
+    procedures: list[StatementProcedureRow]
+
+    # 심사내역 (13~26번 및 소계/가산율/비급여총액)
+    subtotal: int
+    surcharge_rate: float
+    benefit_total_1: int
+    copayment: int
+    support_fund: int
+    disability_medical_cost: int
+    claim_amount: int
+    upper_limit_excess: int
+    non_benefit_total: int
+    benefit_total_2: int
+    veterans_claim: int
+    full_price_copay_total: int
+    veterans_copay: int
+    under_full_total: int
+    under_full_copay: int
+    under_full_claim: int
+    under_full_veterans_claim: int
