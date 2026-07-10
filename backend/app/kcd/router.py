@@ -1,16 +1,29 @@
 from datetime import date
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import KcdUCode
-from app.kcd.schema import KcdUCodeResponse, KcdValidateRequest, KcdValidateResponse, KcdValidateResult
+from app.kcd.schema import (
+    KcdCodeCreate,
+    KcdCodeUpdate,
+    KcdUCodeResponse,
+    KcdValidateRequest,
+    KcdValidateResponse,
+    KcdValidateResult,
+)
 
 router = APIRouter(tags=["kcd"])
+
+
+def _check_admin(key: str) -> None:
+    if key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="관리자 키가 올바르지 않습니다.")
 
 
 @router.post("/validate", response_model=KcdValidateResponse)
@@ -146,3 +159,54 @@ async def get_kcd_code(
     if not item:
         raise HTTPException(status_code=404, detail=f"코드 '{code}'를 찾을 수 없습니다.")
     return item
+
+
+@router.post("", response_model=KcdUCodeResponse, status_code=201)
+async def create_kcd_code(
+    body: KcdCodeCreate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    existing = await db.execute(select(KcdUCode).where(KcdUCode.code == body.code))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 존재하는 상병코드입니다.")
+    item = KcdUCode(**body.model_dump())
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+@router.put("/{code}", response_model=KcdUCodeResponse)
+async def update_kcd_code(
+    code: str,
+    body: KcdCodeUpdate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(KcdUCode).where(KcdUCode.code == code))
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"코드 '{code}'를 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(item, field, value)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+@router.delete("/{code}", status_code=204)
+async def delete_kcd_code(
+    code: str,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(KcdUCode).where(KcdUCode.code == code))
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"코드 '{code}'를 찾을 수 없습니다.")
+    await db.delete(item)
+    await db.commit()

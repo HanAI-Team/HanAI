@@ -31,3 +31,24 @@ class KcdValidateResult(BaseModel):
 class KcdValidateResponse(BaseModel):
     results: List[KcdValidateResult]
     has_error: bool
+
+
+class KcdCodeCreate(BaseModel):
+    code: str
+    korean_name: str
+    hanja: Optional[str] = None
+    category: Optional[str] = None
+    effective_date: Optional[date] = None
+    expired_date: Optional[date] = None
+    sex_restriction: Optional[str] = None
+    is_notifiable: bool = False
+
+
+class KcdCodeUpdate(BaseModel):
+    korean_name: Optional[str] = None
+    hanja: Optional[str] = None
+    category: Optional[str] = None
+    effective_date: Optional[date] = None
+    expired_date: Optional[date] = None
+    sex_restriction: Optional[str] = None
+    is_notifiable: Optional[bool] = None

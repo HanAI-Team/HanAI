@@ -20,7 +20,9 @@ from app.billing.schema import (
     BillingCalcRequest,
     BillingCalcResponse,
     ClaimLineItemResponse,
+    ClaimRejectionCodeCreate,
     ClaimRejectionCodeResponse,
+    ClaimRejectionCodeUpdate,
     ClaimResubmissionResponse,
     ClaimResubmissionUpdate,
     ClaimStatementResponse,
@@ -28,7 +30,9 @@ from app.billing.schema import (
     DoctorWorkDaysCreate,
     DoctorWorkDaysItem,
     DoctorWorkDaysUpdate,
+    DrugMasterCreate,
     DrugMasterResponse,
+    DrugMasterUpdate,
     FeeCreate,
     FeeItem,
     FeeUpdate,
@@ -449,6 +453,63 @@ async def search_rejection_codes(
     return result.scalars().all()
 
 
+@router.post("/rejection-codes", response_model=ClaimRejectionCodeResponse, status_code=201)
+async def create_rejection_code(
+    body: ClaimRejectionCodeCreate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    existing = await db.execute(
+        select(ClaimRejectionCode).where(
+            ClaimRejectionCode.category == body.category,
+            ClaimRejectionCode.code == body.code,
+            ClaimRejectionCode.detail_code == body.detail_code,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 존재하는 코드입니다.")
+    item = ClaimRejectionCode(**body.model_dump())
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+@router.put("/rejection-codes/{item_id}", response_model=ClaimRejectionCodeResponse)
+async def update_rejection_code(
+    item_id: int,
+    body: ClaimRejectionCodeUpdate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    # detail_code가 ""(빈 문자열)인 행이 많아 category/code/detail_code 복합키 대신
+    # 정수 id를 식별자로 사용 (빈 문자열은 URL 경로 세그먼트로 다루기 까다로움).
+    _check_admin(x_admin_key)
+    item = await db.get(ClaimRejectionCode, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="코드를 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(item, field, value)
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+@router.delete("/rejection-codes/{item_id}", status_code=204)
+async def delete_rejection_code(
+    item_id: int,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    item = await db.get(ClaimRejectionCode, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="코드를 찾을 수 없습니다.")
+    await db.delete(item)
+    await db.commit()
+
+
 @router.get("/drugs", response_model=list[DrugMasterResponse])
 async def search_drugs(
     q: str = Query(..., min_length=1, description="제품코드, 제품명 또는 주성분명 검색어"),
@@ -467,6 +528,57 @@ async def search_drugs(
     stmt = stmt.order_by(DrugMaster.product_name).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+@router.post("/drugs", response_model=DrugMasterResponse, status_code=201)
+async def create_drug(
+    body: DrugMasterCreate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    existing = await db.execute(select(DrugMaster).where(DrugMaster.product_code == body.product_code))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 존재하는 제품코드입니다.")
+    drug = DrugMaster(**body.model_dump())
+    db.add(drug)
+    await db.commit()
+    await db.refresh(drug)
+    return drug
+
+
+@router.put("/drugs/{product_code}", response_model=DrugMasterResponse)
+async def update_drug(
+    product_code: str,
+    body: DrugMasterUpdate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(DrugMaster).where(DrugMaster.product_code == product_code))
+    drug = result.scalar_one_or_none()
+    if not drug:
+        raise HTTPException(status_code=404, detail="제품코드를 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(drug, field, value)
+    await db.commit()
+    await db.refresh(drug)
+    return drug
+
+
+@router.delete("/drugs/{product_code}", status_code=204)
+async def delete_drug(
+    product_code: str,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(DrugMaster).where(DrugMaster.product_code == product_code))
+    drug = result.scalar_one_or_none()
+    if not drug:
+        raise HTTPException(status_code=404, detail="제품코드를 찾을 수 없습니다.")
+    await db.delete(drug)
+    await db.commit()
 
 
 @router.get("/fees", response_model=list[FeeItem])

@@ -341,6 +341,46 @@ class DrugMasterResponse(BaseModel):
         from_attributes = True
 
 
+class DrugMasterCreate(BaseModel):
+    product_code: str
+    product_name: str
+    ingredient_code: Optional[str] = None
+    ingredient_name: Optional[str] = None
+    company_name: Optional[str] = None
+    spec: Optional[str] = None
+    unit: Optional[str] = None
+    unit_price: int
+    administration_route: Optional[str] = None
+    classification_code: Optional[str] = None
+    is_prescription: Optional[bool] = None
+    effective_date: Optional[date] = None
+
+
+class DrugMasterUpdate(BaseModel):
+    product_name: Optional[str] = None
+    ingredient_code: Optional[str] = None
+    ingredient_name: Optional[str] = None
+    company_name: Optional[str] = None
+    spec: Optional[str] = None
+    unit: Optional[str] = None
+    unit_price: Optional[int] = None
+    administration_route: Optional[str] = None
+    classification_code: Optional[str] = None
+    is_prescription: Optional[bool] = None
+    effective_date: Optional[date] = None
+
+
+class ClaimRejectionCodeCreate(BaseModel):
+    category: str
+    code: str
+    detail_code: str = ""
+    description: str
+
+
+class ClaimRejectionCodeUpdate(BaseModel):
+    description: Optional[str] = None
+
+
 class StatementProcedureRow(BaseModel):
     """요양급여비용명세서(한방외래, 별지18호/GI013) 진료내역 한 줄. 같은
     (hang, mok, code) 청구항목을 합산한 결과."""
