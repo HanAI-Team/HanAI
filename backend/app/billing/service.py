@@ -834,8 +834,6 @@ async def _build_claim_edi_file(
                     qty=Decimal(str(li.qty or 1)),
                     days=li.days or 1,
                     amount=li.amount or 0,
-                    license_kind="3",
-                    license_no=doctor.license_number if doctor else "",
                 )))
                 # JS010: 진료일시 (줄 단위 — 발생단위구분='2' 줄번호단위)
                 if record.recorded_at:
@@ -872,11 +870,6 @@ async def _build_claim_edi_file(
                     qty=Decimal(str(proc.qty or 1)),
                     days=proc.days or 1,
                     amount=proc.amount or 0,
-                    # MedicalRecordProcedure는 시술자별로 다른 면허(간호사=6 등)를
-                    # 기록할 수 있게 license_type/license_no 컬럼을 따로 두고 있으므로
-                    # 값이 있으면 그걸 우선하고, 없을 때만 청구서 대표 의사 정보로 대체.
-                    license_kind=proc.license_type or "3",
-                    license_no=proc.license_no or (doctor.license_number if doctor else ""),
                 )))
                 if proc.special_detail:
                     special_records.append((serial, SpecialRecord(
