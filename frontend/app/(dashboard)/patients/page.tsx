@@ -9,6 +9,7 @@ import {
   importPatientsFromExcel,
   downloadPatientsCsv,
   downloadRecordsCsv,
+  anonymizePatient
 } from "@/lib/api/patients";
 import { Patient } from "@/types";
 import { Search, Plus, X, ChevronUp, ChevronDown } from "lucide-react";
