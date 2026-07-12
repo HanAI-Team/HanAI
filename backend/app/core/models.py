@@ -329,7 +329,7 @@ class ClaimLineItemAcupoint(Base):
     acupuncture_point_code = Column(
         String(10), ForeignKey("acupuncture_points.code"), nullable=False
     )
-    korean_name = Column(String(50), nullable=False)  # 청구 당시 경혈명 스냅샷 (JS011 EDI 출력용)
+    korean_name = Column(String(50), nullable=False)  # 청구 당시 경혈명 스냅샷 (화면 표시용)
     display_order = Column(Integer, nullable=False, default=0)  # 입력 순서 보존
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -927,14 +927,14 @@ async def _build_claim_edi_file(
                         content=record.recorded_at.strftime("%Y%m%d%H%M"),
                     )))
                 if li.acupoints:
-                    ordered_names = [a.korean_name for a in li.acupoints]
+                    ordered_codes = [a.acupuncture_point_code for a in li.acupoints]
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
                         prescription_no=0,
                         line_no=line_no,
                         special_code="JS011",
-                        content="/".join(ordered_names),
+                        content="/".join(ordered_codes),
                     )))
         else:
             # 구 차팅 경로 폴백: MedicalRecordProcedure 사용
