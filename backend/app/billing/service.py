@@ -955,6 +955,14 @@ async def _build_claim_edi_file(
                         content=proc.special_detail,
                     )))
 
+    # 청구서(H010) 헤더의 합계 필드는 모든 명세서(K020.1)의 대응 필드를 합산한
+    # 값이어야 한다 — 기존엔 0으로 고정 출력되어 MCPoS "청구서, 명세서 불일치"
+    # 오류가 발생했다 (2026-07-13 실측 확인).
+    header.benefit_total_2 = sum(p.benefit_total_2 for p in patient_records)
+    header.under_full_total = sum(p.under_full_total for p in patient_records)
+    header.under_full_copay = sum(p.under_full_copay for p in patient_records)
+    header.under_full_claim = sum(p.under_full_claim for p in patient_records)
+
     return EDIFile(
         header=header,
         patient_records=patient_records,
