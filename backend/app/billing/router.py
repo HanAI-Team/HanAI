@@ -20,6 +20,7 @@ from app.billing.pediatric_dosage import get_max_allowed_ratio
 from app.billing.schema import (
     INSURANCE_TYPE_CHOICES,
     MEDICAL_AID_GRADE_CHOICES,
+    AcupointRef,
     AddLineItemsRequest,
     BillableItemResponse,
     BillingCalcRequest,
@@ -55,6 +56,7 @@ from app.billing.service import (
     generate_claim_edi,
     generate_claim_sam_files,
     resolve_active_special_code,
+    resolve_and_validate_acupoints,
     update_claim_resubmission,
 )
 from app.core.config import settings
@@ -63,6 +65,7 @@ from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import (
     Claim,
     ClaimLineItem,
+    ClaimLineItemAcupoint,
     DoctorWorkDays,
     FeeMaster,
     MedicalRecord,
@@ -948,6 +951,21 @@ async def get_billable_catalog(current_user=Depends(get_current_user)):
     ]
 
 
+def _line_item_to_response(item: ClaimLineItem) -> ClaimLineItemResponse:
+    """item.acupoints는 호출부에서 selectinload로 미리 로드돼 있어야 한다."""
+    return ClaimLineItemResponse(
+        id=str(item.id),
+        name=item.name,
+        code=item.code,
+        amount=item.amount,
+        acupoints=[
+            AcupointRef(code=a.acupuncture_point_code, korean_name=a.korean_name)
+            for a in sorted(item.acupoints, key=lambda a: a.display_order)
+        ],
+        is_non_benefit=item.is_non_benefit,
+    )
+
+
 @router.post("/medical-records/{record_id}/line-items", response_model=ClaimSummaryResponse)
 async def add_line_items(
     record_id: UUID,
@@ -992,9 +1010,14 @@ async def add_line_items(
 
     added_amount = 0
     added_non_benefit = 0
+    codes_in_this_request: set[str] = set()
     for line in payload.items:
         catalog_item = get_catalog_item(line.item_id)
         amount = int(Decimal(str(catalog_item.unit_price)))
+
+        acupoints = await resolve_and_validate_acupoints(
+            db, record_id, line.acupoint_codes, codes_in_this_request
+        )
 
         line_item = ClaimLineItem(
             claim_id=claim.id,
@@ -1007,10 +1030,17 @@ async def add_line_items(
             qty=1,
             days=1,
             amount=amount,
-            hyeolmyeong_names=line.hyeolmyeong_names or None,
             is_non_benefit=line.is_non_benefit,
         )
         db.add(line_item)
+        await db.flush()
+        for order, point in enumerate(acupoints):
+            db.add(ClaimLineItemAcupoint(
+                claim_line_item_id=line_item.id,
+                acupuncture_point_code=point.code,
+                korean_name=point.korean_name,
+                display_order=order,
+            ))
         added_amount += amount
         if line.is_non_benefit:
             added_non_benefit += amount
@@ -1075,7 +1105,9 @@ async def add_line_items(
     await db.refresh(claim)
 
     items_result = await db.execute(
-        select(ClaimLineItem).where(ClaimLineItem.claim_id == claim.id)
+        select(ClaimLineItem)
+        .where(ClaimLineItem.claim_id == claim.id)
+        .options(selectinload(ClaimLineItem.acupoints))
     )
     all_items = items_result.scalars().all()
 
@@ -1085,17 +1117,7 @@ async def add_line_items(
         billing_month=f"{year}-{month:02d}",
         status=claim.status,
         total_amount=claim.total_amount,
-        line_items=[
-            ClaimLineItemResponse(
-                id=str(i.id),
-                name=i.name,
-                code=i.code,
-                amount=i.amount,
-                hyeolmyeong_names=i.hyeolmyeong_names,
-                is_non_benefit=i.is_non_benefit,
-            )
-            for i in all_items
-        ],
+        line_items=[_line_item_to_response(i) for i in all_items],
     )
 
 
@@ -1133,7 +1155,9 @@ async def update_support_fund(
     await db.refresh(claim)
 
     items_result = await db.execute(
-        select(ClaimLineItem).where(ClaimLineItem.claim_id == claim.id)
+        select(ClaimLineItem)
+        .where(ClaimLineItem.claim_id == claim.id)
+        .options(selectinload(ClaimLineItem.acupoints))
     )
     all_items = items_result.scalars().all()
     year, month = claim.claim_period_year, claim.claim_period_month
@@ -1144,15 +1168,5 @@ async def update_support_fund(
         billing_month=f"{year}-{month:02d}",
         status=claim.status,
         total_amount=claim.total_amount,
-        line_items=[
-            ClaimLineItemResponse(
-                id=str(i.id),
-                name=i.name,
-                code=i.code,
-                amount=i.amount,
-                hyeolmyeong_names=i.hyeolmyeong_names,
-                is_non_benefit=i.is_non_benefit,
-            )
-            for i in all_items
-        ],
+        line_items=[_line_item_to_response(i) for i in all_items],
     )

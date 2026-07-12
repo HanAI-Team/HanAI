@@ -241,7 +241,10 @@ class BillableItemResponse(BaseModel):
 
 class LineItemInput(BaseModel):
     item_id: str
-    hyeolmyeong_names: list[str] = Field(default_factory=list)
+    acupoint_codes: list[str] = Field(
+        default_factory=list,
+        description="경혈 코드 목록(AcupuncturePoint.code). requiresHyeolmyeong 항목일 때만 사용",
+    )
     is_non_benefit: bool = False
 
 
@@ -251,12 +254,20 @@ class AddLineItemsRequest(BaseModel):
     visit_type: Literal["외래", "입원"] = Field("외래", description="외래 | 입원 (VisitType enum과 일치)")
 
 
+class AcupointRef(BaseModel):
+    code: str
+    korean_name: str
+
+    class Config:
+        from_attributes = True
+
+
 class ClaimLineItemResponse(BaseModel):
     id: str
     name: str
     code: str
     amount: int
-    hyeolmyeong_names: list[str] | None = None
+    acupoints: list[AcupointRef] = Field(default_factory=list)
     is_non_benefit: bool = False
 
     class Config:
