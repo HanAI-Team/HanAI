@@ -296,12 +296,52 @@ class ClaimLineItem(Base):
     days = Column(Integer, nullable=False, default=1)
     amount = Column(Integer, nullable=False, default=0)
 
-    hyeolmyeong_names = Column(JSON, nullable=True)  # 침술일 때 경혈명 목록
+    hyeolmyeong_names = Column(JSON, nullable=True)  # DEPRECATED — 레거시 조회 전용, 신규 저장 금지
     is_non_benefit = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     claim = relationship("Claim", back_populates="line_items")
+    acupoints = relationship(
+        "ClaimLineItemAcupoint",
+        back_populates="line_item",
+        cascade="all, delete-orphan",
+        order_by="ClaimLineItemAcupoint.display_order",
+    )
+
+
+class ClaimLineItemAcupoint(Base):
+    """청구 라인(ClaimLineItem)과 경혈 마스터(AcupuncturePoint)를 연결하는 다대다 조인 테이블.
+
+    korean_name은 AcupuncturePoint.korean_name의 스냅샷이다 (ClaimLineItem.name이
+    FeeMaster.name을 그대로 복사해 저장하는 기존 패턴과 동일 — 마스터가 나중에
+    바뀌어도 실제 청구 당시 표기가 그대로 남아야 하므로 FK만 두지 않고 이름도 같이 저장).
+    """
+
+    __tablename__ = "claim_line_item_acupoints"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    claim_line_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("claim_line_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    acupuncture_point_code = Column(
+        String(10), ForeignKey("acupuncture_points.code"), nullable=False
+    )
+    korean_name = Column(String(50), nullable=False)  # 청구 당시 경혈명 스냅샷 (화면 표시용)
+    display_order = Column(Integer, nullable=False, default=0)  # 입력 순서 보존
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "claim_line_item_id", "acupuncture_point_code",
+            name="uq_line_item_acupoint",
+        ),
+    )
+
+    line_item = relationship("ClaimLineItem", back_populates="acupoints")
+    acupuncture_point = relationship("AcupuncturePoint", foreign_keys=[acupuncture_point_code])
 
 
 # ================================================================

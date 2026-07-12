@@ -27,8 +27,10 @@ from app.billing.edi_writer import (
     generate_sam_files,
 )
 from app.core.models import (
+    AcupuncturePoint,
     Claim,
     ClaimLineItem,
+    ClaimLineItemAcupoint,
     ClaimResubmissionHistory,
     Doctor,
     DoctorWorkDays,
@@ -46,6 +48,7 @@ from app.core.config import settings
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import Optional
 
 # Patient.insurance_type 문자열 → InsuranceType 매핑
@@ -275,6 +278,62 @@ async def _count_daily_chuna_patients(
     if exclude_patient_id is not None:
         all_patients.discard(exclude_patient_id)
     return len(all_patients)
+
+
+async def resolve_and_validate_acupoints(
+    db: AsyncSession,
+    medical_record_id: UUID,
+    codes: list[str],
+    codes_already_in_request: set[str],
+) -> list[AcupuncturePoint]:
+    """경혈 코드 목록을 검증하고 AcupuncturePoint 객체 리스트로 반환한다.
+
+    - 존재하지 않는 코드가 있으면 400.
+    - 이 진료기록(medical_record_id)에 이미 연결된 경혈 + 이번 요청에서
+      먼저 처리된 경혈(codes_already_in_request, 여러 LineItemInput에 걸쳐
+      누적 관리는 호출부 책임)을 합쳐 forbidden_with 병용금기 조합을 체크.
+    """
+    if not codes:
+        return []
+
+    unique_codes = list(dict.fromkeys(codes))
+
+    result = await db.execute(
+        select(AcupuncturePoint).where(AcupuncturePoint.code.in_(unique_codes))
+    )
+    found = {p.code: p for p in result.scalars().all()}
+
+    missing = [c for c in unique_codes if c not in found]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"존재하지 않는 경혈 코드입니다: {missing}",
+        )
+
+    r_existing = await db.execute(
+        select(ClaimLineItemAcupoint.acupuncture_point_code)
+        .join(ClaimLineItem, ClaimLineItem.id == ClaimLineItemAcupoint.claim_line_item_id)
+        .where(ClaimLineItem.medical_record_id == medical_record_id)
+    )
+    existing_codes = {row[0] for row in r_existing.all()}
+    combined_context = existing_codes | codes_already_in_request
+
+    for code in unique_codes:
+        point = found[code]
+        if point.forbidden_with:
+            others_in_batch = {c for c in unique_codes if c != code}
+            conflicts = sorted(
+                c for c in point.forbidden_with
+                if c in combined_context or c in others_in_batch
+            )
+            if conflicts:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{code}({point.korean_name})는 {conflicts}와 동시 시술 불가합니다.",
+                )
+
+    codes_already_in_request.update(unique_codes)
+    return [found[c] for c in unique_codes]
 
 
 async def create_claim(
@@ -554,6 +613,7 @@ async def _build_claim_edi_file(
     r_li = await db.execute(
         select(ClaimLineItem)
         .where(ClaimLineItem.claim_id == claim_id)
+        .options(selectinload(ClaimLineItem.acupoints))
         .order_by(ClaimLineItem.created_at)
     )
     all_line_items = r_li.scalars().all()
@@ -866,14 +926,15 @@ async def _build_claim_edi_file(
                         special_code="JS010",
                         content=record.recorded_at.strftime("%Y%m%d%H%M"),
                     )))
-                if li.hyeolmyeong_names:
+                if li.acupoints:
+                    ordered_codes = [a.acupuncture_point_code for a in li.acupoints]
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
                         prescription_no=0,
                         line_no=line_no,
                         special_code="JS011",
-                        content="/".join(li.hyeolmyeong_names),
+                        content="/".join(ordered_codes),
                     )))
         else:
             # 구 차팅 경로 폴백: MedicalRecordProcedure 사용

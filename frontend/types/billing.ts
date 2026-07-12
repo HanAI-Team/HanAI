@@ -13,7 +13,7 @@ export interface ClaimLineItem {
   name: string;
   code: string;
   amount: number;
-  hyeolmyeongNames?: string[];
+  acupoints?: { code: string; koreanName: string }[];
   isNonBenefit?: boolean;
 }
 
@@ -28,6 +28,6 @@ export interface ClaimSummary {
 
 export interface SelectedBillableItem {
   itemId: string;
-  hyeolmyeongNames: string[];
+  acupointCodes: string[];
   isNonBenefit?: boolean;
 }
