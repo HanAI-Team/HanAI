@@ -793,7 +793,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",  # 명세서단위
-                prescription_no=0,
                 line_no=0,
                 special_code="MT032",
                 content=record.recorded_at.strftime("%Y%m%d%H%M"),
@@ -807,7 +806,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT019",
                 content=patient.confirmation_no,
@@ -818,7 +816,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT050",
                 content=mt050_content,
@@ -829,7 +826,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT008",
                 content=mt008_content,
@@ -841,7 +837,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT002",
                 content=special_case.special_code,
@@ -858,7 +853,6 @@ async def _build_claim_edi_file(
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     record_group_type="1",
-                    prescription_no=0,
                     line_no=0,
                     special_code="MT014",
                     content=mt014_content,
@@ -869,7 +863,6 @@ async def _build_claim_edi_file(
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     record_group_type="1",
-                    prescription_no=0,
                     line_no=0,
                     special_code="MT028",
                     content=f"{special_case.registered_disease_code}/{special_case.disease_name}",
@@ -921,7 +914,6 @@ async def _build_claim_edi_file(
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
-                        prescription_no=0,
                         line_no=line_no,
                         special_code="JS010",
                         content=record.recorded_at.strftime("%Y%m%d%H%M"),
@@ -931,7 +923,6 @@ async def _build_claim_edi_file(
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
-                        prescription_no=0,
                         line_no=line_no,
                         special_code="JS011",
                         content="/".join(ordered_codes),
@@ -959,11 +950,18 @@ async def _build_claim_edi_file(
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="1",  # 줄 번호를 특정 못해 명세서단위로 기재 (구 경로 한계)
-                        prescription_no=0,
                         line_no=0,
                         special_code="JS011",
                         content=proc.special_detail,
                     )))
+
+    # 청구서(H010) 헤더의 합계 필드는 모든 명세서(K020.1)의 대응 필드를 합산한
+    # 값이어야 한다 — 기존엔 0으로 고정 출력되어 MCPoS "청구서, 명세서 불일치"
+    # 오류가 발생했다 (2026-07-13 실측 확인).
+    header.benefit_total_2 = sum(p.benefit_total_2 for p in patient_records)
+    header.under_full_total = sum(p.under_full_total for p in patient_records)
+    header.under_full_copay = sum(p.under_full_copay for p in patient_records)
+    header.under_full_claim = sum(p.under_full_claim for p in patient_records)
 
     return EDIFile(
         header=header,
