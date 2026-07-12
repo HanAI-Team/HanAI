@@ -130,6 +130,23 @@ export async function getBillableCatalog(): Promise<BillableItem[]> {
   return apiCall("/api/billing/catalog");
 }
 
+export interface AcupuncturePointSearchResult {
+  code: string;
+  korean_name: string;
+  meridian: string | null;
+  location: string | null;
+  is_standalone: boolean;
+}
+
+export async function searchAcupuncturePoints(
+  query: string,
+  limit = 20
+): Promise<AcupuncturePointSearchResult[]> {
+  if (!query.trim()) return [];
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return apiCall(`/api/acupuncture/search?${params}`);
+}
+
 export interface StatementProcedureRow {
   hang: string;
   mok: string;
@@ -194,7 +211,7 @@ function mapClaimSummary(raw: any): ClaimSummary {
       name: li.name,
       code: li.code,
       amount: li.amount,
-      hyeolmyeongNames: li.hyeolmyeong_names ?? undefined,
+      acupoints: (li.acupoints ?? []).map((a: any) => ({ code: a.code, koreanName: a.korean_name })),
       isNonBenefit: li.is_non_benefit ?? false,
     })),
   };
@@ -211,7 +228,7 @@ export async function submitLineItems(
       medical_record_id: medicalRecordId,
       items: items.map((i) => ({
         item_id: i.itemId,
-        hyeolmyeong_names: i.hyeolmyeongNames,
+        acupoint_codes: i.acupointCodes,
         is_non_benefit: i.isNonBenefit ?? false,
       })),
       visit_type: visitType,

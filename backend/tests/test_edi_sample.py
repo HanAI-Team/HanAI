@@ -33,8 +33,10 @@ from sqlalchemy import select
 
 from app.billing.service import generate_claim_edi
 from app.core.models import (
+    AcupuncturePoint,
     Claim,
     ClaimLineItem,
+    ClaimLineItemAcupoint,
     DoctorWorkDays,
     Hospital,
     KcdUCode,
@@ -101,24 +103,43 @@ async def 한의원_외래_사례(db, approved_doctor):
     record.claim_id = claim.id
     await db.flush()
 
-    # 사례 진료내역 그대로 ClaimLineItem 생성
     db.add_all([
-        ClaimLineItem(
-            claim_id=claim.id,
-            medical_record_id=record.id,
-            hang="01", mok="01",
-            code="10100011",
-            name="초진진찰료(야간-차등수가제외)",
-            unit_price=11560, qty=1, days=1, amount=11560,
+        AcupuncturePoint(code="BL060", korean_name="곤륜"),
+        AcupuncturePoint(code="KI003", korean_name="태계"),
+    ])
+
+    # 사례 진료내역 그대로 ClaimLineItem 생성
+    db.add(ClaimLineItem(
+        claim_id=claim.id,
+        medical_record_id=record.id,
+        hang="01", mok="01",
+        code="10100011",
+        name="초진진찰료(야간-차등수가제외)",
+        unit_price=11560, qty=1, days=1, amount=11560,
+    ))
+
+    acu_line_item = ClaimLineItem(
+        claim_id=claim.id,
+        medical_record_id=record.id,
+        hang="04", mok="01",
+        code="40080010",
+        name="투자법 침술(야간)",
+        unit_price=4220, qty=1, days=1, amount=4220,
+    )
+    db.add(acu_line_item)
+    await db.flush()
+    db.add_all([
+        ClaimLineItemAcupoint(
+            claim_line_item_id=acu_line_item.id,
+            acupuncture_point_code="BL060",
+            korean_name="곤륜",
+            display_order=0,
         ),
-        ClaimLineItem(
-            claim_id=claim.id,
-            medical_record_id=record.id,
-            hang="04", mok="01",
-            code="40080010",
-            name="투자법 침술(야간)",
-            unit_price=4220, qty=1, days=1, amount=4220,
-            hyeolmyeong_names=["BL060", "KI003"],
+        ClaimLineItemAcupoint(
+            claim_line_item_id=acu_line_item.id,
+            acupuncture_point_code="KI003",
+            korean_name="태계",
+            display_order=1,
         ),
     ])
     await db.commit()
