@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import {updateHospital}  from '@/lib/api/hospitals'
 import { updateMyProfile } from '@/lib/api/auth'
+import { updateHospital } from '@/lib/api/hospitals'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -269,6 +269,9 @@ export default function GeneralTab() {
                   </span>
                 </span>
               </label>
+              <span className="block text-xs text-red-600 mt-1 text-center">
+              * 허위 입력 시 부당청구에 해당할 수 있으며, 이에 대한 법적 책임은 본인에게 있습니다.
+            </span>
               {ccError && <div className="text-red-500 text-sm">{ccError}</div>}
             </div>
           </div>
