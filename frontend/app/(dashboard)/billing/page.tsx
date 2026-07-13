@@ -341,10 +341,10 @@ export default function BillingPage() {
 
     let p: ClaimPrescription;
     try {
-      p = await getClaimPrescription(claim.id);
-    } catch {
+      p = await getClaimPrescription(claim.id, testMode);
+    } catch (e) {
       printWindow.close();
-      alert("처방전 데이터를 불러오지 못했습니다.");
+      alert(e instanceof Error ? e.message : "처방전 데이터를 불러오지 못했습니다.");
       return;
     }
 
