@@ -369,6 +369,7 @@ async def get_me(
     )
     hospital = hospital_result.scalar_one_or_none()
     institution_code = hospital.institution_code if hospital else None
+    agency_code = hospital.agency_code if hospital else None
 
     if isinstance(user, Doctor):
         subscription_result = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital.id ))
@@ -382,6 +383,7 @@ async def get_me(
             "hospital_id": user.hospital_id,
             "hospital_name": hospital.name if hospital else None,
             "institution_code": institution_code,
+            "agency_code": agency_code,
             "birth_date": user.birth_date,
             "tier" :  subscription.tier,
             "expired_at" : subscription.expired_at,
@@ -401,6 +403,7 @@ async def get_me(
         "hospital_id": user.hospital_id,
         "hospital_name": hospital.name if hospital else None,
         "institution_code": institution_code,
+        "agency_code": agency_code,
     }
 
 

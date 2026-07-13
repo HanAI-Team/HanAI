@@ -19,6 +19,11 @@ export default function GeneralTab() {
   const [hcError, setHcError] = useState<string | null>(null)
   const [hcSuccess, setHcSuccess] = useState(false)
 
+  const [agencyCode, setAgencyCode] = useState('')
+  const [acLoading, setAcLoading] = useState(false)
+  const [acError, setAcError] = useState<string | null>(null)
+  const [acSuccess, setAcSuccess] = useState(false)
+
   const [birthDate, setBirthDate] = useState('')
   const [bdLoading, setBdLoading] = useState(false)
   const [bdError, setBdError] = useState<string | null>(null)
@@ -81,6 +86,21 @@ export default function GeneralTab() {
     }
   }
 
+  const handleSaveAgencyCode = async () => {
+    if (!hospitalId) return
+    setAcLoading(true)
+    setAcError(null)
+    try {
+      await updateHospital(hospitalId, { agency_code: agencyCode })
+      setAcSuccess(true)
+      setTimeout(() => setAcSuccess(false), 3000)
+    } catch (e: any) {
+      setAcError(e.message || '대행청구단체기호 저장에 실패했습니다.')
+    } finally {
+      setAcLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetch(`${BASE_URL}/api/auth/me`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -89,6 +109,7 @@ export default function GeneralTab() {
       .then((me) => {
         setHospitalId(me.hospital_id)
         setInstitutionCode(me.institution_code || '')
+        setAgencyCode(me.agency_code || '')
         setBirthDate(me.birth_date || '')
         setChunaCertified(!!me.chuna_training_certified)
       })
@@ -188,6 +209,25 @@ export default function GeneralTab() {
                 className="w-full bg-[#EF6600] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
               >
                 {hcSuccess ? '✓ 저장 완료' : hcLoading ? '저장중...' : '저장'}
+              </button>
+
+              <div>
+                <label className="block text-xs text-subtext mb-1.5">대행청구단체기호</label>
+                <input
+                  type="text"
+                  maxLength={5}
+                  value={agencyCode}
+                  onChange={(e) => setAgencyCode(e.target.value.slice(0, 5))}
+                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-[#EF6600]"
+                />
+              </div>
+              {acError && <div className="text-red-500 text-sm">{acError}</div>}
+              <button
+                onClick={handleSaveAgencyCode}
+                disabled={acLoading}
+                className="w-full bg-[#EF6600] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {acSuccess ? '✓ 저장 완료' : acLoading ? '저장중...' : '저장'}
               </button>
             </div>
           </div>
