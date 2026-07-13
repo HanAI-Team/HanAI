@@ -199,6 +199,28 @@ export async function getClaimStatement(claimId: string): Promise<ClaimStatement
   return res.json();
 }
 
+export interface ClaimPrescription {
+  hospital_name: string;
+  institution_code: string;
+  hospital_phone: string;
+  issue_date: string;
+  issue_no: string;
+  patient_name: string;
+  patient_birth_masked: string;
+  disease_names: string[];
+  doctor_name: string;
+  license_type: string;
+  license_no: string;
+}
+
+export async function getClaimPrescription(claimId: string): Promise<ClaimPrescription> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/prescription`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("처방전 조회 실패");
+  return res.json();
+}
+
 function mapClaimSummary(raw: any): ClaimSummary {
   return {
     id: raw.id,
