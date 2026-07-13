@@ -43,7 +43,7 @@ from app.core.models import (
     SpecialCaseRegistration,
     Subscription,
 )
-from app.billing.schema import ClaimStatementResponse, StatementProcedureRow
+from app.billing.schema import ClaimPrescriptionResponse, ClaimStatementResponse, StatementProcedureRow
 from app.core.config import settings
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -1151,4 +1151,58 @@ async def build_claim_statement(
         under_full_copay=billing_result.under_full_copay,
         under_full_claim=billing_result.under_full_claim,
         under_full_veterans_claim=billing_result.under_full_veterans_claim,
+    )
+
+
+async def build_claim_prescription(
+    db: AsyncSession, hospital_id: UUID, claim_id: UUID
+) -> ClaimPrescriptionResponse:
+    """처방전(별지9호서식) 출력용 데이터 조립.
+
+    약품 항목 입력 기능이 없어 상단부(기관·환자·처방의료인 정보)만 채운다
+    — build_claim_statement()의 상병명/생년월일마스킹 계산과 동일한 방식.
+    """
+    result = await db.execute(
+        select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id)
+    )
+    claim = result.scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+
+    r2 = await db.execute(select(MedicalRecord).where(MedicalRecord.claim_id == claim_id))
+    medical_records = r2.scalars().all()
+
+    patient = await db.get(Patient, claim.patient_id)
+    doctor = await db.get(Doctor, claim.doctor_id)
+    hospital = await db.get(Hospital, hospital_id)
+
+    kcd_codes = sorted({r.kcd_code for r in medical_records if r.kcd_code})
+    disease_names = []
+    for code in kcd_codes:
+        r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == code))
+        kcd = r_kcd.scalar_one_or_none()
+        disease_names.append(f"{code} {kcd.korean_name}" if kcd else code)
+
+    visit_dates = sorted({
+        (r.recorded_at or r.created_at).date()
+        for r in medical_records if r.recorded_at or r.created_at
+    })
+    issue_date = (visit_dates[-1] if visit_dates else date.today()).strftime("%Y-%m-%d")
+
+    birth_masked = (
+        f"{patient.birth_date.strftime('%y%m%d')}-XXXXXXX" if patient and patient.birth_date else "-"
+    )
+
+    return ClaimPrescriptionResponse(
+        hospital_name=hospital.name if hospital else "-",
+        institution_code=hospital.institution_code if hospital and hospital.institution_code else "-",
+        hospital_phone=hospital.phone if hospital and hospital.phone else "-",
+        issue_date=issue_date,
+        issue_no=f"{claim.claim_period_year}{claim.claim_period_month:02d}0001",
+        patient_name=patient.name if patient else "-",
+        patient_birth_masked=birth_masked,
+        disease_names=disease_names,
+        doctor_name=doctor.name if doctor else "-",
+        license_type="한의사",
+        license_no=doctor.license_number if doctor else "-",
     )

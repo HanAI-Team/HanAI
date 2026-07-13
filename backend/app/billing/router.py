@@ -27,6 +27,7 @@ from app.billing.schema import (
     BillingCalcResponse,
     ClaimApprovalUpdateRequest,
     ClaimLineItemResponse,
+    ClaimPrescriptionResponse,
     ClaimRejectionCodeCreate,
     ClaimRejectionCodeResponse,
     ClaimRejectionCodeUpdate,
@@ -51,6 +52,7 @@ from app.billing.schema import (
 )
 from app.billing.service import (
     _INSURANCE_MAP,
+    build_claim_prescription,
     build_claim_statement,
     create_claim,
     generate_claim_edi,
@@ -933,6 +935,16 @@ async def get_claim_statement(
 ):
     """요양급여비용명세서(한방외래, 별지18호/GI013) 출력용 데이터."""
     return await build_claim_statement(db, current_user.hospital_id, claim_id)
+
+
+@router.get("/claims/{claim_id}/prescription", response_model=ClaimPrescriptionResponse)
+async def get_claim_prescription(
+    claim_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """처방전(의료법 시행규칙 별지9호서식) 출력용 데이터."""
+    return await build_claim_prescription(db, current_user.hospital_id, claim_id)
 
 
 @router.get("/catalog", response_model=list[BillableItemResponse])
