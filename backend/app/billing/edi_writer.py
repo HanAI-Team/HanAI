@@ -425,6 +425,8 @@ def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
     K020.2: 상병내역 (진단)
     K020.3: 진료내역 (시술·처치)
     K020.4: 특정내역
+    H060: 치료재료 및 약제 구입내역통보서 — 현재는 dummy(0KB) 고정, 추후
+          실제 구매내역 입력 기능 추가 시 교체 필요 (아래 주석 참고)
 
     해당 레코드가 없는 파일도 0바이트 더미 파일로 포함한다 (SAM File
     작성 규칙 — 발생하지 않는 SAM File이라도 Dummy file을 생성해야 함).
@@ -438,4 +440,9 @@ def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
         "K020.2": _join([build_diagnosis_record(d) for _, d in edi.diagnosis_records]),
         "K020.3": _join([build_procedure_record(p) for _, p in edi.procedure_records]),
         "K020.4": _join([build_special_record(s) for _, s in edi.special_records]),
+        # H060(치료재료 및 약제 구입내역통보서): 이 앱은 치료재료·원료약 구매내역을
+        # 입력받는 기능이 없고 한방에서는 대부분 발생하지 않는 항목이라, 「전자문서작성요령」
+        # 규칙("발생하지 않는 SAM File이라도 Dummy file을 생성해야 한다")에 따라 항상
+        # 0바이트로 생성한다. 구매내역 입력 기능이 생기면 이 자리를 실제 데이터로 교체.
+        "H060": b"",
     }
