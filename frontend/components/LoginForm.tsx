@@ -1,5 +1,5 @@
 'use client'
-import { login, staffLogin } from '@/lib/api/auth'
+import { getMe, login, staffLogin } from '@/lib/api/auth'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -22,7 +22,12 @@ export default function LoginForm() {
           ? await login(licenseNumber, password)
           : await staffLogin(username, password)
       localStorage.setItem('token', data.access_token)
+      const me = await getMe()
+    if (me?.is_expired) {
       router.push('/membership')
+    } else {
+      router.push('/home')
+    }
     } catch (e: any) {
       setError(e.message || '로그인에 실패했습니다')
     } finally {
