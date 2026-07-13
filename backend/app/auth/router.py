@@ -313,6 +313,7 @@ async def change_password(
             detail="현재 비밀번호가 일치하지 않습니다.",
         )
     doctor.password_hash = service.pwd_context.hash(data.new_password)
+    await service.save_password_history(db, "doctor", doctor.id, str(doctor.password_hash))
     await db.commit()
     return {"message": "비밀번호가 변경되었습니다."}
 
