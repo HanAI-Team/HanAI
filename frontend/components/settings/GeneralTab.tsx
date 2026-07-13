@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import {updateHospital}  from '@/lib/api/hospitals'
 import { updateMyProfile } from '@/lib/api/auth'
+import { updateHospital } from '@/lib/api/hospitals'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -23,6 +23,11 @@ export default function GeneralTab() {
   const [acLoading, setAcLoading] = useState(false)
   const [acError, setAcError] = useState<string | null>(null)
   const [acSuccess, setAcSuccess] = useState(false)
+
+  const [approvalNo, setApprovalNo] = useState('')
+  const [anLoading, setAnLoading] = useState(false)
+  const [anError, setAnError] = useState<string | null>(null)
+  const [anSuccess, setAnSuccess] = useState(false)
 
   const [birthDate, setBirthDate] = useState('')
   const [bdLoading, setBdLoading] = useState(false)
@@ -101,6 +106,21 @@ export default function GeneralTab() {
     }
   }
 
+  const handleSaveApprovalNo = async () => {
+    if (!hospitalId) return
+    setAnLoading(true)
+    setAnError(null)
+    try {
+      await updateHospital(hospitalId, { approval_no: approvalNo })
+      setAnSuccess(true)
+      setTimeout(() => setAnSuccess(false), 3000)
+    } catch (e: any) {
+      setAnError(e.message || '소프트웨어 승인번호 저장에 실패했습니다.')
+    } finally {
+      setAnLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetch(`${BASE_URL}/api/auth/me`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -110,6 +130,7 @@ export default function GeneralTab() {
         setHospitalId(me.hospital_id)
         setInstitutionCode(me.institution_code || '')
         setAgencyCode(me.agency_code || '')
+        setApprovalNo(me.approval_no || '')
         setBirthDate(me.birth_date || '')
         setChunaCertified(!!me.chuna_training_certified)
       })
@@ -229,6 +250,25 @@ export default function GeneralTab() {
               >
                 {acSuccess ? '✓ 저장 완료' : acLoading ? '저장중...' : '저장'}
               </button>
+
+              <div>
+                <label className="block text-xs text-subtext mb-1.5">소프트웨어 승인번호</label>
+                <p className="text-xs text-subtext mb-1.5">HIRA 기능검사 통과 후 발급되는 승인번호</p>
+                <input
+                  type="text"
+                  value={approvalNo}
+                  onChange={(e) => setApprovalNo(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-[#EF6600]"
+                />
+              </div>
+              {anError && <div className="text-red-500 text-sm">{anError}</div>}
+              <button
+                onClick={handleSaveApprovalNo}
+                disabled={anLoading}
+                className="w-full bg-[#EF6600] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {anSuccess ? '✓ 저장 완료' : anLoading ? '저장중...' : '저장'}
+              </button>
             </div>
           </div>
 
@@ -269,6 +309,9 @@ export default function GeneralTab() {
                   </span>
                 </span>
               </label>
+              <span className="block text-xs text-red-600 mt-1 text-center">
+              * 허위 입력 시 부당청구에 해당할 수 있으며, 이에 대한 법적 책임은 본인에게 있습니다.
+            </span>
               {ccError && <div className="text-red-500 text-sm">{ccError}</div>}
             </div>
           </div>

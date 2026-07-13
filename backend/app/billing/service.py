@@ -4,10 +4,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional
 from uuid import UUID
-from app.billing.catalog import CHUNA_50_CODES, CHUNA_80_CODES, CHUNA_CODES
-from app.billing.notice_rules import validate_notice_rules
 
+from app.billing.catalog import CHUNA_50_CODES, CHUNA_80_CODES, CHUNA_CODES
 from app.billing.copayment import (
     BillingInput,
     InsuranceType,
@@ -26,6 +26,13 @@ from app.billing.edi_writer import (
     generate_edi,
     generate_sam_files,
 )
+from app.billing.notice_rules import validate_notice_rules
+from app.billing.schema import (
+    ClaimPrescriptionResponse,
+    ClaimStatementResponse,
+    StatementProcedureRow,
+)
+from app.core.config import settings
 from app.core.models import (
     AcupuncturePoint,
     Claim,
@@ -43,13 +50,10 @@ from app.core.models import (
     SpecialCaseRegistration,
     Subscription,
 )
-from app.billing.schema import ClaimPrescriptionResponse, ClaimStatementResponse, StatementProcedureRow
-from app.core.config import settings
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import Optional
 
 # Patient.insurance_type 문자열 → InsuranceType 매핑
 _INSURANCE_MAP = {
@@ -354,11 +358,16 @@ async def create_claim(
     patient = r_patient.scalar_one_or_none()
     if not patient:
         raise HTTPException(status_code=404, detail="환자를 찾을 수 없습니다.")
-
-    # 추나요법 사전교육 이수여부 확인용 (notice_rules.py에서 사용, 2026-07-08 추가)
+    if approval_no is None:
+        r_hospital = await db.execute(
+            select(Hospital).where(Hospital.id == hospital_id)
+        )
+        _hospital = r_hospital.scalar_one_or_none()
+        if _hospital and _hospital.approval_no:
+            approval_no = _hospital.approval_no
     r_doctor = await db.execute(
-        select(Doctor).where(Doctor.id == doctor_id, Doctor.hospital_id == hospital_id)
-    )
+            select(Doctor).where(Doctor.id == doctor_id, Doctor.hospital_id == hospital_id)
+        )
     doctor_obj = r_doctor.scalar_one_or_none()
 
     r_sub = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital_id))
@@ -593,6 +602,26 @@ async def update_claim_resubmission(
     return claim
 
 
+def resolve_institution_code(hospital: Hospital | None, test_mode: bool) -> str:
+    """SAM(EDI)과 처방전 등 모든 출력물이 요양기관기호를 같은 소스에서 가져오도록
+    통일하는 공용 함수.
+
+    상시점검(테스트) SAM FILE은 실 요양기관기호 대신 심평원에 등록된
+    청구소프트웨어 업체기호를 기재하는 것이 공식 방법(신규SW검사
+    신청방법.pdf). 테스트 모드가 아닌데 요양기관기호가 비어있으면(과거엔
+    "00000000"으로 조용히 채워 MCPoS "청구서·명세서 요양기관기호 불일치"
+    오류의 원인이 됐다) 출력 자체를 막고 명확한 에러를 던진다.
+    """
+    if test_mode:
+        return settings.EDI_VENDOR_CODE
+    if not hospital or not hospital.institution_code:
+        raise HTTPException(
+            status_code=400,
+            detail="요양기관기호가 설정되지 않아 청구파일을 생성할 수 없습니다. 설정에서 요양기관기호를 입력해주세요.",
+        )
+    return hospital.institution_code
+
+
 async def _build_claim_edi_file(
     db: AsyncSession,
     hospital_id: UUID,
@@ -639,12 +668,7 @@ async def _build_claim_edi_file(
     hospital = r7.scalar_one_or_none()
 
     # 2. ClaimHeader 조립
-    # 상시점검(테스트) SAM FILE은 실 요양기관기호 대신 심평원에 등록된
-    # 청구소프트웨어 업체기호를 기재하는 것이 공식 방법 (신규SW검사 신청방법.pdf).
-    if test_mode:
-        inst_code = settings.EDI_VENDOR_CODE
-    else:
-        inst_code = (hospital.institution_code if hospital and hospital.institution_code else "00000000")
+    inst_code = resolve_institution_code(hospital, test_mode)
 
     treatment_ym = f"{claim.claim_period_year}{claim.claim_period_month:02d}"
     # 청구번호 an(10) = 진료년월(6) + 일련번호(4, 이 앱은 청구서 1건=파일 1개라 항상 "0001").
@@ -1155,12 +1179,14 @@ async def build_claim_statement(
 
 
 async def build_claim_prescription(
-    db: AsyncSession, hospital_id: UUID, claim_id: UUID
+    db: AsyncSession, hospital_id: UUID, claim_id: UUID, test_mode: bool = False
 ) -> ClaimPrescriptionResponse:
     """처방전(별지9호서식) 출력용 데이터 조립.
 
     약품 항목 입력 기능이 없어 상단부(기관·환자·처방의료인 정보)만 채운다
     — build_claim_statement()의 상병명/생년월일마스킹 계산과 동일한 방식.
+    요양기관기호는 SAM(EDI) 생성과 동일한 resolve_institution_code()를 써서
+    두 출력물이 서로 다른 값을 보여주는 일이 없도록 한다.
     """
     result = await db.execute(
         select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id)
@@ -1175,6 +1201,7 @@ async def build_claim_prescription(
     patient = await db.get(Patient, claim.patient_id)
     doctor = await db.get(Doctor, claim.doctor_id)
     hospital = await db.get(Hospital, hospital_id)
+    institution_code = resolve_institution_code(hospital, test_mode)
 
     kcd_codes = sorted({r.kcd_code for r in medical_records if r.kcd_code})
     disease_names = []
@@ -1195,7 +1222,7 @@ async def build_claim_prescription(
 
     return ClaimPrescriptionResponse(
         hospital_name=hospital.name if hospital else "-",
-        institution_code=hospital.institution_code if hospital and hospital.institution_code else "-",
+        institution_code=institution_code,
         hospital_phone=hospital.phone if hospital and hospital.phone else "-",
         issue_date=issue_date,
         issue_no=f"{claim.claim_period_year}{claim.claim_period_month:02d}0001",

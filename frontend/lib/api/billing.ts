@@ -213,11 +213,14 @@ export interface ClaimPrescription {
   license_no: string;
 }
 
-export async function getClaimPrescription(claimId: string): Promise<ClaimPrescription> {
-  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/prescription`, {
+export async function getClaimPrescription(claimId: string, testMode = false): Promise<ClaimPrescription> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/prescription${testMode ? "?test=true" : ""}`, {
     headers: getHeaders(),
   });
-  if (!res.ok) throw new Error("처방전 조회 실패");
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "처방전 조회 실패");
+  }
   return res.json();
 }
 

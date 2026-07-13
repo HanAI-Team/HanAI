@@ -49,6 +49,7 @@ export interface Hospital {
   phone?: string
   institution_code?: string
   agency_code?: string
+  approval_no?: string
 }
 
 export interface DoctorWorkDays {
@@ -68,6 +69,7 @@ export interface Me {
   hospital_name?: string | null
   institution_code?: string | null
   agency_code?: string | null
+  approval_no?: string | null
   license_number?: string
   username?: string
   email?: string

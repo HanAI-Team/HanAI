@@ -39,8 +39,11 @@ export function SettingsScreen() {
       Alert.alert("오류", "새 비밀번호가 일치하지 않습니다.");
       return;
     }
-    if (newPassword.length < 8) {
-      Alert.alert("오류", "비밀번호는 8자 이상이어야 합니다.");
+    const hasLetter = /[a-zA-Z]/.test(newPassword);
+    const hasNumber = /[0-9]/.test(newPassword);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
+    if (newPassword.length < 8 || !hasLetter || !hasNumber || !hasSpecial) {
+      Alert.alert("오류", "비밀번호는 8자 이상, 영문/숫자/특수문자를 포함해야 합니다.");
       return;
     }
     mutation.mutate();
