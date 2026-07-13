@@ -4,10 +4,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional
 from uuid import UUID
-from app.billing.catalog import CHUNA_50_CODES, CHUNA_80_CODES, CHUNA_CODES
-from app.billing.notice_rules import validate_notice_rules
 
+from app.billing.catalog import CHUNA_50_CODES, CHUNA_80_CODES, CHUNA_CODES
 from app.billing.copayment import (
     BillingInput,
     InsuranceType,
@@ -26,6 +26,13 @@ from app.billing.edi_writer import (
     generate_edi,
     generate_sam_files,
 )
+from app.billing.notice_rules import validate_notice_rules
+from app.billing.schema import (
+    ClaimPrescriptionResponse,
+    ClaimStatementResponse,
+    StatementProcedureRow,
+)
+from app.core.config import settings
 from app.core.models import (
     AcupuncturePoint,
     Claim,
@@ -43,13 +50,10 @@ from app.core.models import (
     SpecialCaseRegistration,
     Subscription,
 )
-from app.billing.schema import ClaimPrescriptionResponse, ClaimStatementResponse, StatementProcedureRow
-from app.core.config import settings
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import Optional
 
 # Patient.insurance_type 문자열 → InsuranceType 매핑
 _INSURANCE_MAP = {
@@ -354,11 +358,16 @@ async def create_claim(
     patient = r_patient.scalar_one_or_none()
     if not patient:
         raise HTTPException(status_code=404, detail="환자를 찾을 수 없습니다.")
-
-    # 추나요법 사전교육 이수여부 확인용 (notice_rules.py에서 사용, 2026-07-08 추가)
+    if approval_no is None:
+        r_hospital = await db.execute(
+            select(Hospital).where(Hospital.id == hospital_id)
+        )
+        _hospital = r_hospital.scalar_one_or_none()
+        if _hospital and _hospital.approval_no:
+            approval_no = _hospital.approval_no
     r_doctor = await db.execute(
-        select(Doctor).where(Doctor.id == doctor_id, Doctor.hospital_id == hospital_id)
-    )
+            select(Doctor).where(Doctor.id == doctor_id, Doctor.hospital_id == hospital_id)
+        )
     doctor_obj = r_doctor.scalar_one_or_none()
 
     r_sub = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital_id))
