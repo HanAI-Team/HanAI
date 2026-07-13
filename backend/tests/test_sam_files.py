@@ -19,13 +19,23 @@ from app.billing.edi_writer import (
 _KEY = RecordKey(claim_no="2026060001", record_serial=1)
 
 
-def test_다섯개_파일이_모두_생성됨():
+def test_여섯개_파일이_모두_생성됨():
     edi = EDIFile(
         header=ClaimHeader(claim_no="2026060001", form_no="H010", institution_code="12345678", treatment_ym="202606", claim_date="20260601"),
         patient_records=[PatientRecord(key=_KEY, institution_code="12345678")],
     )
     files = generate_sam_files(edi)
-    assert set(files.keys()) == {"H010", "K020.1", "K020.2", "K020.3", "K020.4"}
+    assert set(files.keys()) == {"H010", "K020.1", "K020.2", "K020.3", "K020.4", "H060"}
+
+
+def test_H060은_항상_0바이트_더미():
+    """치료재료 및 약제 구입내역통보서 — 이 앱은 구매내역 입력 기능이 없어 항상 0바이트."""
+    edi = EDIFile(
+        header=ClaimHeader(claim_no="2026060001", form_no="H010", institution_code="12345678", treatment_ym="202606", claim_date="20260601"),
+        patient_records=[PatientRecord(key=_KEY, institution_code="12345678")],
+    )
+    files = generate_sam_files(edi)
+    assert files["H060"] == b""
 
 
 def test_레코드_없는_파일은_0바이트_더미():
