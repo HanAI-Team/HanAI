@@ -129,6 +129,7 @@ class ClaimHeader:
     writer: str = ""                  # 작성자성명 an(20)
     writer_birth: str = "0000000000000"  # 작성자생년월일 an(13) — 형식 미확정, 플레이스홀더
     approval_no: str = ""             # 검사승인번호 an(35)
+    agency_code: str = ""             # 대행청구단체기호 an(5)
 
 
 def build_claim_header(h: ClaimHeader) -> str:
@@ -171,7 +172,7 @@ def build_claim_header(h: ClaimHeader) -> str:
         _fmtx(h.writer, 20),                          # 274-293 작성자성명
         _fmt9(int(h.writer_birth), 13),               # 294-306 작성자생년월일
         _fmtx(h.approval_no, 35),                     # 307-341 검사승인번호
-        _fmtx("", 5),                                 # 342-346 대행청구단체기호
+        _fmtx(h.agency_code, 5),                      # 342-346 대행청구단체기호
         _fmtx("", 1750),                              # 347-2096 참조란
     ]
     return _build(parts, 2096)
@@ -315,31 +316,36 @@ class ProcedureDetail:
     days: int = 0                # 총투여일수·실시횟수 n(3)
     amount: int = 0              # 금액 n(10)
     gamigam_gubun: str = ""      # 가감 등 구분 an(10): 기준처방B### 가미제A### 감미제S### 임의처방H###
-    license_kind: str = "3"      # 면허종류 an(1): 3=한의사
-    license_no: str = ""         # 면허번호 an(10)
+    change_date: str = ""        # 변경일 an(8) CCYYMMDD: 당월요양개시일 이후 단가 변경/신설 시 최초 투여(실시)일자. 해당없으면 공란
+    license_kind: str = "3"      # 면허종류 an(1): 3=한의사 6=간호사 7=사회복지사 (실제 시행한 사람 기준)
+    license_no: str = ""         # 면허번호 an(100): 실제 시행한 사람의 면허번호. 2개 이상이면 "/"로 구분
 
 
 def build_procedure_record(p: ProcedureDetail) -> str:
-    """레코드 3 생성 (75 bytes + CRLF).
+    """레코드 3 생성 (184 bytes + CRLF).
 
-    면허종류·면허번호는 이 레코드가 아니라 레코드 2-1(상병내역,
-    DiagnosisRecord)에 기재한다 — 진료내역 레코드엔 없음 (SAM(EDI)
-    레코드규격 문서로 확인, 2026-07-10).
+    면허종류·면허번호는 변경일(pos76) 뒤에 온다 — 「요양급여비용 청구방법,
+    심사청구서·명세서서식 및 작성요령」 p.134~136 "3) 명세서 진료내역"
+    원문으로 재확인, 2026-07-11. 0bc5b51에서 제거했던 건 위치/길이(면허번호
+    an(10))가 틀렸던 걸 "필드 자체가 없어야 한다"고 오판한 것이었음.
     """
     parts = [
-        *_key_parts(p.key),                 # 1-15   청구번호+명세서일련번호
-        _fmtx(p.hang, 2),                   # 16-17  항번호
-        _fmt9(int(p.mok), 2),               # 18-19  목번호
-        _fmt9(p.line_no, 4),                # 20-23  줄번호
-        _fmtx(p.code_gubun, 1),             # 24     코드구분
-        _fmtx(p.code, 9),                   # 25-33  코드
-        _fmt9v9(p.unit_price, 10, 2),       # 34-45  단가
-        _fmt9v9(p.qty, 5, 2),               # 46-52  1일투여량·투여(실시)횟수
-        _fmt9(p.days, 3),                   # 53-55  총투여일수·실시횟수
-        _fmt9(p.amount, 10),                # 56-65  금액
-        _fmtx(p.gamigam_gubun, 10),         # 66-75  가감 등 구분
+        *_key_parts(p.key),                 # 1-15    청구번호+명세서일련번호
+        _fmtx(p.hang, 2),                   # 16-17   항번호
+        _fmt9(int(p.mok), 2),               # 18-19   목번호
+        _fmt9(p.line_no, 4),                # 20-23   줄번호
+        _fmtx(p.code_gubun, 1),             # 24      코드구분
+        _fmtx(p.code, 9),                   # 25-33   코드
+        _fmt9v9(p.unit_price, 10, 2),       # 34-45   단가
+        _fmt9v9(p.qty, 5, 2),               # 46-52   1일투여량·투여(실시)횟수
+        _fmt9(p.days, 3),                   # 53-55   총투여일수·실시횟수
+        _fmt9(p.amount, 10),                # 56-65   금액
+        _fmtx(p.gamigam_gubun, 10),         # 66-75   가감 등 구분
+        _fmtx(p.change_date, 8),            # 76-83   변경일
+        _fmtx(p.license_kind, 1),           # 84      면허종류
+        _fmtx(p.license_no, 100),           # 85-184  면허번호
     ]
-    return _build(parts, 75)
+    return _build(parts, 184)
 
 
 # ---------------------------------------------------------------------------
@@ -350,24 +356,26 @@ def build_procedure_record(p: ProcedureDetail) -> str:
 class SpecialRecord:
     key: RecordKey
     record_group_type: str  # 발생단위구분 an(1): 1명세서단위 2줄번호단위 3처방내역줄번호단위 4처방내역단위
-    prescription_no: int    # 처방전발급번호 n(13)
     line_no: int             # 줄번호 n(4)
     special_code: str        # 특정내역구분 an(5): 별표8 (예: JS011 경혈코드)
     content: str              # 특정내역 an(700)
 
 
 def build_special_record(s: SpecialRecord) -> str:
-    """레코드 4 생성 (739 bytes + CRLF)."""
+    """레코드 4 생성 (725 bytes + CRLF).
+
+    한방은 「요양급여비용 청구방법, 심사청구서·명세서서식 및 작성요령」
+    p.137 "4) 명세서 특정내역기재란" 기준 내역구분·처방전발급번호 필드가
+    없다 — 2026-07-11 MCPoS 실측(최소/최대 725바이트)으로 확인.
+    """
     parts = [
         *_key_parts(s.key),                 # 1-15   청구번호+명세서일련번호
-        _fmtx("E", 1),                      # 16     내역구분
-        _fmtx(s.record_group_type, 1),      # 17     발생단위구분
-        _fmt9(s.prescription_no, 13),       # 18-30  처방전발급번호
-        _fmt9(s.line_no, 4),                # 31-34  줄번호
-        _fmtx(s.special_code, 5),           # 35-39  특정내역구분
-        _fmtx(s.content, 700),              # 40-739 특정내역
+        _fmtx(s.record_group_type, 1),      # 16     발생단위구분
+        _fmt9(s.line_no, 4),                # 17-20  줄번호
+        _fmtx(s.special_code, 5),           # 21-25  특정내역구분
+        _fmtx(s.content, 700),              # 26-725 특정내역
     ]
-    return _build(parts, 739)
+    return _build(parts, 725)
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +426,8 @@ def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
     K020.2: 상병내역 (진단)
     K020.3: 진료내역 (시술·처치)
     K020.4: 특정내역
+    H060: 치료재료 및 약제 구입내역통보서 — 현재는 dummy(0KB) 고정, 추후
+          실제 구매내역 입력 기능 추가 시 교체 필요 (아래 주석 참고)
 
     해당 레코드가 없는 파일도 0바이트 더미 파일로 포함한다 (SAM File
     작성 규칙 — 발생하지 않는 SAM File이라도 Dummy file을 생성해야 함).
@@ -431,4 +441,9 @@ def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
         "K020.2": _join([build_diagnosis_record(d) for _, d in edi.diagnosis_records]),
         "K020.3": _join([build_procedure_record(p) for _, p in edi.procedure_records]),
         "K020.4": _join([build_special_record(s) for _, s in edi.special_records]),
+        # H060(치료재료 및 약제 구입내역통보서): 이 앱은 치료재료·원료약 구매내역을
+        # 입력받는 기능이 없고 한방에서는 대부분 발생하지 않는 항목이라, 「전자문서작성요령」
+        # 규칙("발생하지 않는 SAM File이라도 Dummy file을 생성해야 한다")에 따라 항상
+        # 0바이트로 생성한다. 구매내역 입력 기능이 생기면 이 자리를 실제 데이터로 교체.
+        "H060": b"",
     }

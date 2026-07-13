@@ -27,8 +27,10 @@ from app.billing.edi_writer import (
     generate_sam_files,
 )
 from app.core.models import (
+    AcupuncturePoint,
     Claim,
     ClaimLineItem,
+    ClaimLineItemAcupoint,
     ClaimResubmissionHistory,
     Doctor,
     DoctorWorkDays,
@@ -41,11 +43,12 @@ from app.core.models import (
     SpecialCaseRegistration,
     Subscription,
 )
-from app.billing.schema import ClaimStatementResponse, StatementProcedureRow
+from app.billing.schema import ClaimPrescriptionResponse, ClaimStatementResponse, StatementProcedureRow
 from app.core.config import settings
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import Optional
 
 # Patient.insurance_type 문자열 → InsuranceType 매핑
@@ -275,6 +278,62 @@ async def _count_daily_chuna_patients(
     if exclude_patient_id is not None:
         all_patients.discard(exclude_patient_id)
     return len(all_patients)
+
+
+async def resolve_and_validate_acupoints(
+    db: AsyncSession,
+    medical_record_id: UUID,
+    codes: list[str],
+    codes_already_in_request: set[str],
+) -> list[AcupuncturePoint]:
+    """경혈 코드 목록을 검증하고 AcupuncturePoint 객체 리스트로 반환한다.
+
+    - 존재하지 않는 코드가 있으면 400.
+    - 이 진료기록(medical_record_id)에 이미 연결된 경혈 + 이번 요청에서
+      먼저 처리된 경혈(codes_already_in_request, 여러 LineItemInput에 걸쳐
+      누적 관리는 호출부 책임)을 합쳐 forbidden_with 병용금기 조합을 체크.
+    """
+    if not codes:
+        return []
+
+    unique_codes = list(dict.fromkeys(codes))
+
+    result = await db.execute(
+        select(AcupuncturePoint).where(AcupuncturePoint.code.in_(unique_codes))
+    )
+    found = {p.code: p for p in result.scalars().all()}
+
+    missing = [c for c in unique_codes if c not in found]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"존재하지 않는 경혈 코드입니다: {missing}",
+        )
+
+    r_existing = await db.execute(
+        select(ClaimLineItemAcupoint.acupuncture_point_code)
+        .join(ClaimLineItem, ClaimLineItem.id == ClaimLineItemAcupoint.claim_line_item_id)
+        .where(ClaimLineItem.medical_record_id == medical_record_id)
+    )
+    existing_codes = {row[0] for row in r_existing.all()}
+    combined_context = existing_codes | codes_already_in_request
+
+    for code in unique_codes:
+        point = found[code]
+        if point.forbidden_with:
+            others_in_batch = {c for c in unique_codes if c != code}
+            conflicts = sorted(
+                c for c in point.forbidden_with
+                if c in combined_context or c in others_in_batch
+            )
+            if conflicts:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{code}({point.korean_name})는 {conflicts}와 동시 시술 불가합니다.",
+                )
+
+    codes_already_in_request.update(unique_codes)
+    return [found[c] for c in unique_codes]
 
 
 async def create_claim(
@@ -554,6 +613,7 @@ async def _build_claim_edi_file(
     r_li = await db.execute(
         select(ClaimLineItem)
         .where(ClaimLineItem.claim_id == claim_id)
+        .options(selectinload(ClaimLineItem.acupoints))
         .order_by(ClaimLineItem.created_at)
     )
     all_line_items = r_li.scalars().all()
@@ -628,6 +688,7 @@ async def _build_claim_edi_file(
         copayment=claim.patient_copay,
         claim_amount=claim.claim_amount,
         approval_no=claim.approval_no or "",
+        agency_code=(hospital.agency_code if hospital else None) or "",
     )
 
     if not patient or not patient.rrn:
@@ -733,7 +794,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",  # 명세서단위
-                prescription_no=0,
                 line_no=0,
                 special_code="MT032",
                 content=record.recorded_at.strftime("%Y%m%d%H%M"),
@@ -747,7 +807,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT019",
                 content=patient.confirmation_no,
@@ -758,7 +817,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT050",
                 content=mt050_content,
@@ -769,7 +827,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT008",
                 content=mt008_content,
@@ -781,7 +838,6 @@ async def _build_claim_edi_file(
             special_records.append((serial, SpecialRecord(
                 key=rec_key,
                 record_group_type="1",
-                prescription_no=0,
                 line_no=0,
                 special_code="MT002",
                 content=special_case.special_code,
@@ -798,7 +854,6 @@ async def _build_claim_edi_file(
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     record_group_type="1",
-                    prescription_no=0,
                     line_no=0,
                     special_code="MT014",
                     content=mt014_content,
@@ -809,30 +864,33 @@ async def _build_claim_edi_file(
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     record_group_type="1",
-                    prescription_no=0,
                     line_no=0,
                     special_code="MT028",
                     content=f"{special_case.registered_disease_code}/{special_case.disease_name}",
                 )))
 
-        # DiagnosisRecord
-        if record.chart_structured and record.kcd_code:
-            r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
-            kcd = r_kcd.scalar_one_or_none()
-            today = date.today()
-            if not kcd or (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"진료기록({record.id})의 상병코드 '{record.kcd_code}'는 청구 가능한 KCD 완전코드가 아닙니다.",
-                )
-            diagnosis_records.append((serial, DiagnosisRecord(
-                key=rec_key,
-                kcd_code=record.kcd_code,
-                onset_date=record.recorded_at.strftime("%Y%m%d") if record.recorded_at else "00000000",
-                treatment_dept=9,  # 진료과목: 09=한의과
-                license_kind="3",
-                license_no=doctor.license_number if doctor else "",
-            )))
+        # DiagnosisRecord — 레코드 2-1(상병내역)은 명세서(레코드2)마다 최소 1건 필수(HIRA 규격).
+        if not record.kcd_code:
+            raise HTTPException(
+                status_code=400,
+                detail=f"진료기록({record.id})에 상병코드(KCD)가 입력되지 않아 청구파일을 생성할 수 없습니다.",
+            )
+        r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
+        kcd = r_kcd.scalar_one_or_none()
+        today = date.today()
+        if not kcd or (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
+            raise HTTPException(
+                status_code=400,
+                detail=f"진료기록({record.id})의 상병코드 '{record.kcd_code}'는 청구 가능한 KCD 완전코드가 아닙니다.",
+            )
+        diagnosis_records.append((serial, DiagnosisRecord(
+            key=rec_key,
+            kcd_code=record.kcd_code,
+            onset_date=record.recorded_at.strftime("%Y%m%d") if record.recorded_at else "00000000",
+            treatment_dept=9,  # 진료과목: 09=한의과
+            license_kind="3",
+            license_no=doctor.license_number if doctor else "",
+        )))
 
         record_line_items = line_items_by_record.get(record.id, [])
         if record_line_items:
@@ -857,19 +915,18 @@ async def _build_claim_edi_file(
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
-                        prescription_no=0,
                         line_no=line_no,
                         special_code="JS010",
                         content=record.recorded_at.strftime("%Y%m%d%H%M"),
                     )))
-                if li.hyeolmyeong_names:
+                if li.acupoints:
+                    ordered_codes = [a.acupuncture_point_code for a in li.acupoints]
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="2",
-                        prescription_no=0,
                         line_no=line_no,
                         special_code="JS011",
-                        content="/".join(li.hyeolmyeong_names),
+                        content="/".join(ordered_codes),
                     )))
         else:
             # 구 차팅 경로 폴백: MedicalRecordProcedure 사용
@@ -894,11 +951,18 @@ async def _build_claim_edi_file(
                     special_records.append((serial, SpecialRecord(
                         key=rec_key,
                         record_group_type="1",  # 줄 번호를 특정 못해 명세서단위로 기재 (구 경로 한계)
-                        prescription_no=0,
                         line_no=0,
                         special_code="JS011",
                         content=proc.special_detail,
                     )))
+
+    # 청구서(H010) 헤더의 합계 필드는 모든 명세서(K020.1)의 대응 필드를 합산한
+    # 값이어야 한다 — 기존엔 0으로 고정 출력되어 MCPoS "청구서, 명세서 불일치"
+    # 오류가 발생했다 (2026-07-13 실측 확인).
+    header.benefit_total_2 = sum(p.benefit_total_2 for p in patient_records)
+    header.under_full_total = sum(p.under_full_total for p in patient_records)
+    header.under_full_copay = sum(p.under_full_copay for p in patient_records)
+    header.under_full_claim = sum(p.under_full_claim for p in patient_records)
 
     return EDIFile(
         header=header,
@@ -1087,4 +1151,58 @@ async def build_claim_statement(
         under_full_copay=billing_result.under_full_copay,
         under_full_claim=billing_result.under_full_claim,
         under_full_veterans_claim=billing_result.under_full_veterans_claim,
+    )
+
+
+async def build_claim_prescription(
+    db: AsyncSession, hospital_id: UUID, claim_id: UUID
+) -> ClaimPrescriptionResponse:
+    """처방전(별지9호서식) 출력용 데이터 조립.
+
+    약품 항목 입력 기능이 없어 상단부(기관·환자·처방의료인 정보)만 채운다
+    — build_claim_statement()의 상병명/생년월일마스킹 계산과 동일한 방식.
+    """
+    result = await db.execute(
+        select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id)
+    )
+    claim = result.scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+
+    r2 = await db.execute(select(MedicalRecord).where(MedicalRecord.claim_id == claim_id))
+    medical_records = r2.scalars().all()
+
+    patient = await db.get(Patient, claim.patient_id)
+    doctor = await db.get(Doctor, claim.doctor_id)
+    hospital = await db.get(Hospital, hospital_id)
+
+    kcd_codes = sorted({r.kcd_code for r in medical_records if r.kcd_code})
+    disease_names = []
+    for code in kcd_codes:
+        r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == code))
+        kcd = r_kcd.scalar_one_or_none()
+        disease_names.append(f"{code} {kcd.korean_name}" if kcd else code)
+
+    visit_dates = sorted({
+        (r.recorded_at or r.created_at).date()
+        for r in medical_records if r.recorded_at or r.created_at
+    })
+    issue_date = (visit_dates[-1] if visit_dates else date.today()).strftime("%Y-%m-%d")
+
+    birth_masked = (
+        f"{patient.birth_date.strftime('%y%m%d')}-XXXXXXX" if patient and patient.birth_date else "-"
+    )
+
+    return ClaimPrescriptionResponse(
+        hospital_name=hospital.name if hospital else "-",
+        institution_code=hospital.institution_code if hospital and hospital.institution_code else "-",
+        hospital_phone=hospital.phone if hospital and hospital.phone else "-",
+        issue_date=issue_date,
+        issue_no=f"{claim.claim_period_year}{claim.claim_period_month:02d}0001",
+        patient_name=patient.name if patient else "-",
+        patient_birth_masked=birth_masked,
+        disease_names=disease_names,
+        doctor_name=doctor.name if doctor else "-",
+        license_type="한의사",
+        license_no=doctor.license_number if doctor else "-",
     )

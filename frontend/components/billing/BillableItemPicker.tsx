@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getBillableCatalog, submitLineItems, updateClaimSupportFund } from "@/lib/api/billing";
+import {
+  type AcupuncturePointSearchResult,
+  getBillableCatalog,
+  searchAcupuncturePoints,
+  submitLineItems,
+  updateClaimSupportFund,
+} from "@/lib/api/billing";
 import type { BillableItem, ClaimSummary, SelectedBillableItem } from "@/types/billing";
 
 interface BillableItemPickerProps {
@@ -12,7 +18,92 @@ interface BillableItemPickerProps {
 
 const CATEGORY_ORDER = ["진찰료", "침술", "뜸", "부항", "전기/온열", "추나", "검사", "한약", "비급여"];
 
-type SelectedEntry = { item: BillableItem; hyeolmyeong: string[]; isNonBenefit: boolean };
+type SelectedAcupoint = { code: string; koreanName: string };
+type SelectedEntry = { item: BillableItem; acupoints: SelectedAcupoint[]; isNonBenefit: boolean };
+
+function AcupointPicker({
+  selected,
+  onAdd,
+  onRemove,
+}: {
+  selected: SelectedAcupoint[];
+  onAdd: (point: AcupuncturePointSearchResult) => void;
+  onRemove: (code: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<AcupuncturePointSearchResult[]>([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      searchAcupuncturePoints(query)
+        .then(setResults)
+        .catch(() => setResults([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const selectedCodes = new Set(selected.map((s) => s.code));
+
+  return (
+    <div className="mt-1">
+      {selected.length > 0 && (
+        <div className="mb-1 flex flex-wrap gap-1">
+          {selected.map((a) => (
+            <span
+              key={a.code}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10px] text-text"
+            >
+              {a.koreanName}
+              <button
+                type="button"
+                onClick={() => onRemove(a.code)}
+                className="text-subtext hover:text-text"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="경혈명 검색 (예: 내관, 삼음교)"
+          className="w-full rounded-md border border-border bg-card px-2 py-1 text-xs text-text placeholder:text-subtext/60"
+        />
+        {open && results.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full max-h-40 overflow-y-auto rounded-md border border-border bg-card">
+            {results.map((r) => (
+              <button
+                key={r.code}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (!selectedCodes.has(r.code)) onAdd(r);
+                  setQuery("");
+                  setResults([]);
+                }}
+                disabled={selectedCodes.has(r.code)}
+                className="block w-full px-2 py-1 text-left text-xs text-text hover:bg-border/40 disabled:opacity-40"
+              >
+                {r.korean_name} <span className="text-[10px] text-subtext">({r.code})</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function BillableItemPicker({ medicalRecordId, visitType = "외래", onConfirmed }: BillableItemPickerProps) {
   const [catalog, setCatalog] = useState<BillableItem[]>([]);
@@ -57,17 +148,30 @@ export function BillableItemPicker({ medicalRecordId, visitType = "외래", onCo
       const next = new Map(prev);
       next.has(item.id)
         ? next.delete(item.id)
-        : next.set(item.id, { item, hyeolmyeong: [], isNonBenefit: !item.isInsured });
+        : next.set(item.id, { item, acupoints: [], isNonBenefit: !item.isInsured });
       return next;
     });
   }
 
-  function setHyeolmyeong(itemId: string, raw: string) {
+  function addAcupoint(itemId: string, point: AcupuncturePointSearchResult) {
     setSelected((prev) => {
       const entry = prev.get(itemId);
       if (!entry) return prev;
       const next = new Map(prev);
-      next.set(itemId, { ...entry, hyeolmyeong: raw.split(",").map((s) => s.trim()).filter(Boolean) });
+      next.set(itemId, {
+        ...entry,
+        acupoints: [...entry.acupoints, { code: point.code, koreanName: point.korean_name }],
+      });
+      return next;
+    });
+  }
+
+  function removeAcupoint(itemId: string, code: string) {
+    setSelected((prev) => {
+      const entry = prev.get(itemId);
+      if (!entry) return prev;
+      const next = new Map(prev);
+      next.set(itemId, { ...entry, acupoints: entry.acupoints.filter((a) => a.code !== code) });
       return next;
     });
   }
@@ -88,7 +192,7 @@ export function BillableItemPicker({ medicalRecordId, visitType = "외래", onCo
     setError(null);
     try {
       const payload: SelectedBillableItem[] = Array.from(selected.entries()).map(
-        ([itemId, { hyeolmyeong, isNonBenefit }]) => ({ itemId, hyeolmyeongNames: hyeolmyeong, isNonBenefit })
+        ([itemId, entry]) => ({ itemId, acupointCodes: entry.acupoints.map((a) => a.code), isNonBenefit: entry.isNonBenefit })
       );
       const claim = await submitLineItems(medicalRecordId, payload, visitType);
       setConfirmedClaim(claim);
@@ -218,11 +322,10 @@ export function BillableItemPicker({ medicalRecordId, visitType = "외래", onCo
               </button>
 
               {isSelected && item.requiresHyeolmyeong && (
-                <input
-                  type="text"
-                  placeholder="경혈명 (예: 내관, 삼음교)"
-                  onChange={(e) => setHyeolmyeong(item.id, e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1 text-xs text-text placeholder:text-subtext/60"
+                <AcupointPicker
+                  selected={entry?.acupoints ?? []}
+                  onAdd={(point) => addAcupoint(item.id, point)}
+                  onRemove={(code) => removeAcupoint(item.id, code)}
                 />
               )}
 

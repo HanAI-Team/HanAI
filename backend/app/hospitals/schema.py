@@ -11,6 +11,8 @@ class HospitalUpdate(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     institution_code: Optional[str] = None
+    agency_code: Optional[str] = None
+    approval_no: Optional[str] = None
 
 
 class HospitalResponse(BaseModel):
@@ -21,6 +23,8 @@ class HospitalResponse(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     institution_code: Optional[str] = None
+    agency_code: Optional[str] = None
+    approval_no: Optional[str] = None
 
 
 class StaffingCreate(BaseModel):

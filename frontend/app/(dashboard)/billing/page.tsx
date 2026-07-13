@@ -1,10 +1,12 @@
 "use client";
 import {
   ClaimListItem,
+  ClaimPrescription,
   ClaimStatement,
   StatementProcedureRow,
   bulkDownloadEdi,
   downloadSamFiles,
+  getClaimPrescription,
   getClaimStatement,
   getClaims,
   resubmitClaim,
@@ -90,8 +92,8 @@ export default function BillingPage() {
     setDownloading(id);
     try {
       await downloadSamFiles(id, testMode);
-    } catch {
-      alert("SAM File 다운로드에 실패했습니다.");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "SAM File 다운로드에 실패했습니다.");
     } finally {
       setDownloading(null);
     }
@@ -102,8 +104,8 @@ export default function BillingPage() {
     setDownloading("bulk");
     try {
       await bulkDownloadEdi([...selected], testMode);
-    } catch {
-      alert("일괄 EDI 다운로드에 실패했습니다.");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "일괄 EDI 다운로드에 실패했습니다.");
     } finally {
       setDownloading(null);
     }
@@ -330,6 +332,91 @@ export default function BillingPage() {
     printWindow.print();
   }
 
+  async function handlePrescriptionPrint(claim: ClaimListItem) {
+    const printWindow = window.open("", "_blank", "width=900,height=1000");
+    if (!printWindow) {
+      alert("팝업이 차단되어 인쇄할 수 없습니다. 팝업 차단을 해제해주세요.");
+      return;
+    }
+
+    let p: ClaimPrescription;
+    try {
+      p = await getClaimPrescription(claim.id);
+    } catch {
+      printWindow.close();
+      alert("처방전 데이터를 불러오지 못했습니다.");
+      return;
+    }
+
+    // 약품 항목 입력 기능이 없어 표는 빈 줄로 출력 — 수기로 작성
+    const blankDrugRows = Array.from({ length: 6 })
+      .map(() => `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`)
+      .join("");
+
+    const html = "<!DOCTYPE html>"
+      + `<html lang="ko"><head><meta charset="UTF-8"/>`
+      + `<title>처방전 - ${p.patient_name}</title>`
+      + `<style>`
+      + `*{margin:0;padding:0;box-sizing:border-box}`
+      + `body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#000;background:#fff;padding:20px 28px;font-size:12px}`
+      + `h1{font-size:18px;font-weight:bold;text-align:center;letter-spacing:6px;margin-bottom:2px}`
+      + `.subtitle{text-align:center;font-size:10px;color:#555;margin-bottom:4px}`
+      + `.checks{text-align:center;font-size:11px;margin-bottom:10px}`
+      + `table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0}`
+      + `th,td{border:1px solid #999;padding:5px 8px;text-align:center}`
+      + `th{background:#f0f0f0;font-weight:500}`
+      + `td.left{text-align:left}`
+      + `td.label{background:#f7f7f7;font-weight:500;text-align:left;white-space:nowrap}`
+      + `.section-title{font-weight:bold;margin:10px 0 2px;font-size:11px}`
+      + `.notice{margin-top:4px;font-size:10px;color:#666}`
+      + `@media print{body{padding:0}@page{margin:10mm;size:A4}}`
+      + `</style></head><body>`
+      + `<h1>처 방 전</h1>`
+      + `<div class="checks">[✔]건강보험 [ ]의료급여 [ ]산업재해보험 [ ]자동차보험 [ ]기타( &nbsp;&nbsp;&nbsp; )</div>`
+
+      + `<table><tbody>`
+      + `<tr><td class="label" style="width:120px">요양기관기호</td><td colspan="5" class="left">${p.institution_code}</td></tr>`
+      + `<tr>`
+      + `<td class="label">발급 연월일 및 번호</td><td class="left" colspan="2">${p.issue_date} - 제 ${p.issue_no} 호</td>`
+      + `<td class="label" style="width:70px">명칭</td><td class="left" colspan="2">${p.hospital_name}</td>`
+      + `</tr>`
+      + `<tr>`
+      + `<td class="label" rowspan="2">환자</td><td class="left">성명</td><td class="left">${p.patient_name}</td>`
+      + `<td class="label">전화번호</td><td class="left" colspan="2">${p.hospital_phone}</td>`
+      + `</tr>`
+      + `<tr>`
+      + `<td class="left">주민등록번호</td><td class="left">${p.patient_birth_masked}</td>`
+      + `<td class="label">전자우편</td><td class="left" colspan="2"></td>`
+      + `</tr>`
+      + `<tr>`
+      + `<td class="label">질병분류기호</td><td class="left" colspan="2">${p.disease_names.join(", ") || ""}</td>`
+      + `<td class="label">처방 의료인의 성명</td><td class="left">${p.doctor_name}<br/>(서명 또는 날인)</td>`
+      + `<td class="left">면허종류: ${p.license_type}<br/>면허번호: 제 ${p.license_no} 호</td>`
+      + `</tr>`
+      + `</tbody></table>`
+      + `<div class="notice">※ 환자가 요구하면 질병분류기호를 적지 않습니다.</div>`
+
+      + `<div class="section-title">처방 의약품</div>`
+      + `<table><thead><tr>`
+      + `<th class="left">처방 의약품의 명칭 및 코드</th><th>1회 투약량</th><th>1일 투여횟수</th>`
+      + `<th>총 투약일수</th><th>본인부담률<br/>구분코드</th><th>용법</th>`
+      + `</tr></thead><tbody>${blankDrugRows}</tbody></table>`
+
+      + `<table><tbody>`
+      + `<tr><td class="label" style="width:260px">주사제 처방명세 ([ ]원내조제, [ ]원외처방)</td><td class="left"></td><td class="label" style="width:120px">본인부담 구분기호</td><td class="left"></td></tr>`
+      + `<tr><td class="label">사용기간</td><td class="left" colspan="3">발급일부터 ( 2 )일간 — 사용기간 내에 약국에 제출하여야 합니다.</td></tr>`
+      + `</tbody></table>`
+
+      + `<div class="notice">※ 의료법 시행규칙 [별지 제9호서식]</div>`
+      + `</body></html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onafterprint = () => printWindow.close();
+    printWindow.print();
+  }
+
   return (
     <div className="p-6 md:p-8 max-w-[1100px] mx-auto">
       {/* 헤더 */}
@@ -441,18 +528,19 @@ export default function BillingPage() {
               <th className="p-3 text-center">EDI</th>
               <th className="p-3 text-center">영수증</th>
               <th className="p-3 text-center">명세서</th>
+              <th className="p-3 text-center">처방전</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={12} className="p-8 text-center text-subtext text-xs">
                   불러오는 중...
                 </td>
               </tr>
             ) : claims.length === 0 ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={12} className="p-8 text-center text-subtext text-xs">
                   청구 내역이 없습니다.
                 </td>
               </tr>
@@ -570,6 +658,14 @@ export default function BillingPage() {
                   <td className="p-3 text-center">
                     <button
                       onClick={() => handleStatementPrint(claim)}
+                      className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                    >
+                      출력
+                    </button>
+                  </td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => handlePrescriptionPrint(claim)}
                       className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
                     >
                       출력

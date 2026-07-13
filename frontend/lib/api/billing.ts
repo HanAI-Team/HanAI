@@ -61,7 +61,10 @@ export async function downloadEdi(claimId: string, testMode = false): Promise<vo
   const res = await fetch(endpoint, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error("EDI 생성 실패");
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "EDI 생성 실패");
+  }
 
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
@@ -78,7 +81,10 @@ export async function downloadSamFiles(claimId: string, testMode = false): Promi
   const res = await fetch(endpoint, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error("SAM File 생성 실패");
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "SAM File 생성 실패");
+  }
 
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
@@ -95,7 +101,10 @@ export async function bulkDownloadEdi(ids: string[], testMode = false): Promise<
     headers: getHeaders(),
     body: JSON.stringify({ ids, test_mode: testMode }),
   });
-  if (!res.ok) throw new Error("일괄 EDI 생성 실패");
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "일괄 EDI 생성 실패");
+  }
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -119,6 +128,23 @@ export function statusLabel(status: string): string {
 
 export async function getBillableCatalog(): Promise<BillableItem[]> {
   return apiCall("/api/billing/catalog");
+}
+
+export interface AcupuncturePointSearchResult {
+  code: string;
+  korean_name: string;
+  meridian: string | null;
+  location: string | null;
+  is_standalone: boolean;
+}
+
+export async function searchAcupuncturePoints(
+  query: string,
+  limit = 20
+): Promise<AcupuncturePointSearchResult[]> {
+  if (!query.trim()) return [];
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return apiCall(`/api/acupuncture/search?${params}`);
 }
 
 export interface StatementProcedureRow {
@@ -173,6 +199,28 @@ export async function getClaimStatement(claimId: string): Promise<ClaimStatement
   return res.json();
 }
 
+export interface ClaimPrescription {
+  hospital_name: string;
+  institution_code: string;
+  hospital_phone: string;
+  issue_date: string;
+  issue_no: string;
+  patient_name: string;
+  patient_birth_masked: string;
+  disease_names: string[];
+  doctor_name: string;
+  license_type: string;
+  license_no: string;
+}
+
+export async function getClaimPrescription(claimId: string): Promise<ClaimPrescription> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/prescription`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("처방전 조회 실패");
+  return res.json();
+}
+
 function mapClaimSummary(raw: any): ClaimSummary {
   return {
     id: raw.id,
@@ -185,7 +233,7 @@ function mapClaimSummary(raw: any): ClaimSummary {
       name: li.name,
       code: li.code,
       amount: li.amount,
-      hyeolmyeongNames: li.hyeolmyeong_names ?? undefined,
+      acupoints: (li.acupoints ?? []).map((a: any) => ({ code: a.code, koreanName: a.korean_name })),
       isNonBenefit: li.is_non_benefit ?? false,
     })),
   };
@@ -202,7 +250,7 @@ export async function submitLineItems(
       medical_record_id: medicalRecordId,
       items: items.map((i) => ({
         item_id: i.itemId,
-        hyeolmyeong_names: i.hyeolmyeongNames,
+        acupoint_codes: i.acupointCodes,
         is_non_benefit: i.isNonBenefit ?? false,
       })),
       visit_type: visitType,

@@ -241,7 +241,10 @@ class BillableItemResponse(BaseModel):
 
 class LineItemInput(BaseModel):
     item_id: str
-    hyeolmyeong_names: list[str] = Field(default_factory=list)
+    acupoint_codes: list[str] = Field(
+        default_factory=list,
+        description="경혈 코드 목록(AcupuncturePoint.code). requiresHyeolmyeong 항목일 때만 사용",
+    )
     is_non_benefit: bool = False
 
 
@@ -251,12 +254,20 @@ class AddLineItemsRequest(BaseModel):
     visit_type: Literal["외래", "입원"] = Field("외래", description="외래 | 입원 (VisitType enum과 일치)")
 
 
+class AcupointRef(BaseModel):
+    code: str
+    korean_name: str
+
+    class Config:
+        from_attributes = True
+
+
 class ClaimLineItemResponse(BaseModel):
     id: str
     name: str
     code: str
     amount: int
-    hyeolmyeong_names: list[str] | None = None
+    acupoints: list[AcupointRef] = Field(default_factory=list)
     is_non_benefit: bool = False
 
     class Config:
@@ -433,6 +444,26 @@ class ClaimStatementResponse(BaseModel):
     under_full_copay: int
     under_full_claim: int
     under_full_veterans_claim: int
+
+
+class ClaimPrescriptionResponse(BaseModel):
+    """처방전(의료법 시행규칙 별지 제9호서식) 출력용 데이터.
+
+    이 앱은 환자별 약품 처방(품명/코드/투약량/투여횟수/투약일수)을 입력받는
+    기능이 아직 없어, 서식의 상단부(요양기관·환자·처방의료인 정보)만 자동
+    채우고 처방 의약품 테이블은 빈칸으로 출력해 수기로 작성하게 한다.
+    """
+    hospital_name: str
+    institution_code: str
+    hospital_phone: str
+    issue_date: str          # 발급 연월일 YYYY-MM-DD
+    issue_no: str            # 발급번호 (청구번호로 대체 — 별도 처방전 발급 일련번호 체계 없음)
+    patient_name: str
+    patient_birth_masked: str
+    disease_names: list[str]
+    doctor_name: str
+    license_type: str
+    license_no: str
 
 
 class ClaimApprovalUpdateRequest(BaseModel):

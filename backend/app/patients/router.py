@@ -293,6 +293,57 @@ async def get_purge_logs(
     )
 
 
+@router.get("/purge-logs/csv")
+async def export_purge_logs_csv(
+    request: Request,
+    reason: str = Query(..., min_length=1, max_length=500, description="다운로드 사유"),
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    """개인정보 파기대장 CSV 다운로드. owner 전용, 자기 병원 것만 조회.
+
+    ※ /{patient_id} 조회 라우트보다 먼저 등록해야 함.
+    """
+    if str(doctor.role) != "owner":
+        raise HTTPException(status_code=403, detail="owner 계정만 접근 가능합니다.")
+
+    db.add(DataDownloadLog(
+        id=uuid.uuid4(),
+        hospital_id=doctor.hospital_id,
+        doctor_id=doctor.id,
+        download_type="purge_log",
+        reason=reason,
+        ip_address=request.client.host if request.client else None,
+    ))
+    await db.commit()
+
+    result = await db.execute(
+        select(DataPurgeLog)
+        .where(DataPurgeLog.hospital_id == doctor.hospital_id)
+        .order_by(DataPurgeLog.purged_at.desc())
+    )
+    logs = result.scalars().all()
+
+    df = pd.DataFrame([{
+        "환자명": log.patient_name_before or "",
+        "사유": log.reason,
+        "파기유형": log.purge_type,
+        "파기일시": log.purged_at,
+    } for log in logs])
+    if df.empty:
+        df = pd.DataFrame(columns=["환자명", "사유", "파기유형", "파기일시"])
+
+    output = io.StringIO()
+    df.to_csv(output, index=False, encoding="utf-8-sig")
+    output.seek(0)
+
+    return StreamingResponse(
+        iter(["\ufeff" + output.getvalue()]),  # BOM: StringIO는 encoding= 인자를 무시하므로 직접 부착
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=purge_logs.csv"}
+    )
+
+
 @router.get("/{patient_id}", response_model=PatientResponse)
 async def get_patient(
     patient_id: UUID,

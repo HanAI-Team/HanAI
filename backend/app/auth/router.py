@@ -313,6 +313,7 @@ async def change_password(
             detail="현재 비밀번호가 일치하지 않습니다.",
         )
     doctor.password_hash = service.pwd_context.hash(data.new_password)
+    await service.save_password_history(db, "doctor", doctor.id, str(doctor.password_hash))
     await db.commit()
     return {"message": "비밀번호가 변경되었습니다."}
 
@@ -368,6 +369,7 @@ async def get_me(
     )
     hospital = hospital_result.scalar_one_or_none()
     institution_code = hospital.institution_code if hospital else None
+    agency_code = hospital.agency_code if hospital else None
 
     if isinstance(user, Doctor):
         subscription_result = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital.id ))
@@ -381,6 +383,7 @@ async def get_me(
             "hospital_id": user.hospital_id,
             "hospital_name": hospital.name if hospital else None,
             "institution_code": institution_code,
+            "agency_code": agency_code,
             "birth_date": user.birth_date,
             "tier" :  subscription.tier,
             "expired_at" : subscription.expired_at,
@@ -400,6 +403,7 @@ async def get_me(
         "hospital_id": user.hospital_id,
         "hospital_name": hospital.name if hospital else None,
         "institution_code": institution_code,
+        "agency_code": agency_code,
     }
 
 
