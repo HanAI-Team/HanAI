@@ -129,6 +129,7 @@ class ClaimHeader:
     writer: str = ""                  # 작성자성명 an(20)
     writer_birth: str = "0000000000000"  # 작성자생년월일 an(13) — 형식 미확정, 플레이스홀더
     approval_no: str = ""             # 검사승인번호 an(35)
+    agency_code: str = ""             # 대행청구단체기호 an(5)
 
 
 def build_claim_header(h: ClaimHeader) -> str:
@@ -171,7 +172,7 @@ def build_claim_header(h: ClaimHeader) -> str:
         _fmtx(h.writer, 20),                          # 274-293 작성자성명
         _fmt9(int(h.writer_birth), 13),               # 294-306 작성자생년월일
         _fmtx(h.approval_no, 35),                     # 307-341 검사승인번호
-        _fmtx("", 5),                                 # 342-346 대행청구단체기호
+        _fmtx(h.agency_code, 5),                      # 342-346 대행청구단체기호
         _fmtx("", 1750),                              # 347-2096 참조란
     ]
     return _build(parts, 2096)

@@ -31,6 +31,7 @@ class Hospital(Base):
     address = Column(String)
     phone = Column(String)
     institution_code = Column(String(8), nullable=True)  # 심평원 요양기관기호
+    agency_code = Column(String(5), nullable=True)  # 대행청구단체기호 (EDI 레코드1 pos342-346)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     doctors = relationship("Doctor", back_populates="hospital")

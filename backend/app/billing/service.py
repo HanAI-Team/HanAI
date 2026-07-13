@@ -688,6 +688,7 @@ async def _build_claim_edi_file(
         copayment=claim.patient_copay,
         claim_amount=claim.claim_amount,
         approval_no=claim.approval_no or "",
+        agency_code=(hospital.agency_code if hospital else None) or "",
     )
 
     if not patient or not patient.rrn:
