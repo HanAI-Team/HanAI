@@ -5,6 +5,7 @@ import {
   ClaimStatement,
   StatementProcedureRow,
   bulkDownloadEdi,
+  createClaimPayment,
   downloadSamFiles,
   getClaimPrescription,
   getClaimStatement,
@@ -41,6 +42,21 @@ export default function BillingPage() {
   const [testMode, setTestMode] = useState(false);
   const [editingApprovalId, setEditingApprovalId] = useState<string | null>(null);
   const [approvalDraft, setApprovalDraft] = useState("");
+  const [paymentMethodDraft, setPaymentMethodDraft] = useState<Record<string, "cash" | "card" | "transfer">>({});
+  const [payingId, setPayingId] = useState<string | null>(null);
+
+  async function handleCompletePayment(claim: ClaimListItem) {
+    const method = paymentMethodDraft[claim.id] || "cash";
+    setPayingId(claim.id);
+    try {
+      await createClaimPayment(claim.id, method, claim.claim_amount);
+      setClaims((prev) => prev.map((c) => (c.id === claim.id ? { ...c, is_paid: true } : c)));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "수납 처리에 실패했습니다.");
+    } finally {
+      setPayingId(null);
+    }
+  }
 
   async function saveApproval(claimId: string) {
     const trimmed = approvalDraft.trim();
@@ -525,6 +541,7 @@ export default function BillingPage() {
               <th className="p-3 text-right">본인부담</th>
               <th className="p-3 text-right">청구금액</th>
               <th className="p-3 text-left">검사승인번호</th>
+              <th className="p-3 text-center">수납</th>
               <th className="p-3 text-center">EDI</th>
               <th className="p-3 text-center">영수증</th>
               <th className="p-3 text-center">명세서</th>
@@ -534,18 +551,20 @@ export default function BillingPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={13} className="p-8 text-center text-subtext text-xs">
                   불러오는 중...
                 </td>
               </tr>
             ) : claims.length === 0 ? (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={13} className="p-8 text-center text-subtext text-xs">
                   청구 내역이 없습니다.
                 </td>
               </tr>
             ) : (
-              claims.map((claim) => (
+              claims.map((claim) => {
+                const locked = claim.from_reception && !claim.is_paid;
+                return (
                 <tr
                   key={claim.id}
                   className={`border-t border-border hover:bg-fill transition-colors ${
@@ -613,6 +632,39 @@ export default function BillingPage() {
                     )}
                   </td>
                   <td className="p-3 text-center">
+                    {!claim.from_reception ? (
+                      <span className="text-xs text-muted">-</span>
+                    ) : claim.is_paid ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-green-500/10 text-green-500">
+                        수납완료
+                      </span>
+                    ) : (
+                      <div className="flex items-center justify-center gap-1">
+                        <select
+                          value={paymentMethodDraft[claim.id] || "cash"}
+                          onChange={(e) =>
+                            setPaymentMethodDraft((prev) => ({
+                              ...prev,
+                              [claim.id]: e.target.value as "cash" | "card" | "transfer",
+                            }))
+                          }
+                          className="bg-fill border border-border rounded-md px-1.5 py-1 text-xs text-text outline-none"
+                        >
+                          <option value="cash">현금</option>
+                          <option value="card">카드</option>
+                          <option value="transfer">계좌이체</option>
+                        </select>
+                        <button
+                          onClick={() => handleCompletePayment(claim)}
+                          disabled={payingId === claim.id}
+                          className="px-2 py-1 text-xs rounded-md bg-[#EF6600] text-white hover:opacity-90 disabled:opacity-50 transition-all"
+                        >
+                          {payingId === claim.id ? "처리 중..." : "수납완료처리"}
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-1.5">
                       <button
                         onClick={() => {
@@ -622,9 +674,9 @@ export default function BillingPage() {
                           }
                           handleDownload(claim.id);
                         }}
-                        disabled={downloading === claim.id}
+                        disabled={downloading === claim.id || locked}
                         className={`px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all ${
-                          isExpired ? "opacity-50 cursor-not-allowed" : ""
+                          isExpired || locked ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                       >
                         {downloading === claim.id ? "생성 중..." : "다운로드"}
@@ -648,31 +700,44 @@ export default function BillingPage() {
                     </div>
                   </td>
                   <td className="p-3 text-center">
-                    <button
-                      onClick={() => handleReceiptPrint(claim)}
-                      className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
-                    >
-                      출력
-                    </button>
+                    {locked ? (
+                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                    ) : (
+                      <button
+                        onClick={() => handleReceiptPrint(claim)}
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                      >
+                        출력
+                      </button>
+                    )}
                   </td>
                   <td className="p-3 text-center">
-                    <button
-                      onClick={() => handleStatementPrint(claim)}
-                      className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
-                    >
-                      출력
-                    </button>
+                    {locked ? (
+                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                    ) : (
+                      <button
+                        onClick={() => handleStatementPrint(claim)}
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                      >
+                        출력
+                      </button>
+                    )}
                   </td>
                   <td className="p-3 text-center">
-                    <button
-                      onClick={() => handlePrescriptionPrint(claim)}
-                      className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
-                    >
-                      출력
-                    </button>
+                    {locked ? (
+                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                    ) : (
+                      <button
+                        onClick={() => handlePrescriptionPrint(claim)}
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                      >
+                        출력
+                      </button>
+                    )}
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

@@ -79,6 +79,8 @@ from app.core.models import (
     Claim,
     ClaimLineItem,
     ClaimLineItemAcupoint,
+    ClaimPayment,
+    DailyQueue,
     DoctorWorkDays,
     FeeMaster,
     MedicalRecord,
@@ -105,6 +107,8 @@ class ClaimListItem(BaseModel):
     created_at: str
     special_case_review_reason: str | None = None
     approval_no: str | None = None
+    from_reception: bool = False  # 접수 대시보드 청구 모달에서 생성된 청구인지 여부
+    is_paid: bool = False         # from_reception 건에 한해 수납 완료 여부
 
 
 class ClaimCreateRequest(BaseModel):
@@ -189,6 +193,20 @@ async def list_claims(
 
     rows = await db.execute(stmt)
     results = rows.all()
+
+    claim_ids = [claim.id for claim, _ in results]
+    reception_claim_ids: set = set()
+    paid_claim_ids: set = set()
+    if claim_ids:
+        r_reception = await db.execute(
+            select(DailyQueue.claim_id).where(DailyQueue.claim_id.in_(claim_ids))
+        )
+        reception_claim_ids = {cid for cid, in r_reception.all()}
+        r_paid = await db.execute(
+            select(ClaimPayment.claim_id).where(ClaimPayment.claim_id.in_(claim_ids)).distinct()
+        )
+        paid_claim_ids = {cid for cid, in r_paid.all()}
+
     return [
         ClaimListItem(
             id=str(claim.id),
@@ -201,6 +219,8 @@ async def list_claims(
             created_at=claim.created_at.strftime("%Y-%m-%d") if claim.created_at else "",
             special_case_review_reason=claim.special_case_review_reason,
             approval_no=claim.approval_no,
+            from_reception=claim.id in reception_claim_ids,
+            is_paid=claim.id in paid_claim_ids,
         )
         for claim, patient in results
     ]

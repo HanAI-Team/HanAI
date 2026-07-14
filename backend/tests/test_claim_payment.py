@@ -1,7 +1,9 @@
 """환자 진료비 수납(ClaimPayment) + 자주 쓰는 항목(FeeMaster) 테스트."""
+import uuid
+
 import pytest
 
-from app.core.models import Patient
+from app.core.models import Claim, Patient
 from app.billing import payment_service
 from app.billing.service import checkout_queue_item, get_quick_fee_items
 from app.queue import service as queue_service
@@ -96,3 +98,54 @@ async def test_자주쓰는항목_빈도상위_favorites(db, billed_claim):
     result = await get_quick_fee_items(db, doctor.hospital_id)
     favorite_codes = [f["code"] for f in result["favorites"]]
     assert "AA159" in favorite_codes
+
+
+async def test_청구목록_접수건은_수납전엔_잠기고_수납후_풀린다(client, db, billed_claim, approved_doctor):
+    """접수 대시보드에서 만들어진 청구(from_reception=True)는 수납 전엔 is_paid=False로
+    내려와 프론트가 EDI/영수증/명세서 버튼을 잠글 수 있고, 수납 처리 후엔 True로 바뀐다."""
+    claim, queue, doctor = billed_claim
+    _, headers = approved_doctor
+
+    resp = await client.get("/api/billing/claims", headers=headers)
+    assert resp.status_code == 200, resp.text
+    item = next(i for i in resp.json() if i["id"] == str(claim.id))
+    assert item["from_reception"] is True
+    assert item["is_paid"] is False
+
+    await payment_service.create_payment(
+        db, doctor.hospital_id, claim.id, method="cash", amount=claim.claim_amount,
+        processed_by_name=doctor.name,
+    )
+
+    resp2 = await client.get("/api/billing/claims", headers=headers)
+    item2 = next(i for i in resp2.json() if i["id"] == str(claim.id))
+    assert item2["is_paid"] is True
+
+
+async def test_청구목록_레거시청구는_from_reception_false(client, db, approved_doctor):
+    """접수 대시보드를 거치지 않고(레거시 진료 플로우로) 만들어진 청구는
+    수납 기록이 없어도 from_reception=False로 내려와 문서 버튼이 잠기지 않아야 한다."""
+    doctor, headers = approved_doctor
+    patient = Patient(hospital_id=doctor.hospital_id, name="레거시환자", insurance_type="health")
+    db.add(patient)
+    await db.flush()
+    claim = Claim(
+        id=uuid.uuid4(),
+        patient_id=patient.id,
+        doctor_id=doctor.id,
+        hospital_id=doctor.hospital_id,
+        claim_period_year=2026,
+        claim_period_month=6,
+        total_amount=10000,
+        patient_copay=3000,
+        claim_amount=7000,
+        status="draft",
+    )
+    db.add(claim)
+    await db.commit()
+
+    resp = await client.get("/api/billing/claims", headers=headers)
+    assert resp.status_code == 200, resp.text
+    item = next(i for i in resp.json() if i["id"] == str(claim.id))
+    assert item["from_reception"] is False
+    assert item["is_paid"] is False

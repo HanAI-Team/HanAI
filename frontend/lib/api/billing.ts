@@ -21,6 +21,8 @@ export interface ClaimListItem {
   claim_amount: number;
   created_at: string;
   approval_no?: string | null;
+  from_reception: boolean;
+  is_paid: boolean;
 }
 
 export interface ClaimResubmissionRequest {
@@ -311,6 +313,28 @@ export interface CheckoutPreviewResult {
   patient_copay: number;
   claim_amount: number;
   special_code: string | null;
+}
+
+export interface ClaimPayment {
+  id: string;
+  claim_id: string;
+  patient_name: string;
+  method: "cash" | "card" | "transfer";
+  claim_amount: number;
+  amount: number;
+  paid_at: string;
+  processed_by_name: string;
+}
+
+export async function createClaimPayment(
+  claimId: string,
+  method: "cash" | "card" | "transfer",
+  amount: number
+): Promise<ClaimPayment> {
+  return apiCall(`/api/billing/claims/${claimId}/payments`, {
+    method: "POST",
+    body: JSON.stringify({ method, amount }),
+  });
 }
 
 export async function previewCheckoutBilling(
