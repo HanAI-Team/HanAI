@@ -15,6 +15,7 @@ import {
   updateClaimApproval,
 } from "@/lib/api/billing";
 import { useIsExpired } from "@/contexts/SubscriptionContext";
+import PaymentHistoryModal from "@/components/billing/PaymentHistoryModal";
 import { useEffect, useState } from "react";
 
 const STATUS_FILTERS = [
@@ -44,6 +45,7 @@ export default function BillingPage() {
   const [approvalDraft, setApprovalDraft] = useState("");
   const [paymentMethodDraft, setPaymentMethodDraft] = useState<Record<string, "cash" | "card" | "transfer">>({});
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
 
   async function handleCompletePayment(claim: ClaimListItem) {
     const method = paymentMethodDraft[claim.id] || "cash";
@@ -441,16 +443,24 @@ export default function BillingPage() {
           <h1 className="text-2xl text-text">보험 청구</h1>
           <p className="text-xs text-subtext mt-1">EDI 파일 생성 및 다운로드</p>
         </div>
-        <button
-          onClick={() => setTestMode((v) => !v)}
-          className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
-            testMode
-              ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100"
-              : "border-border text-subtext hover:text-text"
-          }`}
-        >
-          {testMode ? "테스트 모드 ON" : "테스트 모드"}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setPaymentHistoryOpen(true)}
+            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-subtext hover:text-text hover:border-text transition-all"
+          >
+            수납 내역
+          </button>
+          <button
+            onClick={() => setTestMode((v) => !v)}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
+              testMode
+                ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                : "border-border text-subtext hover:text-text"
+            }`}
+          >
+            {testMode ? "테스트 모드 ON" : "테스트 모드"}
+          </button>
+        </div>
       </div>
 
       {/* 테스트 모드 배너 */}
@@ -752,6 +762,10 @@ export default function BillingPage() {
             reload();
           }}
         />
+      )}
+
+      {paymentHistoryOpen && (
+        <PaymentHistoryModal onClose={() => setPaymentHistoryOpen(false)} />
       )}
     </div>
   );

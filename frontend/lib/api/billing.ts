@@ -337,6 +337,48 @@ export async function createClaimPayment(
   });
 }
 
+export interface ClaimPaymentListResult {
+  total: number;
+  page: number;
+  size: number;
+  items: ClaimPayment[];
+}
+
+export interface ClaimPaymentSummary {
+  today_total: number;
+  month_total: number;
+  cash_ratio: number;
+  card_ratio: number;
+}
+
+export async function listClaimPayments(params: {
+  start_date?: string;
+  end_date?: string;
+  method?: string;
+  page?: number;
+  size?: number;
+}): Promise<ClaimPaymentListResult> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set("start_date", params.start_date);
+  if (params.end_date) qs.set("end_date", params.end_date);
+  if (params.method) qs.set("method", params.method);
+  qs.set("page", String(params.page ?? 1));
+  qs.set("size", String(params.size ?? 20));
+  return apiCall(`/api/billing/payments?${qs.toString()}`);
+}
+
+export async function getClaimPaymentSummary(params: {
+  start_date?: string;
+  end_date?: string;
+  method?: string;
+}): Promise<ClaimPaymentSummary> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set("start_date", params.start_date);
+  if (params.end_date) qs.set("end_date", params.end_date);
+  if (params.method) qs.set("method", params.method);
+  return apiCall(`/api/billing/payments/summary?${qs.toString()}`);
+}
+
 export async function previewCheckoutBilling(
   patientId: string,
   lineItems: CheckoutPreviewLineItem[]
