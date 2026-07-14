@@ -616,6 +616,92 @@ _FEE_CATEGORY_TO_HANG_MOK: dict[str, tuple[str, str]] = {
 }
 
 
+async def _compute_line_items_billing(
+    db: AsyncSession,
+    patient_id: UUID,
+    line_items: list[dict],
+) -> dict:
+    """FeeMaster 단가로 처방/시술 내역의 금액과 calculate_billing() 결과를 계산.
+
+    DB에 아무것도 쓰지 않는 순수 계산(조회만) — 청구 모달의 실시간 미리보기
+    (preview_checkout_billing)와 실제 저장(checkout_queue_item) 양쪽에서
+    동일 로직을 재사용하기 위해 분리했다.
+
+    line_items: [{"code": str, "qty": Decimal|float, "days": int}, ...]
+    """
+    if not line_items:
+        raise HTTPException(status_code=400, detail="처방/시술 내역이 없습니다.")
+
+    codes = [li["code"] for li in line_items]
+    r_fee = await db.execute(select(FeeMaster).where(FeeMaster.code.in_(codes)))
+    fee_by_code = {f.code: f for f in r_fee.scalars().all()}
+
+    resolved_line_items = []
+    total_amount = 0
+    total_non_benefit = 0
+    chuna_total = 0
+    chuna_80_total = 0
+    for li in line_items:
+        fee = fee_by_code.get(li["code"])
+        if not fee:
+            raise HTTPException(status_code=400, detail=f"'{li['code']}'는 존재하지 않는 수가코드입니다.")
+        hang, mok = _FEE_CATEGORY_TO_HANG_MOK.get(fee.category, ("04", "99"))
+        qty = Decimal(str(li.get("qty", 1)))
+        days = int(li.get("days", 1))
+        amount = int(Decimal(str(fee.unit_price)) * qty * days)
+        is_non_benefit = not fee.is_insured
+        resolved_line_items.append({
+            "code": fee.code, "name": fee.name, "hang": hang, "mok": mok,
+            "unit_price": fee.unit_price, "qty": qty, "days": days,
+            "amount": amount, "is_non_benefit": is_non_benefit,
+        })
+        total_amount += amount
+        if is_non_benefit:
+            total_non_benefit += amount
+        elif fee.code in CHUNA_50_CODES:
+            chuna_total += amount
+        elif fee.code in CHUNA_80_CODES:
+            chuna_80_total += amount
+
+    patient = await db.get(Patient, patient_id)
+    ins = _INSURANCE_MAP.get((patient.insurance_type if patient else None) or "health", InsuranceType.HEALTH)
+    aid_grade = None
+    if patient and patient.medical_aid_grade == "1":
+        aid_grade = MedicalAidGrade.GRADE_1
+    elif patient and patient.medical_aid_grade == "2":
+        aid_grade = MedicalAidGrade.GRADE_2
+    special_case = await resolve_active_special_code(db, patient_id)
+
+    billing_result = calculate_billing(BillingInput(
+        insurance_type=ins,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=total_amount - total_non_benefit,
+        non_benefit_total=total_non_benefit,
+        medical_aid_grade=aid_grade,
+        has_disability=bool(patient.disability_grade) if patient else False,
+        birth_date=patient.birth_date if patient else None,
+        special_code=special_case.special_code,
+        chuna_total=chuna_total,
+        chuna_80_total=chuna_80_total,
+    ))
+
+    return {
+        "resolved_line_items": resolved_line_items,
+        "total_amount": total_amount,
+        "non_benefit_total": total_non_benefit,
+        "patient_copay": billing_result.copayment,
+        "claim_amount": billing_result.claim_amount,
+        "disability_medical_aid": billing_result.disability_medical_cost,
+        "support_fund": billing_result.support_fund,
+        "special_code": special_case.special_code,
+    }
+
+
+async def preview_checkout_billing(db: AsyncSession, patient_id: UUID, line_items: list[dict]) -> dict:
+    """청구 모달 실시간 미리보기(총진료비/본인부담금/청구액/산정특례) — DB 미변경."""
+    return await _compute_line_items_billing(db, patient_id, line_items)
+
+
 async def checkout_queue_item(
     db: AsyncSession,
     hospital_id: UUID,
@@ -631,8 +717,7 @@ async def checkout_queue_item(
 
     line_items: [{"code": str, "qty": Decimal|float, "days": int}, ...]
     """
-    if not line_items:
-        raise HTTPException(status_code=400, detail="처방/시술 내역이 없습니다.")
+    billing = await _compute_line_items_billing(db, queue.patient_id, line_items)
 
     record = MedicalRecord(
         patient_id=queue.patient_id,
@@ -648,10 +733,6 @@ async def checkout_queue_item(
     # 로직을 여기서 다시 만들지 않는다.
     await update_kcd_code(db, doctor, record.id, kcd_code)
 
-    codes = [li["code"] for li in line_items]
-    r_fee = await db.execute(select(FeeMaster).where(FeeMaster.code.in_(codes)))
-    fee_by_code = {f.code: f for f in r_fee.scalars().all()}
-
     claim = Claim(
         id=uuid.uuid4(),
         patient_id=queue.patient_id,
@@ -659,88 +740,21 @@ async def checkout_queue_item(
         hospital_id=hospital_id,
         claim_period_year=record.recorded_at.year,
         claim_period_month=record.recorded_at.month,
-        total_amount=0,
-        patient_copay=0,
-        claim_amount=0,
+        total_amount=billing["total_amount"],
+        non_benefit_total=billing["non_benefit_total"],
+        patient_copay=billing["patient_copay"],
+        claim_amount=billing["claim_amount"],
+        disability_medical_aid=billing["disability_medical_aid"],
+        support_fund=billing["support_fund"],
         status="draft",
     )
     db.add(claim)
     await db.flush()
 
-    total_amount = 0
-    total_non_benefit = 0
-    for li in line_items:
-        fee = fee_by_code.get(li["code"])
-        if not fee:
-            raise HTTPException(status_code=400, detail=f"'{li['code']}'는 존재하지 않는 수가코드입니다.")
-        hang, mok = _FEE_CATEGORY_TO_HANG_MOK.get(fee.category, ("04", "99"))
-        qty = Decimal(str(li.get("qty", 1)))
-        days = int(li.get("days", 1))
-        amount = int(Decimal(str(fee.unit_price)) * qty * days)
-        is_non_benefit = not fee.is_insured
-        db.add(ClaimLineItem(
-            claim_id=claim.id,
-            medical_record_id=record.id,
-            hang=hang, mok=mok,
-            code=fee.code, name=fee.name,
-            unit_price=fee.unit_price,
-            qty=qty, days=days,
-            amount=amount,
-            is_non_benefit=is_non_benefit,
-        ))
-        total_amount += amount
-        if is_non_benefit:
-            total_non_benefit += amount
+    for item in billing["resolved_line_items"]:
+        db.add(ClaimLineItem(claim_id=claim.id, medical_record_id=record.id, **item))
 
-    claim.total_amount = total_amount
-    claim.non_benefit_total = total_non_benefit
     record.claim_id = claim.id
-
-    patient = await db.get(Patient, queue.patient_id)
-    ins = _INSURANCE_MAP.get((patient.insurance_type if patient else None) or "health", InsuranceType.HEALTH)
-    aid_grade = None
-    if patient and patient.medical_aid_grade == "1":
-        aid_grade = MedicalAidGrade.GRADE_1
-    elif patient and patient.medical_aid_grade == "2":
-        aid_grade = MedicalAidGrade.GRADE_2
-    special_case = await resolve_active_special_code(db, queue.patient_id)
-
-    # 추나 본인부담률(50%/80%) 분리 합산 — add_line_items()와 동일한 방식.
-    await db.flush()
-    chuna_50_rows = await db.execute(
-        select(ClaimLineItem.amount).where(
-            ClaimLineItem.claim_id == claim.id,
-            ClaimLineItem.is_non_benefit == False,
-            ClaimLineItem.code.in_(CHUNA_50_CODES),
-        )
-    )
-    chuna_total = sum(r.amount or 0 for r in chuna_50_rows)
-    chuna_80_rows = await db.execute(
-        select(ClaimLineItem.amount).where(
-            ClaimLineItem.claim_id == claim.id,
-            ClaimLineItem.is_non_benefit == False,
-            ClaimLineItem.code.in_(CHUNA_80_CODES),
-        )
-    )
-    chuna_80_total = sum(r.amount or 0 for r in chuna_80_rows)
-
-    billing_result = calculate_billing(BillingInput(
-        insurance_type=ins,
-        visit_type=VisitType.OUTPATIENT,
-        benefit_total=claim.total_amount - claim.non_benefit_total,
-        non_benefit_total=claim.non_benefit_total,
-        medical_aid_grade=aid_grade,
-        has_disability=bool(patient.disability_grade) if patient else False,
-        birth_date=patient.birth_date if patient else None,
-        special_code=special_case.special_code,
-        chuna_total=chuna_total,
-        chuna_80_total=chuna_80_total,
-    ))
-    claim.patient_copay = billing_result.copayment
-    claim.claim_amount = billing_result.claim_amount
-    claim.disability_medical_aid = billing_result.disability_medical_cost
-    claim.support_fund = billing_result.support_fund
-
     queue.claim_id = claim.id
     queue.status = "billed"
 

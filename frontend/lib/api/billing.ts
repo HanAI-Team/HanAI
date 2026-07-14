@@ -282,3 +282,43 @@ export async function updateClaimApproval(
     body: JSON.stringify({ approval_no: approvalNo }),
   });
 }
+
+export interface QuickFeeItem {
+  code: string;
+  name: string;
+  category: string;
+  unit_price: number;
+}
+
+export interface QuickFeeItems {
+  categories: string[];
+  favorites: QuickFeeItem[];
+  by_category: Record<string, QuickFeeItem[]>;
+}
+
+export async function getQuickFeeItems(): Promise<QuickFeeItems> {
+  return apiCall("/api/billing/fee-quick-items");
+}
+
+export interface CheckoutPreviewLineItem {
+  code: string;
+  qty: number;
+  days: number;
+}
+
+export interface CheckoutPreviewResult {
+  total_amount: number;
+  patient_copay: number;
+  claim_amount: number;
+  special_code: string | null;
+}
+
+export async function previewCheckoutBilling(
+  patientId: string,
+  lineItems: CheckoutPreviewLineItem[]
+): Promise<CheckoutPreviewResult> {
+  return apiCall("/api/billing/checkout-preview", {
+    method: "POST",
+    body: JSON.stringify({ patient_id: patientId, line_items: lineItems }),
+  });
+}

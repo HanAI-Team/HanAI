@@ -41,6 +41,8 @@ from app.billing.schema import (
     ClaimResubmissionUpdate,
     ClaimStatementResponse,
     ClaimSummaryResponse,
+    CheckoutPreviewRequest,
+    CheckoutPreviewResponse,
     DoctorWorkDaysCreate,
     DoctorWorkDaysItem,
     DoctorWorkDaysUpdate,
@@ -65,6 +67,7 @@ from app.billing.service import (
     generate_claim_edi,
     generate_claim_sam_files,
     get_quick_fee_items as service_get_quick_fee_items,
+    preview_checkout_billing,
     resolve_active_special_code,
     resolve_and_validate_acupoints,
     update_claim_resubmission,
@@ -1043,6 +1046,26 @@ async def get_quick_fee_items(
 ):
     """청구 모달의 카테고리 탭 + 빠른 입력 버튼 그리드 — FeeMaster 실데이터 기반."""
     return await service_get_quick_fee_items(db, current_user.hospital_id)
+
+
+@router.post("/checkout-preview", response_model=CheckoutPreviewResponse)
+async def preview_checkout(
+    body: CheckoutPreviewRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """청구 모달에서 처방/시술 내역을 추가/삭제할 때마다 호출하는 실시간 미리보기.
+    DB에 아무것도 쓰지 않으며, 실제 저장(checkout_queue_item)과 동일한
+    calculate_billing() 계산 경로를 재사용한다."""
+    result = await preview_checkout_billing(
+        db, body.patient_id, [li.model_dump() for li in body.line_items]
+    )
+    return CheckoutPreviewResponse(
+        total_amount=result["total_amount"],
+        patient_copay=result["patient_copay"],
+        claim_amount=result["claim_amount"],
+        special_code=result["special_code"],
+    )
 
 
 @router.get("/catalog", response_model=list[BillableItemResponse])

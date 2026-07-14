@@ -5,8 +5,8 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.core.models import ClaimLineItem, MedicalRecord, Patient
-from app.billing.service import checkout_queue_item
+from app.core.models import Claim, ClaimLineItem, MedicalRecord, Patient
+from app.billing.service import checkout_queue_item, preview_checkout_billing
 from app.queue import service as queue_service
 
 
@@ -112,3 +112,40 @@ async def test_체크아웃_존재하지않는_수가코드_에러(db, approved_
             kcd_code="B001",
             line_items=[{"code": "NOT_EXIST", "qty": 1, "days": 1}],
         )
+
+
+async def test_청구_미리보기_금액이_실제_체크아웃과_일치(db, approved_doctor, patient, kcd_codes, fee_master_codes):
+    """청구 모달의 실시간 미리보기(preview_checkout_billing)는 DB를 변경하지 않고
+    실제 저장(checkout_queue_item)과 동일한 계산 결과를 내야 한다."""
+    doctor, _ = approved_doctor
+    queue = await queue_service.checkin_patient(db, doctor.hospital_id, patient.id)
+    line_items = [
+        {"code": "AA159", "qty": 1, "days": 1},
+        {"code": "AA161", "qty": 1, "days": 2},
+    ]
+
+    preview = await preview_checkout_billing(db, patient.id, line_items)
+
+    r_claims = await db.execute(select(Claim))
+    assert r_claims.scalars().all() == []
+    r_records = await db.execute(select(MedicalRecord))
+    assert r_records.scalars().all() == []
+
+    claim = await checkout_queue_item(
+        db, doctor.hospital_id, doctor, queue,
+        kcd_code="B001", line_items=line_items,
+    )
+
+    assert preview["total_amount"] == claim.total_amount == 3000
+    assert preview["patient_copay"] == claim.patient_copay
+    assert preview["claim_amount"] == claim.claim_amount
+
+
+async def test_청구_미리보기_처방없으면_에러(db, approved_doctor, patient):
+    with pytest.raises(HTTPException):
+        await preview_checkout_billing(db, patient.id, [])
+
+
+async def test_청구_미리보기_존재하지않는_수가코드_에러(db, approved_doctor, patient, fee_master_codes):
+    with pytest.raises(HTTPException):
+        await preview_checkout_billing(db, patient.id, [{"code": "NOT_EXIST", "qty": 1, "days": 1}])

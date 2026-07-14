@@ -514,3 +514,21 @@ class QuickFeeItemsResponse(BaseModel):
     categories: list[str]                              # FeeMaster에 실제 존재하는 카테고리 목록
     favorites: list[QuickFeeItemResponse]               # "자주" 탭 — 최근 사용빈도 상위 N개
     by_category: dict[str, list[QuickFeeItemResponse]]  # 카테고리별 전체 목록
+
+
+class CheckoutPreviewLineItem(BaseModel):
+    code: str
+    qty: float = 1
+    days: int = 1
+
+
+class CheckoutPreviewRequest(BaseModel):
+    patient_id: UUID
+    line_items: list[CheckoutPreviewLineItem]
+
+
+class CheckoutPreviewResponse(BaseModel):
+    total_amount: int          # 총진료비
+    patient_copay: int         # 본인부담금
+    claim_amount: int          # 청구액
+    special_code: str | None   # 산정특례 코드 (있으면 산정특례 적용)
