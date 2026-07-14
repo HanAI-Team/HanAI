@@ -9,6 +9,8 @@ class QueueResponse(BaseModel):
     id: UUID
     patient_id: UUID
     patient_name: str = ""
+    patient_birth_date: date | None = None
+    patient_gender: str | None = None
     doctor_id: UUID | None
     queue_date: date
     checked_in_at: datetime
@@ -23,6 +25,8 @@ class QueueResponse(BaseModel):
             id=queue.id,
             patient_id=queue.patient_id,
             patient_name=queue.patient.name if queue.patient else "",
+            patient_birth_date=queue.patient.birth_date if queue.patient else None,
+            patient_gender=queue.patient.gender if queue.patient else None,
             doctor_id=queue.doctor_id,
             queue_date=queue.queue_date,
             checked_in_at=queue.checked_in_at,

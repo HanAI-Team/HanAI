@@ -1,234 +1,267 @@
 "use client";
+import MiniCalendar from "@/components/reception/MiniCalendar";
+import PatientManagementPanel from "@/components/reception/PatientManagementPanel";
+import BillingModal from "@/components/billing/BillingModal";
 import { getPatients } from "@/lib/api/patients";
-import { checkinPatient, getTodayQueue, QueueItem, updateQueueStatus } from "@/lib/api/queue";
-import { getStats } from "@/lib/api/stats";
+import {
+  checkinPatient,
+  getQueueByDate,
+  getQueueCalendar,
+  getTodayQueue,
+  updateQueueBed,
+  QueueItem,
+} from "@/lib/api/queue";
 import { Patient } from "@/types";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Search } from "lucide-react";
 
-interface Stats {
-  total_patients: number;
-  today_records: number;
-  recent_records: { patient_id: string; record_id: string; patient_name: string; recorded_at: string | null; chart_structured: string | null }[];
+const STATUS_LABEL: Record<QueueItem["status"], string> = {
+  waiting: "대기",
+  in_progress: "진료중",
+  billed: "처치·수납대기",
+  paid: "진료완료",
+};
+
+const STATUS_STYLE: Record<QueueItem["status"], { border: string; badge: string }> = {
+  waiting: { border: "border-l-gray-400", badge: "bg-gray-400/15 text-gray-500" },
+  in_progress: { border: "border-l-blue-500", badge: "bg-blue-500/15 text-blue-500" },
+  billed: { border: "border-l-amber-500", badge: "bg-amber-500/15 text-amber-600" },
+  paid: { border: "border-l-green-500", badge: "bg-green-500/15 text-green-500" },
+};
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function calcAge(birthDate?: string | null): number | null {
+  if (!birthDate) return null;
+  return new Date().getFullYear() - new Date(birthDate).getFullYear();
+}
+
+function genderLabel(g?: string | null): string {
+  return g === "M" ? "남" : g === "F" ? "여" : "";
 }
 
 export default function HomePage() {
-  const router = useRouter();
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [todayQueue, setTodayQueue] = useState<QueueItem[]>([]);
+  const [selectedDate, setSelectedDate] = useState(todayStr());
+  const [calYear, setCalYear] = useState(new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(new Date().getMonth() + 1);
+  const [calendarCounts, setCalendarCounts] = useState<Record<string, number>>({});
+
+  const [queueList, setQueueList] = useState<QueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<Patient[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
+
+  const [checkinSearch, setCheckinSearch] = useState("");
+  const [checkinResults, setCheckinResults] = useState<Patient[]>([]);
+  const [checkinLoading, setCheckinLoading] = useState(false);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [patientPage, setPatientPage] = useState(1);
-  const [patientHasMore, setPatientHasMore] = useState(true);
-  const [patientLoadingMore, setPatientLoadingMore] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const PAGE_SIZE = 10;
+
+  const [billingQueueItem, setBillingQueueItem] = useState<QueueItem | null>(null);
+  const [bedDrafts, setBedDrafts] = useState<Record<string, string>>({});
+
+  const isToday = selectedDate === todayStr();
+
+  function loadQueue(date: string) {
+    setQueueLoading(true);
+    const loader = date === todayStr() ? getTodayQueue() : getQueueByDate(date);
+    loader
+      .then(setQueueList)
+      .catch(() => setQueueList([]))
+      .finally(() => setQueueLoading(false));
+  }
+
+  function loadCalendar(year: number, month: number) {
+    getQueueCalendar(year, month)
+      .then(setCalendarCounts)
+      .catch(() => setCalendarCounts({}));
+  }
 
   useEffect(() => {
-    Promise.all([
-      getPatients(undefined, 1, PAGE_SIZE).catch(() => ({ items: [] as Patient[], total: 0, page: 1, size: PAGE_SIZE })),
-      getStats().catch(() => null),
-      getTodayQueue().catch(() => [] as QueueItem[]),
-    ]).then(([p, s, q]) => {
-      setPatients(p.items);
-      setPatientHasMore(p.items.length === PAGE_SIZE);
-      setStats(s);
-      setTodayQueue(q);
-    }).finally(() => {
-      setLoading(false);
-      setQueueLoading(false);
-    });
-  }, []);
+    loadQueue(selectedDate);
+  }, [selectedDate]);
 
-  // 접수 목록 정렬: done 나중, 같은 status면 checked_in_at 오름차순
-  const sortedQueue = [...todayQueue].sort((a, b) => {
-    const aDone = a.status === "done" ? 1 : 0;
-    const bDone = b.status === "done" ? 1 : 0;
-    if (aDone !== bDone) return aDone - bDone;
+  useEffect(() => {
+    loadCalendar(calYear, calMonth);
+  }, [calYear, calMonth]);
+
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!checkinSearch) {
+      setCheckinResults([]);
+      return;
+    }
+    setCheckinLoading(true);
+    searchTimerRef.current = setTimeout(() => {
+      getPatients(checkinSearch)
+        .then((result) => setCheckinResults(result.items))
+        .catch(() => setCheckinResults([]))
+        .finally(() => setCheckinLoading(false));
+    }, 300);
+  }, [checkinSearch]);
+
+  function handleMonthChange(year: number, month: number) {
+    setCalYear(year);
+    setCalMonth(month);
+  }
+
+  function handleCheckin(patient: Patient) {
+    checkinPatient(patient.id)
+      .then((item) => {
+        setQueueList((prev) => [...prev, item]);
+        setCheckinSearch("");
+        setCheckinResults([]);
+        loadCalendar(calYear, calMonth);
+      })
+      .catch(console.error);
+  }
+
+  function handleBedBlur(item: QueueItem) {
+    const draft = bedDrafts[item.id];
+    if (draft === undefined || draft === (item.assigned_bed || "")) return;
+    updateQueueBed(item.id, draft || null)
+      .then((updated) => {
+        setQueueList((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+      })
+      .catch(console.error);
+  }
+
+  function handleCheckoutComplete(updated: QueueItem) {
+    setQueueList((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+    setBillingQueueItem(null);
+  }
+
+  const sortedQueue = [...queueList].sort((a, b) => {
+    const order = { waiting: 0, in_progress: 1, billed: 2, paid: 3 };
+    if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
     return new Date(a.checked_in_at).getTime() - new Date(b.checked_in_at).getTime();
   });
 
-  // 환자 검색: search 변경 시 300ms 디바운스 후 서버 재조회
-  useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!search) {
-      setSearchResults([]);
-      setSearchLoading(false);
-      return;
-    }
-    setSearchLoading(true);
-    searchTimerRef.current = setTimeout(() => {
-      getPatients(search)
-        .then((result) => setSearchResults(result.items))
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearchLoading(false));
-    }, 300);
-  }, [search]);
-
-  // 다음 페이지를 서버에서 조회해 patients에 append
-  const loadMorePatients = async () => {
-    if (patientLoadingMore || !patientHasMore) return;
-    const nextPage = patientPage + 1;
-    setPatientLoadingMore(true);
-    const result = await getPatients(undefined, nextPage, PAGE_SIZE).catch(() => ({ items: [] as Patient[], total: 0, page: nextPage, size: PAGE_SIZE }));
-    const newItems = result.items;
-    setPatients((prev) => {
-      const existingIds = new Set(prev.map((p) => p.id));
-      const deduped = newItems.filter((p) => !existingIds.has(p.id));
-      return [...prev, ...deduped];
-    });
-    setPatientPage(nextPage);
-    if (newItems.length < PAGE_SIZE) setPatientHasMore(false);
-    setPatientLoadingMore(false);
-  };
-
-  const displayedPatients = search ? searchResults : patients;
-
-  const today = new Date().toLocaleDateString("ko-KR", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "long",
-  });
-
   return (
-    <div className="p-6 md:p-8 max-w-[1100px] mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl text-text">오늘의 진료</h1>
-        <p className="text-xs text-subtext mt-1">{today}</p>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-        {[
-          { label: "전체 환자", value: loading ? "-" : stats?.total_patients ?? patients.length, sub: "명 등록" },
-          { label: "오늘 진료", value: loading ? "-" : stats?.today_records ?? 0, sub: "건 완료" },
-          { label: "최근 등록", value: loading ? "-" : patients.slice(-1)[0]?.name ?? "-", sub: "환자", small: true },
-        ].map((stat, i) => (
-          <div key={i} className="bg-card border border-border rounded-lg p-4">
-            <div className="text-xs text-subtext uppercase tracking-wide mb-2">{stat.label}</div>
-            <div className={`font-light text-text ${stat.small ? "text-xl truncate" : "text-3xl"}`}>
-              {stat.value}
+    <div className="flex gap-4 p-4 md:p-6" style={{ minHeight: "calc(100vh - 52px)" }}>
+      {/* 좌측 사이드바: 달력 + 검색 + 접수목록 */}
+      <div className="w-[260px] flex-shrink-0 flex flex-col gap-3">
+        <div className="bg-card border border-border rounded-lg p-3">
+          <MiniCalendar
+            year={calYear}
+            month={calMonth}
+            counts={calendarCounts}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            onMonthChange={handleMonthChange}
+          />
+        </div>
+
+        {isToday && (
+          <div className="bg-card border border-border rounded-lg p-3">
+            <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2 mb-2">
+              <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+              <input
+                value={checkinSearch}
+                onChange={(e) => setCheckinSearch(e.target.value)}
+                placeholder="환자 검색 후 접수..."
+                className="flex-1 bg-transparent text-xs text-text outline-none"
+              />
             </div>
-            <div className="h-0.5 bg-fill rounded mt-3 mb-1">
-              <div className="h-full bg-[#EF6600] rounded" style={{ width: i === 0 ? "100%" : "0%" }} />
+            {checkinSearch && (
+              <div className="max-h-[160px] overflow-y-auto">
+                {checkinLoading ? (
+                  <div className="text-xs text-muted text-center py-2">검색 중...</div>
+                ) : checkinResults.length === 0 ? (
+                  <div className="text-xs text-muted text-center py-2">검색 결과 없음</div>
+                ) : (
+                  checkinResults.map((p) => (
+                    <div
+                      key={p.id}
+                      onClick={() => handleCheckin(p)}
+                      className="flex flex-col py-1.5 px-1 cursor-pointer hover:bg-fill rounded transition-colors"
+                    >
+                      <span className="text-xs font-medium text-text">{p.name}</span>
+                      <span className="text-[10px] text-subtext">{p.birth_date || "-"}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="bg-card border border-border rounded-lg p-3 flex-1 overflow-hidden flex flex-col">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="text-xs font-medium text-text uppercase tracking-wide">
+              {isToday ? "오늘 접수" : `${selectedDate} 접수`}
             </div>
-            <div className="text-xs text-muted">{stat.sub}</div>
+            <span className="text-xs text-muted bg-fill rounded-full px-1.5 py-0.5">{queueList.length}</span>
           </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-        <div className={`bg-card border border-border rounded-lg px-5 ${!queueLoading && todayQueue.length === 0 ? "py-3" : "py-5"}`}>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="text-xs font-medium text-text uppercase tracking-wide">오늘 접수</div>
-            <span className="text-xs text-muted bg-fill rounded-full px-1.5 py-0.5">{todayQueue.length}</span>
-          </div>
-          {queueLoading ? (
-            <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto my-4" />
-          ) : sortedQueue.length === 0 ? (
-            <div className="text-xs text-muted text-center">오늘 접수된 환자가 없습니다</div>
-          ) : (
-            <div className="max-h-[600px] overflow-y-auto overflow-x-hidden">
-              {sortedQueue.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => router.push(`/diagnosis?patientId=${item.patient_id}`)}
-                  className="flex items-center justify-between gap-3 py-2.5 border-b border-border last:border-none cursor-pointer hover:bg-bg -mx-2 px-2 rounded transition-colors"
-                >
-                  <div>
-                    <div className="text-sm font-medium text-text">{item.patient_name}</div>
-                    <div className="text-xs text-subtext mt-0.5">
-                      {new Date(item.checked_in_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+          <div className="flex-1 overflow-y-auto">
+            {queueLoading ? (
+              <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto my-4" />
+            ) : sortedQueue.length === 0 ? (
+              <div className="text-xs text-muted text-center py-4">접수된 환자가 없습니다</div>
+            ) : (
+              sortedQueue.map((item) => {
+                const style = STATUS_STYLE[item.status];
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => setBillingQueueItem(item)}
+                    className={`border-l-[3px] ${style.border} bg-fill/40 hover:bg-fill rounded-r-md px-2.5 py-2 mb-1.5 cursor-pointer transition-colors`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-medium text-text truncate">
+                        {item.patient_name}
+                        {(calcAge(item.patient_birth_date) !== null || genderLabel(item.patient_gender)) && (
+                          <span className="text-[10px] text-subtext font-normal ml-1">
+                            {[
+                              calcAge(item.patient_birth_date) !== null ? `${calcAge(item.patient_birth_date)}세` : null,
+                              genderLabel(item.patient_gender) || null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        )}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${style.badge}`}>
+                        {STATUS_LABEL[item.status]}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[10px] text-subtext">
+                        {new Date(item.checked_in_at).toLocaleTimeString("ko-KR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <input
+                        value={bedDrafts[item.id] ?? item.assigned_bed ?? ""}
+                        onChange={(e) =>
+                          setBedDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                        onBlur={() => handleBedBlur(item)}
+                        onClick={(e) => e.stopPropagation()}
+                        placeholder="베드"
+                        className="w-14 bg-transparent border border-border rounded px-1 py-0.5 text-[10px] text-text outline-none focus:border-[#EF6600] transition-colors text-right"
+                      />
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        item.status === "waiting"
-                          ? "bg-muted/20 text-muted"
-                          : item.status === "in_progress"
-                            ? "bg-[#EF6600]/15 text-[#EF6600]"
-                            : "bg-green-500/15 text-green-500"
-                      }`}
-                    >
-                      {item.status === "waiting" ? "대기" : item.status === "in_progress" ? "진료중" : "완료"}
-                    </span>
-                    {item.status !== "done" && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateQueueStatus(item.id, "done")
-                            .then((updated) => {
-                              setTodayQueue((prev) =>
-                                prev.map((q) => (q.id === updated.id ? updated : q)),
-                              );
-                            })
-                            .catch(console.error);
-                        }}
-                        className="text-xs text-subtext hover:text-[#EF6600] border border-border rounded px-1.5 py-0.5 transition-all"
-                      >
-                        ✓
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="bg-card border border-border rounded-lg p-5">
-          <div className="text-xs font-medium text-text uppercase tracking-wide mb-3">환자 접수</div>
-          <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2 mb-3">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="이름 검색..."
-              className="flex-1 bg-transparent text-xs text-text outline-none"
-            />
-          </div>
-          <div
-            ref={scrollContainerRef}
-            className="max-h-[550px] overflow-y-auto overflow-x-hidden"
-            onScroll={(e) => {
-              const el = e.currentTarget;
-              if (el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
-                loadMorePatients();
-              }
-            }}
-          >
-            {loading ? (
-              <div className="text-sm text-muted py-4 text-center">불러오는 중...</div>
-            ) : searchLoading ? (
-              <div className="text-sm text-muted py-4 text-center">검색 중...</div>
-            ) : displayedPatients.length === 0 ? (
-              <div className="text-sm text-muted py-4 text-center">환자가 없습니다</div>
-            ) : (
-              <>
-                {displayedPatients.map((patient) => (
-                  <div
-                    key={patient.id}
-                    onClick={() => {
-                      checkinPatient(patient.id)
-                        .then((item) => setTodayQueue((prev) => [...prev, item]))
-                        .catch(console.error);
-                    }}
-                    className="flex flex-col py-2.5 border-b border-border last:border-none cursor-pointer hover:bg-bg -mx-2 px-2 rounded transition-colors"
-                  >
-                    <div className="text-sm font-medium text-text">{patient.name}</div>
-                    <div className="text-xs text-subtext">{patient.birth_date || "-"}</div>
-                  </div>
-                ))}
-                {!search && patientLoadingMore && (
-                  <div className="text-xs text-muted text-center py-2">불러오는 중...</div>
-                )}
-              </>
+                );
+              })
             )}
           </div>
         </div>
       </div>
+
+      {/* 우측: 환자 관리 패널 */}
+      <div className="flex-1 min-w-0">
+        <PatientManagementPanel />
+      </div>
+
+      {billingQueueItem && (
+        <BillingModal
+          queueItem={billingQueueItem}
+          onClose={() => setBillingQueueItem(null)}
+          onComplete={handleCheckoutComplete}
+        />
+      )}
     </div>
   );
 }

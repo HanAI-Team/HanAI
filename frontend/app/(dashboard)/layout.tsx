@@ -40,7 +40,6 @@ export default function DashboardLayout({
 
   const navLinks = [
     { label: "홈", path: "/home" },
-    { label: "환자", path: "/patients" },
     { label: "진료", path: "/diagnosis" },
     { label: "청구", path: "/billing" },
     { label: "멤버쉽", path: "/membership" },
@@ -49,7 +48,6 @@ export default function DashboardLayout({
 
   const mobileNavLinks = [
     { label: "홈", path: "/home" },
-    { label: "환자", path: "/patients" },
     { label: "진료", path: "/diagnosis" },
     { label: "멤버쉽", path: "/membership" },
     { label: "설정", path: "/settings" },
@@ -214,9 +212,7 @@ export default function DashboardLayout({
       <nav className="sm:hidden border-t border-border bg-card py-2 pb-3">
         <div className="flex justify-around">
           {mobileNavLinks.map((link) => {
-            const isActive =
-              pathname === link.path ||
-              (link.path === "/patients" && pathname === "/diagnosis");
+            const isActive = pathname === link.path;
             return (
               <button
                 key={link.path}
