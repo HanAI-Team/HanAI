@@ -2,7 +2,7 @@ import calendar
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -32,6 +32,7 @@ from app.billing.schema import (
     ClaimStatementResponse,
     StatementProcedureRow,
 )
+from app.charting.service import update_kcd_code
 from app.core.config import settings
 from app.core.models import (
     AcupuncturePoint,
@@ -39,8 +40,10 @@ from app.core.models import (
     ClaimLineItem,
     ClaimLineItemAcupoint,
     ClaimResubmissionHistory,
+    DailyQueue,
     Doctor,
     DoctorWorkDays,
+    FeeMaster,
     Hospital,
     KcdUCode,
     MedicalRecord,
@@ -600,6 +603,197 @@ async def update_claim_resubmission(
     await db.commit()
     await db.refresh(claim)
     return claim
+
+
+# 접수(DailyQueue) 카테고리 -> EDI 항번호/목번호. catalog.py 문서화된 매핑과 동일
+# (04/01=침술, 04/02=구술(뜸), 04/03=부항, 04/05=추나). FeeMaster.category에
+# 없는 값이 들어오면 04/99(기타)로 처리.
+_FEE_CATEGORY_TO_HANG_MOK: dict[str, tuple[str, str]] = {
+    "침술": ("04", "01"),
+    "뜸": ("04", "02"),
+    "부항": ("04", "03"),
+    "추나": ("04", "05"),
+}
+
+
+async def checkout_queue_item(
+    db: AsyncSession,
+    hospital_id: UUID,
+    doctor: Doctor,
+    queue: DailyQueue,
+    kcd_code: str,
+    line_items: list[dict],
+) -> Claim:
+    """접수 목록 청구 모달의 "저장 및 청구" — AI 차팅 없이 그 자리에서
+    MedicalRecord 생성 → 진단코드 저장(완전코드 검증 재사용) →
+    ClaimLineItem 생성(FeeMaster 실제 단가 기준) → calculate_billing()으로
+    본인부담금/청구액 계산까지 한 트랜잭션으로 처리한다.
+
+    line_items: [{"code": str, "qty": Decimal|float, "days": int}, ...]
+    """
+    if not line_items:
+        raise HTTPException(status_code=400, detail="처방/시술 내역이 없습니다.")
+
+    record = MedicalRecord(
+        patient_id=queue.patient_id,
+        doctor_id=doctor.id,
+        hospital_id=hospital_id,
+        status="completed",
+        recorded_at=datetime.now(timezone.utc),
+    )
+    db.add(record)
+    await db.flush()
+
+    # 완전코드(KcdUCode) 검증은 update_kcd_code()가 그대로 수행 — 착오청구 예방
+    # 로직을 여기서 다시 만들지 않는다.
+    await update_kcd_code(db, doctor, record.id, kcd_code)
+
+    codes = [li["code"] for li in line_items]
+    r_fee = await db.execute(select(FeeMaster).where(FeeMaster.code.in_(codes)))
+    fee_by_code = {f.code: f for f in r_fee.scalars().all()}
+
+    claim = Claim(
+        id=uuid.uuid4(),
+        patient_id=queue.patient_id,
+        doctor_id=doctor.id,
+        hospital_id=hospital_id,
+        claim_period_year=record.recorded_at.year,
+        claim_period_month=record.recorded_at.month,
+        total_amount=0,
+        patient_copay=0,
+        claim_amount=0,
+        status="draft",
+    )
+    db.add(claim)
+    await db.flush()
+
+    total_amount = 0
+    total_non_benefit = 0
+    for li in line_items:
+        fee = fee_by_code.get(li["code"])
+        if not fee:
+            raise HTTPException(status_code=400, detail=f"'{li['code']}'는 존재하지 않는 수가코드입니다.")
+        hang, mok = _FEE_CATEGORY_TO_HANG_MOK.get(fee.category, ("04", "99"))
+        qty = Decimal(str(li.get("qty", 1)))
+        days = int(li.get("days", 1))
+        amount = int(Decimal(str(fee.unit_price)) * qty * days)
+        is_non_benefit = not fee.is_insured
+        db.add(ClaimLineItem(
+            claim_id=claim.id,
+            medical_record_id=record.id,
+            hang=hang, mok=mok,
+            code=fee.code, name=fee.name,
+            unit_price=fee.unit_price,
+            qty=qty, days=days,
+            amount=amount,
+            is_non_benefit=is_non_benefit,
+        ))
+        total_amount += amount
+        if is_non_benefit:
+            total_non_benefit += amount
+
+    claim.total_amount = total_amount
+    claim.non_benefit_total = total_non_benefit
+    record.claim_id = claim.id
+
+    patient = await db.get(Patient, queue.patient_id)
+    ins = _INSURANCE_MAP.get((patient.insurance_type if patient else None) or "health", InsuranceType.HEALTH)
+    aid_grade = None
+    if patient and patient.medical_aid_grade == "1":
+        aid_grade = MedicalAidGrade.GRADE_1
+    elif patient and patient.medical_aid_grade == "2":
+        aid_grade = MedicalAidGrade.GRADE_2
+    special_case = await resolve_active_special_code(db, queue.patient_id)
+
+    # 추나 본인부담률(50%/80%) 분리 합산 — add_line_items()와 동일한 방식.
+    await db.flush()
+    chuna_50_rows = await db.execute(
+        select(ClaimLineItem.amount).where(
+            ClaimLineItem.claim_id == claim.id,
+            ClaimLineItem.is_non_benefit == False,
+            ClaimLineItem.code.in_(CHUNA_50_CODES),
+        )
+    )
+    chuna_total = sum(r.amount or 0 for r in chuna_50_rows)
+    chuna_80_rows = await db.execute(
+        select(ClaimLineItem.amount).where(
+            ClaimLineItem.claim_id == claim.id,
+            ClaimLineItem.is_non_benefit == False,
+            ClaimLineItem.code.in_(CHUNA_80_CODES),
+        )
+    )
+    chuna_80_total = sum(r.amount or 0 for r in chuna_80_rows)
+
+    billing_result = calculate_billing(BillingInput(
+        insurance_type=ins,
+        visit_type=VisitType.OUTPATIENT,
+        benefit_total=claim.total_amount - claim.non_benefit_total,
+        non_benefit_total=claim.non_benefit_total,
+        medical_aid_grade=aid_grade,
+        has_disability=bool(patient.disability_grade) if patient else False,
+        birth_date=patient.birth_date if patient else None,
+        special_code=special_case.special_code,
+        chuna_total=chuna_total,
+        chuna_80_total=chuna_80_total,
+    ))
+    claim.patient_copay = billing_result.copayment
+    claim.claim_amount = billing_result.claim_amount
+    claim.disability_medical_aid = billing_result.disability_medical_cost
+    claim.support_fund = billing_result.support_fund
+
+    queue.claim_id = claim.id
+    queue.status = "billed"
+
+    await db.commit()
+    await db.refresh(claim)
+    return claim
+
+
+async def get_quick_fee_items(db: AsyncSession, hospital_id: UUID, favorites_limit: int = 12) -> dict:
+    """청구 모달의 카테고리 탭 + 빠른 입력 버튼 그리드용 데이터.
+
+    FeeMaster(실제 수가 마스터 DB)에서 그대로 가져온다 — 하드코딩 카탈로그
+    (BILLABLE_CATALOG)는 쓰지 않는다. "자주" 탭은 최근 90일간 이 요양기관의
+    ClaimLineItem 코드 사용빈도 상위 N개를 자동 집계한다.
+    """
+    today = date.today()
+    r_fee = await db.execute(
+        select(FeeMaster).where(
+            (FeeMaster.expired_date.is_(None)) | (FeeMaster.expired_date >= today)
+        ).order_by(FeeMaster.category, FeeMaster.name)
+    )
+    fee_rows = r_fee.scalars().all()
+
+    by_category: dict[str, list[dict]] = defaultdict(list)
+    fee_by_code: dict[str, FeeMaster] = {}
+    for f in fee_rows:
+        item = {"code": f.code, "name": f.name, "category": f.category, "unit_price": f.unit_price}
+        by_category[f.category].append(item)
+        fee_by_code[f.code] = f
+
+    ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
+    r_freq = await db.execute(
+        select(ClaimLineItem.code, func.count(ClaimLineItem.id).label("cnt"))
+        .join(Claim, ClaimLineItem.claim_id == Claim.id)
+        .where(
+            Claim.hospital_id == hospital_id,
+            ClaimLineItem.created_at >= ninety_days_ago,
+        )
+        .group_by(ClaimLineItem.code)
+        .order_by(func.count(ClaimLineItem.id).desc())
+        .limit(favorites_limit)
+    )
+    favorites = []
+    for code, _cnt in r_freq.all():
+        fee = fee_by_code.get(code)
+        if fee:
+            favorites.append({"code": fee.code, "name": fee.name, "category": fee.category, "unit_price": fee.unit_price})
+
+    return {
+        "categories": sorted(by_category.keys()),
+        "favorites": favorites,
+        "by_category": dict(by_category),
+    }
 
 
 def resolve_institution_code(hospital: Hospital | None, test_mode: bool) -> str:

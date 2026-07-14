@@ -14,6 +14,8 @@ class QueueResponse(BaseModel):
     checked_in_at: datetime
     status: str
     source: str
+    assigned_bed: str | None = None
+    claim_id: UUID | None = None
 
     @classmethod
     def from_orm_with_patient(cls, queue: "DailyQueue") -> "QueueResponse":
@@ -26,6 +28,8 @@ class QueueResponse(BaseModel):
             checked_in_at=queue.checked_in_at,
             status=queue.status,
             source=queue.source,
+            assigned_bed=queue.assigned_bed,
+            claim_id=queue.claim_id,
         )
 
     class Config:
@@ -37,3 +41,18 @@ class QueueCreateRequest(BaseModel):
 
 class QueueStatusUpdateRequest(BaseModel):
     status: str
+
+class QueueBedUpdateRequest(BaseModel):
+    assigned_bed: str | None = None
+
+class QueueCalendarResponse(BaseModel):
+    counts: dict[str, int]  # {"2026-07-14": 4, ...}
+
+class QueueCheckoutLineItem(BaseModel):
+    code: str
+    qty: float = 1
+    days: int = 1
+
+class QueueCheckoutRequest(BaseModel):
+    kcd_code: str
+    line_items: list[QueueCheckoutLineItem]

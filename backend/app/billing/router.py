@@ -1,7 +1,9 @@
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
+from app.billing import payment_service
 from app.billing.catalog import (
     BILLABLE_CATALOG,
     CHUNA_50_CODES,
@@ -27,6 +29,10 @@ from app.billing.schema import (
     BillingCalcResponse,
     ClaimApprovalUpdateRequest,
     ClaimLineItemResponse,
+    ClaimPaymentCreateRequest,
+    ClaimPaymentListResponse,
+    ClaimPaymentResponse,
+    ClaimPaymentSummaryResponse,
     ClaimPrescriptionResponse,
     ClaimRejectionCodeCreate,
     ClaimRejectionCodeResponse,
@@ -48,6 +54,7 @@ from app.billing.schema import (
     NeedsReviewClaimsResponse,
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
+    QuickFeeItemsResponse,
     ViolationItem,
 )
 from app.billing.service import (
@@ -57,6 +64,7 @@ from app.billing.service import (
     create_claim,
     generate_claim_edi,
     generate_claim_sam_files,
+    get_quick_fee_items as service_get_quick_fee_items,
     resolve_active_special_code,
     resolve_and_validate_acupoints,
     update_claim_resubmission,
@@ -946,6 +954,95 @@ async def get_claim_prescription(
 ):
     """처방전(의료법 시행규칙 별지9호서식) 출력용 데이터."""
     return await build_claim_prescription(db, current_user.hospital_id, claim_id, test_mode=test)
+
+
+@router.post("/claims/{claim_id}/payments", response_model=ClaimPaymentResponse, status_code=201)
+async def create_claim_payment(
+    claim_id: UUID,
+    body: ClaimPaymentCreateRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """수납 완료 처리 — 접수 목록의 상태도 함께 "수납완료"로 전환한다."""
+    payment = await payment_service.create_payment(
+        db,
+        hospital_id=current_user.hospital_id,
+        claim_id=claim_id,
+        method=body.method,
+        amount=body.amount,
+        processed_by_name=current_user.name,
+    )
+    claim = await db.get(Claim, claim_id)
+    patient = await db.get(Patient, claim.patient_id) if claim else None
+    return ClaimPaymentResponse(
+        id=payment.id,
+        claim_id=payment.claim_id,
+        patient_name=patient.name if patient else "-",
+        method=payment.method,
+        claim_amount=claim.claim_amount if claim else 0,
+        amount=payment.amount,
+        paid_at=payment.paid_at.strftime("%Y-%m-%d %H:%M"),
+        processed_by_name=payment.processed_by_name,
+    )
+
+
+@router.get("/payments", response_model=ClaimPaymentListResponse)
+async def list_claim_payments(
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    method: str | None = Query(None, description="cash / card / transfer"),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """수납 내역 모달 — 필터(날짜범위/수납방법) + 페이지네이션."""
+    total, rows = await payment_service.list_payments(
+        db, current_user.hospital_id, start_date, end_date, method, page, size
+    )
+    return ClaimPaymentListResponse(
+        total=total,
+        page=page,
+        size=size,
+        items=[
+            ClaimPaymentResponse(
+                id=payment.id,
+                claim_id=payment.claim_id,
+                patient_name=patient.name,
+                method=payment.method,
+                claim_amount=claim.claim_amount,
+                amount=payment.amount,
+                paid_at=payment.paid_at.strftime("%Y-%m-%d %H:%M"),
+                processed_by_name=payment.processed_by_name,
+            )
+            for payment, claim, patient in rows
+        ],
+    )
+
+
+@router.get("/payments/summary", response_model=ClaimPaymentSummaryResponse)
+async def get_claim_payment_summary(
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    method: str | None = Query(None, description="cash / card / transfer"),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """오늘/이번달 수납액은 필터와 무관하게 항상 실제 오늘·이번달 기준.
+    현금/카드 비율만 현재 필터(날짜범위+수납방법) 범위 내에서 집계."""
+    summary = await payment_service.get_payment_summary(
+        db, current_user.hospital_id, start_date, end_date, method
+    )
+    return ClaimPaymentSummaryResponse(**summary)
+
+
+@router.get("/fee-quick-items", response_model=QuickFeeItemsResponse)
+async def get_quick_fee_items(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """청구 모달의 카테고리 탭 + 빠른 입력 버튼 그리드 — FeeMaster 실데이터 기반."""
+    return await service_get_quick_fee_items(db, current_user.hospital_id)
 
 
 @router.get("/catalog", response_model=list[BillableItemResponse])

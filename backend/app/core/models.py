@@ -624,18 +624,36 @@ class PasswordHistory(Base):
 # ================================================================
 class DailyQueue(Base):
     __tablename__ = "daily_queue"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
     queue_date = Column(Date, nullable=False)
     checked_in_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # waiting(대기) -> in_progress(진료중) -> billed(처치·수납대기, 청구 저장 완료) -> paid(수납완료)
     status = Column(String(20), nullable=False, default="waiting")
     source = Column(String(20), nullable=False, default="manual")
+    assigned_bed = Column(String(20), nullable=True)  # 베드 배정 (자유 입력, 예: "1번", "A실")
+    claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=True)  # 청구 모달에서 생성된 청구
     # UniqueConstraint 없음
-    
+
     patient = relationship("Patient", lazy="raise")
+
+
+class ClaimPayment(Base):
+    """환자 진료비 수납 기록. Claim 1건에 보통 1건이지만 분할수납 가능성을 고려해 1:N."""
+    __tablename__ = "claim_payments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=False)
+    method = Column(String(20), nullable=False)  # cash | card | transfer
+    amount = Column(Integer, nullable=False)
+    paid_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    processed_by_name = Column(String, nullable=False)  # 수납 처리한 계정 이름 (조회용, 비정규화)
+
+    claim = relationship("Claim")
 
 
 # ================================================================

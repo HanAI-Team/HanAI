@@ -1,9 +1,18 @@
+from datetime import date
 from uuid import UUID
 
-from app.core.deps import get_current_user, get_db
+from app.billing.service import checkout_queue_item
+from app.core.deps import get_current_doctor, get_current_user, get_db
 from app.queue import service
-from app.queue.schema import QueueCreateRequest, QueueResponse, QueueStatusUpdateRequest
-from fastapi import APIRouter, Depends
+from app.queue.schema import (
+    QueueBedUpdateRequest,
+    QueueCalendarResponse,
+    QueueCheckoutRequest,
+    QueueCreateRequest,
+    QueueResponse,
+    QueueStatusUpdateRequest,
+)
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
@@ -15,6 +24,26 @@ async def get_queue_today(
 ):
     queues = await service.get_today_queue(db, current_user.hospital_id)
     return [QueueResponse.from_orm_with_patient(q) for q in queues]
+
+@router.get("/by-date", response_model=list[QueueResponse])
+async def get_queue_by_date(
+    target_date: date = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """달력에서 특정 날짜를 클릭했을 때의 접수 목록."""
+    queues = await service.get_queue_by_date(db, current_user.hospital_id, target_date)
+    return [QueueResponse.from_orm_with_patient(q) for q in queues]
+
+@router.get("/calendar", response_model=QueueCalendarResponse)
+async def get_queue_calendar(
+    year: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    counts = await service.get_queue_calendar(db, current_user.hospital_id, year, month)
+    return QueueCalendarResponse(counts=counts)
 
 @router.post("/", response_model=QueueResponse)
 async def checkin(
@@ -40,7 +69,6 @@ async def cancel_checkin(
     await service.remove_from_queue(db, queue_id, current_user.hospital_id)
 
 
-
 @router.patch("/{queue_id}/status", response_model=QueueResponse)
 async def change_status(
     queue_id: UUID,
@@ -50,5 +78,39 @@ async def change_status(
 ):
     queue = await service.update_queue_status(
         db, queue_id, body.status, current_user.hospital_id
+    )
+    return QueueResponse.from_orm_with_patient(queue)
+
+
+@router.patch("/{queue_id}/bed", response_model=QueueResponse)
+async def change_bed(
+    queue_id: UUID,
+    body: QueueBedUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    queue = await service.update_queue_bed(
+        db, queue_id, body.assigned_bed, current_user.hospital_id
+    )
+    return QueueResponse.from_orm_with_patient(queue)
+
+
+@router.post("/{queue_id}/checkout", response_model=QueueResponse)
+async def checkout(
+    queue_id: UUID,
+    body: QueueCheckoutRequest,
+    db: AsyncSession = Depends(get_db),
+    doctor=Depends(get_current_doctor),
+):
+    """청구 모달 "저장 및 청구" — 진단코드 + 처방/시술 내역으로 그 자리에서
+    MedicalRecord/ClaimLineItem/Claim을 한 번에 생성한다."""
+    queue = await service.get_queue_item(db, queue_id, doctor.hospital_id)
+    await checkout_queue_item(
+        db,
+        hospital_id=doctor.hospital_id,
+        doctor=doctor,
+        queue=queue,
+        kcd_code=body.kcd_code,
+        line_items=[li.model_dump() for li in body.line_items],
     )
     return QueueResponse.from_orm_with_patient(queue)

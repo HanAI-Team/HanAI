@@ -468,3 +468,49 @@ class ClaimPrescriptionResponse(BaseModel):
 
 class ClaimApprovalUpdateRequest(BaseModel):
     approval_no: str | None = None
+
+
+class ClaimPaymentCreateRequest(BaseModel):
+    method: Literal["cash", "card", "transfer"]
+    amount: int = Field(..., gt=0)
+
+
+class ClaimPaymentResponse(BaseModel):
+    id: UUID
+    claim_id: UUID
+    patient_name: str
+    method: Literal["cash", "card", "transfer"]
+    claim_amount: int  # 청구액 (Claim.claim_amount, 참고용)
+    amount: int         # 실제 수납액
+    paid_at: str
+    processed_by_name: str
+
+    class Config:
+        from_attributes = True
+
+
+class ClaimPaymentListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    items: list[ClaimPaymentResponse]
+
+
+class ClaimPaymentSummaryResponse(BaseModel):
+    today_total: int
+    month_total: int
+    cash_ratio: float   # 0~100, 필터링된 범위 내 현금 비율
+    card_ratio: float   # 0~100, 필터링된 범위 내 카드 비율
+
+
+class QuickFeeItemResponse(BaseModel):
+    code: str
+    name: str
+    category: str
+    unit_price: int
+
+
+class QuickFeeItemsResponse(BaseModel):
+    categories: list[str]                              # FeeMaster에 실제 존재하는 카테고리 목록
+    favorites: list[QuickFeeItemResponse]               # "자주" 탭 — 최근 사용빈도 상위 N개
+    by_category: dict[str, list[QuickFeeItemResponse]]  # 카테고리별 전체 목록
