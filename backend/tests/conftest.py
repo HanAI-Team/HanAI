@@ -5,6 +5,9 @@ import os
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 # Patient.rrn은 EncryptedString이라 테스트에도 키가 필요 (테스트 전용 고정 키, 운영과 무관)
 os.environ.setdefault("RRN_ENCRYPTION_KEY", base64.b64encode(b"0" * 32).decode())
+# 테스트 중 실제 Langfuse로 trace가 전송되지 않도록 강제 비활성화
+# (main.py의 get_client()가 이 값을 읽기 전에 설정되어야 하므로 app import보다 먼저 실행)
+os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
 from datetime import datetime, timezone
 from uuid import UUID
