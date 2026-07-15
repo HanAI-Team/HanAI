@@ -15,7 +15,7 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 RETENTION = {
-    "login_logs": timedelta(days=365),
+    "login_logs": timedelta(days=365 * 2),
     "audit_logs": timedelta(days=365 * 5),
     "account_histories": timedelta(days=365 * 5),
 }

@@ -134,6 +134,20 @@ async def approve_doctor(db: AsyncSession, doctor_id: UUID) -> dict:
     return {"doctor": doctor, "access_token": access_token}
 
 
+async def deactivate_doctor(db: AsyncSession, doctor_id: UUID) -> Doctor:
+    result = await db.execute(select(Doctor).where(Doctor.id == doctor_id))
+    doctor = result.scalar_one_or_none()
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="의사를 찾을 수 없습니다."
+        )
+
+    doctor.is_active = False  # type: ignore
+    await db.commit()
+    await db.refresh(doctor)
+    return doctor
+
+
 async def get_staff_by_username(db: AsyncSession, username: str):
     from app.core.models import StaffAccount
 
