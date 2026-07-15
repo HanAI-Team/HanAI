@@ -1,3 +1,13 @@
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
+from langfuse import get_client
+from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+
+get_client()
+AnthropicInstrumentor().instrument()
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
