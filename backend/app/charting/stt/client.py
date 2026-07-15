@@ -1,8 +1,11 @@
 # app/charting/stt/client.py
+import io
 import json
 import logging
 
 import httpx
+import mutagen
+from langfuse import get_client
 
 from app.core.config import settings
 from app.pipeline.postprocessor import postprocessor
@@ -17,6 +20,26 @@ MIME_MAP = {
     "flac": "audio/flac",
     "aac": "audio/aac",
 }
+
+# 2026-07-15 네이버클라우드 콘솔 청구내역 기준 실측 단가
+CLOVA_RECOGNITION_WON_PER_15SEC = 5  # 음성인식(Batch)
+CLOVA_DIARIZATION_WON_PER_15SEC = 2  # 화자인식(Batch) — 음성인식과 별도 가산, 항상 사용
+KRW_TO_USD_RATE = 1350  # 대략적인 환율, 필요시 조정
+
+
+def _clova_cost_usd(duration_seconds: float) -> float:
+    units = duration_seconds / 15
+    won = units * (CLOVA_RECOGNITION_WON_PER_15SEC + CLOVA_DIARIZATION_WON_PER_15SEC)
+    return won / KRW_TO_USD_RATE
+
+
+def _audio_duration_seconds(audio_bytes: bytes) -> float:
+    try:
+        audio = mutagen.File(io.BytesIO(audio_bytes))
+        return audio.info.length if audio is not None else 0.0
+    except Exception as e:
+        logger.warning(f"[STT] 오디오 길이 계산 실패: {e}")
+        return 0.0
 
 
 class ClovaSpeechClient:
@@ -74,19 +97,30 @@ class ClovaSpeechClient:
         logger.info(f"[STT] 파일명={file_name}, MIME={mime_type}")
 
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                response = await client.post(
-                    f"{self.invoke_url}/recognizer/upload",
-                    headers={"X-CLOVASPEECH-API-KEY": self.secret_key},
-                    files={
-                        "media": (file_name, audio_bytes, mime_type),
-                        "params": (None, self._build_params(), "application/json"),
-                    }
-                )
-                response.raise_for_status()
-                result = response.json()
+            duration_seconds = _audio_duration_seconds(audio_bytes)
+            with get_client().start_as_current_observation(
+                as_type="generation",
+                name="clova-speech-stt",
+                model="clova-speech-batch",
+            ) as gen:
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    response = await client.post(
+                        f"{self.invoke_url}/recognizer/upload",
+                        headers={"X-CLOVASPEECH-API-KEY": self.secret_key},
+                        files={
+                            "media": (file_name, audio_bytes, mime_type),
+                            "params": (None, self._build_params(), "application/json"),
+                        }
+                    )
+                    response.raise_for_status()
+                    result = response.json()
 
-            text = self._parse_segments(result)
+                text = self._parse_segments(result)
+                gen.update(
+                    usage_details={"audio_seconds": duration_seconds},
+                    cost_details={"total": _clova_cost_usd(duration_seconds)},
+                )
+
             logger.info(f"[STT] 변환 완료 — {len(text)}자")
             return text
 
