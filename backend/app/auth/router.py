@@ -80,6 +80,27 @@ async def reset_password(
         raise HTTPException(status_code=404, detail="의사를 찾을 수 없습니다.")
     temp_password = secrets.token_urlsafe(8)
     doctor.password_hash = service.pwd_context.hash(temp_password)
+    doctor.force_password_change = True  
+    await db.commit()
+    return {"temp_password": temp_password}
+
+
+@router.post("/admin/reset-password/staff/{staff_id}", response_model=ResetPasswordResponse)
+async def reset_staff_password(
+    staff_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+):
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="유효하지 않은 관리자 키입니다.")
+
+    result = await db.execute(select(StaffAccount).where(StaffAccount.id == staff_id))
+    staff = result.scalar_one_or_none()
+    if staff is None:
+        raise HTTPException(status_code=404, detail="직원을 찾을 수 없습니다.")
+    temp_password = secrets.token_urlsafe(8)
+    staff.password_hash = service.pwd_context.hash(temp_password)
+    staff.force_password_change = True
     await db.commit()
     return {"temp_password": temp_password}
 
@@ -252,6 +273,11 @@ async def login(data: LoginRequest,request:Request, db: AsyncSession = Depends(g
             status_code=status.HTTP_403_FORBIDDEN,
             detail="승인 대기 중입니다.",
         )
+    if not bool(doctor.is_active):
+        raise HTTPException(
+            status_code=403,
+            detail="비활성화된 계정입니다."
+        )
     if doctor.force_password_change:
         raise HTTPException(status_code=403, detail="초기 비밀번호를 변경해야 합니다.", headers={"X-Require": "password-change"})
     
@@ -312,6 +338,11 @@ async def change_password(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="현재 비밀번호가 일치하지 않습니다.",
         )
+    if await service.check_password_history(db, "doctor", doctor.id, data.new_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="최근 사용한 비밀번호는 다시 사용할 수 없습니다.",
+        )
     doctor.password_hash = service.pwd_context.hash(data.new_password)
     await service.save_password_history(db, "doctor", doctor.id, str(doctor.password_hash))
     await db.commit()
@@ -344,6 +375,18 @@ async def admin_approve(
         access_token=result["access_token"],
         approved_at=doctor.approved_at,
     )
+
+
+@router.patch("/admin/doctors/{doctor_id}/deactivate")
+async def admin_deactivate_doctor(
+    doctor_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+):
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="유효하지 않은 관리자 키입니다.")
+    doctor = await service.deactivate_doctor(db, doctor_id)
+    return {"doctor_id": doctor.id, "name": doctor.name, "is_active": doctor.is_active}
 
 
 @router.post("/admin/unlock/{license_number}")
@@ -428,9 +471,12 @@ async def update_me(
 
 
 @router.post("/staff/login", response_model=TokenResponse)
-async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db)):
+async def staff_login(data: StaffLoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     FAIL_KEY = f"login_fail:staff:{data.username}"
     LOCK_KEY = f"login_lock:staff:{data.username}"
+
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent")
 
     if _redis:
         is_locked = _redis.get(LOCK_KEY)
@@ -449,6 +495,15 @@ async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db
 
     is_verified = service.pwd_context.verify(data.password, str(staff.password_hash))
     if not is_verified:
+        login_log = LoginLog(
+            success = False,
+            ip_address = ip,
+            account_type = "staff",
+            account_id = staff.id,
+            user_agent = ua
+        )
+        db.add(login_log)
+        await db.commit()
         if _redis:
             fail_count = _redis.incr(FAIL_KEY)
             _redis.expire(FAIL_KEY, LOCK_SECONDS)
@@ -477,6 +532,22 @@ async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db
             detail="비활성화된 계정입니다.",
         )
 
+    PW_EXPIRE_DAYS = 90
+    if staff.password_changed_at:
+        if datetime.now(timezone.utc) - staff.password_changed_at > timedelta(days=PW_EXPIRE_DAYS):
+            raise HTTPException(
+                status_code=403,
+                detail="비밀번호 사용 기간(90일)이 만료되었습니다.",
+                headers={"X-Require": "password-change"}
+            )
+
+    login_log = LoginLog(
+            success = True,
+            ip_address = ip,
+            account_type = "staff",
+            account_id = staff.id,
+            user_agent = ua
+    )
     token = service.create_access_token(
         UUID(str(staff.id)),
         UUID(str(staff.hospital_id)),
@@ -487,6 +558,8 @@ async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db
     )
     if not allowed:
         raise HTTPException(status_code=429, detail="이미 다른 기기에서 로그인 중입니다.")
+    db.add(login_log)
+    await db.commit()
 
     return TokenResponse(
         access_token=token,
@@ -517,7 +590,19 @@ async def get_login_logs(db:AsyncSession=Depends(get_db),
         .where(LoginLog.account_id.in_(all_ids))
         .order_by(LoginLog.attempted_at.desc())
     )
-    return result.scalars().all()
+    logs = result.scalars().all()
+    return [
+        {
+            "id": str(log.id),
+            "account_id": str(log.account_id),
+            "account_type": log.account_type,
+            "success": log.success,
+            "ip_address": log.ip_address,
+            "user_agent": log.user_agent,
+            "attempted_at": log.attempted_at.strftime("%Y%m%d%H%M%S") if log.attempted_at else None,
+        }
+        for log in logs
+    ]
 
 
 @router.get("/account-histories")
