@@ -1,4 +1,5 @@
 # app/charting/stt/client.py
+import asyncio
 import io
 import json
 import logging
@@ -7,6 +8,7 @@ import httpx
 import mutagen
 from langfuse import get_client
 
+from app.charting.stt.vad import trim_silence
 from app.core.config import settings
 from app.pipeline.postprocessor import postprocessor
 
@@ -95,6 +97,8 @@ class ClovaSpeechClient:
         mime_type = MIME_MAP.get(ext, "audio/mpeg")
         file_name = f"audio.{ext}"
         logger.info(f"[STT] 파일명={file_name}, MIME={mime_type}")
+
+        audio_bytes = await asyncio.to_thread(trim_silence, audio_bytes, ext)
 
         try:
             duration_seconds = _audio_duration_seconds(audio_bytes)
