@@ -7,6 +7,7 @@
 """
 import logging
 import os
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -19,6 +20,28 @@ logger = logging.getLogger(__name__)
 SAMPLE_RATE = 16000
 MIN_SILENCE_SEC = 10.0  # 이보다 짧은 무음은 자연스러운 대화 텀으로 보고 자르지 않음
 PAD_SEC = 0.75  # 무음 구간 경계에서 이만큼은 남기고 자름 (단어 잘림 방지)
+
+# uvicorn을 IDE/런처를 통해 띄우면 프로세스 PATH에 /opt/homebrew/bin 등이
+# 빠져 있어 shutil.which("ffmpeg")도 못 찾는 경우가 있다 (실제 확인됨).
+# PATH에서 못 찾으면 흔한 설치 경로를 직접 확인해서 폴백한다.
+_FFMPEG_FALLBACK_PATHS = (
+    "/opt/homebrew/bin/ffmpeg",  # macOS Homebrew (Apple Silicon)
+    "/usr/local/bin/ffmpeg",  # macOS Homebrew (Intel) / 일부 Linux
+    "/usr/bin/ffmpeg",  # Linux (apt-get install ffmpeg)
+)
+
+
+def _find_ffmpeg() -> str:
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    for candidate in _FFMPEG_FALLBACK_PATHS:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return "ffmpeg"  # 못 찾아도 일단 반환 — subprocess가 실패하면 trim_silence가 원본으로 폴백
+
+
+FFMPEG_PATH = _find_ffmpeg()
 
 _model = None
 
@@ -33,7 +56,7 @@ def _get_model():
 def _decode_to_wav(src_path: str, dst_path: str) -> None:
     subprocess.run(
         [
-            "ffmpeg", "-y", "-i", src_path,
+            FFMPEG_PATH, "-y", "-i", src_path,
             "-ac", "1", "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav",
             dst_path,
         ],
@@ -101,7 +124,7 @@ def _cut_and_concat(src_path: str, keep_ranges: list[tuple[float, float]], dst_p
         ";".join(filter_parts) + ";" + "".join(concat_inputs) + f"concat=n={len(keep_ranges)}:v=0:a=1[out]"
     )
     subprocess.run(
-        ["ffmpeg", "-y", "-i", src_path, "-filter_complex", filter_complex, "-map", "[out]", dst_path],
+        [FFMPEG_PATH, "-y", "-i", src_path, "-filter_complex", filter_complex, "-map", "[out]", dst_path],
         check=True, capture_output=True,
     )
 
