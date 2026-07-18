@@ -22,6 +22,10 @@ export default function LoginForm() {
           ? await login(licenseNumber, password)
           : await staffLogin(username, password)
       localStorage.setItem('token', data.access_token)
+      if (data.force_password_change) {
+        router.push('/settings?force=true')
+        return
+      }
       const me = await getMe()
     if (me?.is_expired) {
       router.push('/membership')
