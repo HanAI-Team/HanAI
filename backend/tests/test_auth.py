@@ -142,6 +142,76 @@ async def test_login_success(client):
     assert data["token_type"] == "bearer"
 
 
+async def test_login_logs_action_필드(client):
+    reg = await client.post("/api/auth/register", json=REGISTER_DATA)
+    doctor_id = reg.json()["doctor_id"]
+    await client.post(
+        f"/api/auth/admin/approve/{doctor_id}",
+        headers={"X-Admin-Key": settings.ADMIN_API_KEY},
+    )
+
+    login_payload = {"license_number": "12345678", "password": "password1234!!!"}
+    first_login = await client.post("/api/auth/login", json=login_payload)
+    token = first_login.json()["access_token"]
+
+    await client.post(
+        "/api/auth/login",
+        json={"license_number": "12345678", "password": "wrong-password"},
+    )
+
+    await client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+
+    # 로그아웃으로 토큰이 블랙리스트 처리되므로 조회는 새 토큰으로 진행
+    relogin = await client.post("/api/auth/login", json=login_payload)
+    fresh_token = relogin.json()["access_token"]
+
+    resp = await client.get(
+        "/api/auth/login-logs", headers={"Authorization": f"Bearer {fresh_token}"}
+    )
+    assert resp.status_code == 200
+    actions = {log["action"] for log in resp.json()}
+    assert "로그인" in actions
+    assert "로그인 실패" in actions
+    assert "로그아웃" in actions
+
+
+async def test_me_최종_로그인_정보(client):
+    reg = await client.post("/api/auth/register", json=REGISTER_DATA)
+    doctor_id = reg.json()["doctor_id"]
+    await client.post(
+        f"/api/auth/admin/approve/{doctor_id}",
+        headers={"X-Admin-Key": settings.ADMIN_API_KEY},
+    )
+
+    login_payload = {"license_number": "12345678", "password": "password1234!!!"}
+    await client.post("/api/auth/login", json=login_payload)
+    second = await client.post("/api/auth/login", json=login_payload)
+    token = second.json()["access_token"]
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    data = me.json()
+    assert data["last_login_ip"] is not None
+    assert data["last_login_at"] is not None
+    assert len(data["last_login_at"]) == 14
+
+
+async def test_me_로그인_이력_없으면_최종로그인_None(client):
+    reg = await client.post("/api/auth/register", json=REGISTER_DATA)
+    doctor_id = reg.json()["doctor_id"]
+    approve = await client.post(
+        f"/api/auth/admin/approve/{doctor_id}",
+        headers={"X-Admin-Key": settings.ADMIN_API_KEY},
+    )
+    token = approve.json()["access_token"]
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    data = me.json()
+    assert data["last_login_ip"] is None
+    assert data["last_login_at"] is None
+
+
 async def test_로그인_5회_실패시_잠금(client, fake_redis):
     await _register_and_approve(client)
 
