@@ -37,5 +37,7 @@ class Settings(BaseSettings):
     TOSS_CLINET_KEY:Optional[str] = None
     TOSS_WEBHOOK_SECRET: Optional[str] = None
 
-
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_BASE_URL: str = ""
 settings = Settings()

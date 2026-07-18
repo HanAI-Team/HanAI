@@ -54,6 +54,7 @@ class Doctor(Base):
     password_hash = Column(String, nullable=False)
     role = Column(String, default="owner")
     is_approved = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     license_verified_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -632,6 +633,21 @@ class LoginLog(Base):
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(String(500), nullable=True)
     attempted_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    action = Column(String(100), nullable=True)  # 수행업무: "로그인", "로그인 실패", "로그아웃" 등
+
+
+class AccessControlLog(Base):
+    __tablename__ = "access_control_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), nullable=False)
+    target_account_id = Column(UUID(as_uuid=True), nullable=False)  # 적용대상 ID
+    target_account_type = Column(String(10), nullable=False)  # "doctor" | "staff"
+    role = Column(String(50), nullable=False)  # 적용 권한
+    action_type = Column(String(10), nullable=False)  # "부여" | "변경" | "말소"
+    reason = Column(String(200), nullable=True)  # 사유 (입사/조직변경/퇴사/휴직 등)
+    acted_at = Column(String(14), nullable=False)  # CCYYMMDDHHMMSS
+    acted_by = Column(UUID(as_uuid=True), nullable=True)  # 작업자 ID. 관리자키(X-Admin-Key) 작업은 None
 
 
 class PasswordHistory(Base):

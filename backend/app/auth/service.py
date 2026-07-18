@@ -134,6 +134,20 @@ async def approve_doctor(db: AsyncSession, doctor_id: UUID) -> dict:
     return {"doctor": doctor, "access_token": access_token}
 
 
+async def deactivate_doctor(db: AsyncSession, doctor_id: UUID) -> Doctor:
+    result = await db.execute(select(Doctor).where(Doctor.id == doctor_id))
+    doctor = result.scalar_one_or_none()
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="의사를 찾을 수 없습니다."
+        )
+
+    doctor.is_active = False  # type: ignore
+    await db.commit()
+    await db.refresh(doctor)
+    return doctor
+
+
 async def get_staff_by_username(db: AsyncSession, username: str):
     from app.core.models import StaffAccount
 
@@ -144,22 +158,23 @@ async def get_staff_by_username(db: AsyncSession, username: str):
 
 
 
-def validate_password_complexity(password :str)->list[str]:
-    errors = []
+def validate_password_complexity(password: str) -> list[str]:
+    categories = [
+        bool(re.search(r"[A-Z]", password)),
+        bool(re.search(r"[a-z]", password)),
+        bool(re.search(r"\d", password)),
+        bool(re.search(r"[!@#$%^&*()_+\-=\[\]{}|;:',.<>?/~`]", password)),
+    ]
+    count = sum(categories)
 
-    if len(password) < 8:
-        errors.append("비밀번호는 8자 이상이어야 합니다.")
-
-    if not re.search(r"[A-Za-z]", password):
-        errors.append("영문자를 포함해야 합니다.")
-    
-    if not re.search(r"\d", password):
-        errors.append("숫자를 포함해야 합니다.")
-
-    if not re.search(r"[!@#$%^&*()_+\-=\[\]{}|;:',.<>?/~`]", password):
-        errors.append("특수문자를 포함해야 합니다.")
-
-    return errors 
+    if count >= 3 and len(password) >= 8:
+        return []
+    if count >= 2 and len(password) >= 10:
+        return []
+    return [
+        "비밀번호는 영대문자/영소문자/숫자/특수문자 중 3종류 이상 조합 시 8자리 이상, "
+        "2종류 이상 조합 시 10자리 이상이어야 합니다."
+    ]
 
 
 
@@ -213,4 +228,26 @@ async def record_account_history(
     )
     db.add(account_history)
 
-    
+
+async def record_access_control_log(
+        db: AsyncSession,
+        hospital_id: UUID,
+        target_account_id: UUID,
+        target_account_type: str,
+        role: str,
+        action_type: str,
+        reason: str | None = None,
+        acted_by: UUID | None = None,
+) -> None:
+    from app.core.models import AccessControlLog
+    db.add(AccessControlLog(
+        hospital_id=hospital_id,
+        target_account_id=target_account_id,
+        target_account_type=target_account_type,
+        role=role,
+        action_type=action_type,
+        reason=reason,
+        acted_at=datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"),
+        acted_by=acted_by,
+    ))
+

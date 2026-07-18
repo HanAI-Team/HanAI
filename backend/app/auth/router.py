@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
 from app.core.models import (
+    AccessControlLog,
     AccountHistory,
     AuditLog,
     Doctor,
@@ -80,6 +81,27 @@ async def reset_password(
         raise HTTPException(status_code=404, detail="의사를 찾을 수 없습니다.")
     temp_password = secrets.token_urlsafe(8)
     doctor.password_hash = service.pwd_context.hash(temp_password)
+    doctor.force_password_change = True  
+    await db.commit()
+    return {"temp_password": temp_password}
+
+
+@router.post("/admin/reset-password/staff/{staff_id}", response_model=ResetPasswordResponse)
+async def reset_staff_password(
+    staff_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+):
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="유효하지 않은 관리자 키입니다.")
+
+    result = await db.execute(select(StaffAccount).where(StaffAccount.id == staff_id))
+    staff = result.scalar_one_or_none()
+    if staff is None:
+        raise HTTPException(status_code=404, detail="직원을 찾을 수 없습니다.")
+    temp_password = secrets.token_urlsafe(8)
+    staff.password_hash = service.pwd_context.hash(temp_password)
+    staff.force_password_change = True
     await db.commit()
     return {"temp_password": temp_password}
 
@@ -217,11 +239,12 @@ async def login(data: LoginRequest,request:Request, db: AsyncSession = Depends(g
     is_verified = service.pwd_context.verify(data.password, str(doctor.password_hash))
     if not is_verified:
         login_log = LoginLog(
-            success = False, 
+            success = False,
             ip_address = ip,
             account_type = "doctor",
             account_id = doctor.id,
-            user_agent = ua
+            user_agent = ua,
+            action = "로그인 실패",
         )
         db.add(login_log)
         await db.commit()
@@ -252,21 +275,26 @@ async def login(data: LoginRequest,request:Request, db: AsyncSession = Depends(g
             status_code=status.HTTP_403_FORBIDDEN,
             detail="승인 대기 중입니다.",
         )
-    if doctor.force_password_change:
-        raise HTTPException(status_code=403, detail="초기 비밀번호를 변경해야 합니다.", headers={"X-Require": "password-change"})
-    
-    if doctor.password_changed_at:
+    if not bool(doctor.is_active):
+        raise HTTPException(
+            status_code=403,
+            detail="비활성화된 계정입니다."
+        )
+
+    force_password_change = bool(doctor.force_password_change)
+    if not force_password_change and doctor.password_changed_at:
         if datetime.now(timezone.utc) - doctor.password_changed_at > timedelta(days=PW_EXPIRE_DAYS):
-            raise HTTPException(status_code=403, detail="비밀번호 사용 기간(90일)이 만료되었습니다.", headers={"X-Require": "password-change"})
+            force_password_change = True
 
     subscription = await get_subscription(db, doctor)
     tier = subscription.tier if subscription else "basic"
     login_log  = LoginLog(
-            success = True, 
+            success = True,
             ip_address = ip,
             account_type = "doctor",
             account_id = doctor.id,
-            user_agent = ua
+            user_agent = ua,
+            action = "로그인",
     )
     token = service.create_access_token(
         UUID(str(doctor.id)), UUID(str(doctor.hospital_id)), str(doctor.role)
@@ -282,12 +310,15 @@ async def login(data: LoginRequest,request:Request, db: AsyncSession = Depends(g
     return TokenResponse(
         access_token=token,
         expires_in=settings.JWT_EXPIRE_MINUTES * 60,
+        force_password_change=force_password_change,
     )
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
 ):
     token = credentials.credentials
     from jose import jwt as jose_jwt
@@ -298,6 +329,20 @@ async def logout(
     await add_token_blacklist(token, expire_seconds=settings.JWT_EXPIRE_MINUTES * 60)
     if hospital_id:
         await remove_session(hospital_id, token)
+
+    account_id = payload.get("sub")
+    role = payload.get("role")
+    if account_id:
+        db.add(LoginLog(
+            success=True,
+            ip_address=request.client.host if request.client else None,
+            account_type="doctor" if role in ("owner", "associate") else "staff",
+            account_id=UUID(account_id),
+            user_agent=request.headers.get("user-agent"),
+            action="로그아웃",
+        ))
+        await db.commit()
+
     return {"message": "로그아웃되었습니다."}
 
 
@@ -305,15 +350,23 @@ async def logout(
 async def change_password(
     data: ChangePasswordRequest,
     db: AsyncSession = Depends(get_db),
-    doctor: Doctor = Depends(get_current_doctor),
+    user: Union[Doctor, StaffAccount] = Depends(get_current_user),
 ):
-    if not service.pwd_context.verify(data.current_password, str(doctor.password_hash)):
+    account_type = "doctor" if isinstance(user, Doctor) else "staff"
+    if not service.pwd_context.verify(data.current_password, str(user.password_hash)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="현재 비밀번호가 일치하지 않습니다.",
         )
-    doctor.password_hash = service.pwd_context.hash(data.new_password)
-    await service.save_password_history(db, "doctor", doctor.id, str(doctor.password_hash))
+    if await service.check_password_history(db, account_type, user.id, data.new_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="최근 사용한 비밀번호는 다시 사용할 수 없습니다.",
+        )
+    user.password_hash = service.pwd_context.hash(data.new_password)
+    user.password_changed_at = datetime.now(timezone.utc)
+    user.force_password_change = False
+    await service.save_password_history(db, account_type, user.id, str(user.password_hash))
     await db.commit()
     return {"message": "비밀번호가 변경되었습니다."}
 
@@ -346,6 +399,29 @@ async def admin_approve(
     )
 
 
+@router.patch("/admin/doctors/{doctor_id}/deactivate")
+async def admin_deactivate_doctor(
+    doctor_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+):
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="유효하지 않은 관리자 키입니다.")
+    doctor = await service.deactivate_doctor(db, doctor_id)
+    await service.record_access_control_log(
+        db,
+        hospital_id=UUID(str(doctor.hospital_id)),
+        target_account_id=UUID(str(doctor.id)),
+        target_account_type="doctor",
+        role=str(doctor.role),
+        action_type="말소",
+        reason="퇴사",
+        acted_by=None,
+    )
+    await db.commit()
+    return {"doctor_id": doctor.id, "name": doctor.name, "is_active": doctor.is_active}
+
+
 @router.post("/admin/unlock/{license_number}")
 async def unlock_account(
     license_number: str,
@@ -371,6 +447,21 @@ async def get_me(
     institution_code = hospital.institution_code if hospital else None
     agency_code = hospital.agency_code if hospital else None
 
+    last_login_result = await db.execute(
+        select(LoginLog)
+        .where(LoginLog.account_id == user.id, LoginLog.success == True)  # noqa: E712
+        .order_by(LoginLog.attempted_at.desc())
+        .offset(1)
+        .limit(1)
+    )
+    last_login = last_login_result.scalar_one_or_none()
+    last_login_ip = last_login.ip_address if last_login else None
+    last_login_at = (
+        last_login.attempted_at.strftime("%Y%m%d%H%M%S")
+        if last_login and last_login.attempted_at
+        else None
+    )
+
     if isinstance(user, Doctor):
         subscription_result = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital.id ))
         subscription = subscription_result.scalar_one_or_none()
@@ -393,6 +484,8 @@ async def get_me(
             ) if subscription else True,
             "chuna_training_certified": user.chuna_training_certified,
             "chuna_training_banner_seen": user.chuna_training_banner_seen,
+            "last_login_ip": last_login_ip,
+            "last_login_at": last_login_at,
         }
     return {
         "id": user.id,
@@ -404,6 +497,8 @@ async def get_me(
         "hospital_name": hospital.name if hospital else None,
         "institution_code": institution_code,
         "agency_code": agency_code,
+        "last_login_ip": last_login_ip,
+        "last_login_at": last_login_at,
     }
 
 
@@ -428,9 +523,12 @@ async def update_me(
 
 
 @router.post("/staff/login", response_model=TokenResponse)
-async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db)):
+async def staff_login(data: StaffLoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     FAIL_KEY = f"login_fail:staff:{data.username}"
     LOCK_KEY = f"login_lock:staff:{data.username}"
+
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent")
 
     if _redis:
         is_locked = _redis.get(LOCK_KEY)
@@ -449,6 +547,16 @@ async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db
 
     is_verified = service.pwd_context.verify(data.password, str(staff.password_hash))
     if not is_verified:
+        login_log = LoginLog(
+            success = False,
+            ip_address = ip,
+            account_type = "staff",
+            account_id = staff.id,
+            user_agent = ua,
+            action = "로그인 실패",
+        )
+        db.add(login_log)
+        await db.commit()
         if _redis:
             fail_count = _redis.incr(FAIL_KEY)
             _redis.expire(FAIL_KEY, LOCK_SECONDS)
@@ -477,6 +585,20 @@ async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db
             detail="비활성화된 계정입니다.",
         )
 
+    PW_EXPIRE_DAYS = 90
+    force_password_change = bool(staff.force_password_change)
+    if not force_password_change and staff.password_changed_at:
+        if datetime.now(timezone.utc) - staff.password_changed_at > timedelta(days=PW_EXPIRE_DAYS):
+            force_password_change = True
+
+    login_log = LoginLog(
+            success = True,
+            ip_address = ip,
+            account_type = "staff",
+            account_id = staff.id,
+            user_agent = ua,
+            action = "로그인",
+    )
     token = service.create_access_token(
         UUID(str(staff.id)),
         UUID(str(staff.hospital_id)),
@@ -487,10 +609,13 @@ async def staff_login(data: StaffLoginRequest, db: AsyncSession = Depends(get_db
     )
     if not allowed:
         raise HTTPException(status_code=429, detail="이미 다른 기기에서 로그인 중입니다.")
+    db.add(login_log)
+    await db.commit()
 
     return TokenResponse(
         access_token=token,
         expires_in=settings.JWT_EXPIRE_MINUTES * 60,
+        force_password_change=force_password_change,
     )
 
 
@@ -517,7 +642,20 @@ async def get_login_logs(db:AsyncSession=Depends(get_db),
         .where(LoginLog.account_id.in_(all_ids))
         .order_by(LoginLog.attempted_at.desc())
     )
-    return result.scalars().all()
+    logs = result.scalars().all()
+    return [
+        {
+            "id": str(log.id),
+            "account_id": str(log.account_id),
+            "account_type": log.account_type,
+            "success": log.success,
+            "ip_address": log.ip_address,
+            "user_agent": log.user_agent,
+            "attempted_at": log.attempted_at.strftime("%Y%m%d%H%M%S") if log.attempted_at else None,
+            "action": log.action,
+        }
+        for log in logs
+    ]
 
 
 @router.get("/account-histories")
@@ -540,6 +678,36 @@ async def get_account_histories(db:AsyncSession=Depends(get_db),
 .where(AccountHistory.account_id.in_(all_ids))
 .order_by(AccountHistory.started_at.desc()))
     return result.scalars().all()
+
+
+@router.get("/access-control-logs")
+async def get_access_control_logs(
+    db: AsyncSession = Depends(get_db),
+    user: Union[Doctor, StaffAccount] = Depends(get_current_user),
+):
+    """접근권한 부여/변경/말소 이력. 오너 계정만, 자기 병원 데이터만 조회 가능."""
+    if user.role != "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="오너 계정만 접근 가능합니다.")
+
+    result = await db.execute(
+        select(AccessControlLog)
+        .where(AccessControlLog.hospital_id == user.hospital_id)
+        .order_by(AccessControlLog.acted_at.desc())
+    )
+    logs = result.scalars().all()
+    return [
+        {
+            "id": str(log.id),
+            "target_account_id": str(log.target_account_id),
+            "target_account_type": log.target_account_type,
+            "role": log.role,
+            "action_type": log.action_type,
+            "reason": log.reason,
+            "acted_at": log.acted_at,
+            "acted_by": str(log.acted_by) if log.acted_by else None,
+        }
+        for log in logs
+    ]
 
 
 @router.get("/audit-logs")

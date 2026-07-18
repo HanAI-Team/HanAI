@@ -1,13 +1,15 @@
 'use client'
 import { updateMyProfile } from '@/lib/api/auth'
 import { updateHospital } from '@/lib/api/hospitals'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function GeneralTab() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [showForceBanner, setShowForceBanner] = useState(false)
   const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm: '' })
   const [pwLoading, setPwLoading] = useState(false)
   const [pwError, setPwError] = useState<string | null>(null)
@@ -38,6 +40,13 @@ export default function GeneralTab() {
   const [ccLoading, setCcLoading] = useState(false)
   const [ccError, setCcError] = useState<string | null>(null)
 
+  const [lastLoginIp, setLastLoginIp] = useState<string | null>(null)
+  const [lastLoginAt, setLastLoginAt] = useState<string | null>(null)
+
+  useEffect(() => {
+    setShowForceBanner(searchParams.get('force') === 'true')
+  }, [searchParams])
+
   const handleChangePassword = async () => {
     if (pwForm.new_password !== pwForm.confirm) {
       setPwError('새 비밀번호가 일치하지 않습니다.')
@@ -64,6 +73,10 @@ export default function GeneralTab() {
       if (!res.ok) throw new Error('비밀번호 변경 실패')
       setPwSuccess(true)
       setPwForm({ current_password: '', new_password: '', confirm: '' })
+      if (showForceBanner) {
+        setShowForceBanner(false)
+        router.replace('/settings')
+      }
       setTimeout(() => setPwSuccess(false), 3000)
     } catch (e: any) {
       setPwError(e.message)
@@ -133,9 +146,16 @@ export default function GeneralTab() {
         setApprovalNo(me.approval_no || '')
         setBirthDate(me.birth_date || '')
         setChunaCertified(!!me.chuna_training_certified)
+        setLastLoginIp(me.last_login_ip || null)
+        setLastLoginAt(me.last_login_at || null)
       })
       .catch(() => {})
   }, [])
+
+  const formatLastLoginAt = (raw: string | null) => {
+    if (!raw || raw.length !== 14) return '-'
+    return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)} ${raw.slice(8, 10)}:${raw.slice(10, 12)}:${raw.slice(12, 14)}`
+  }
 
   const handleSaveBirthDate = async () => {
     if (!birthDate) {
@@ -177,6 +197,11 @@ export default function GeneralTab() {
   return (
     <div className="flex justify-center items-start min-h-[calc(100vh-180px)]">
       <div className="w-full max-w-[1100px]">
+        {showForceBanner && (
+          <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded-md p-3 text-sm mb-6">
+            관리자에 의해 비밀번호가 초기화되었습니다. 아래에서 새 비밀번호로 변경해 주세요.
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
           {/* 비밀번호 변경 */}
@@ -206,6 +231,21 @@ export default function GeneralTab() {
               >
                 {pwSuccess ? '✓ 변경 완료' : pwLoading ? '처리중...' : '비밀번호 변경'}
               </button>
+            </div>
+          </div>
+
+          {/* 최종 로그인 */}
+          <div className="bg-card border border-border rounded-2xl p-6">
+            <div className="text-sm font-medium text-text mb-5">최종 로그인</div>
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-xs text-subtext mb-1.5">마지막 로그인 IP</label>
+                <div className="text-sm text-text">{lastLoginIp || '-'}</div>
+              </div>
+              <div>
+                <label className="block text-xs text-subtext mb-1.5">마지막 로그인 일시</label>
+                <div className="text-sm text-text">{formatLastLoginAt(lastLoginAt)}</div>
+              </div>
             </div>
           </div>
 

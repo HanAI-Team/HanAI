@@ -1680,10 +1680,8 @@ ${historyLine}
                       className="hidden"
                       onChange={(e) => {
                         if (!e.target.files) return;
-                        setAudioFiles((prev) => [
-                          ...prev,
-                          ...Array.from(e.target.files as FileList),
-                        ]);
+                        const selected = Array.from(e.target.files);
+                        setAudioFiles((prev) => [...prev, ...selected]);
                         e.target.value = "";
                       }}
                     />
