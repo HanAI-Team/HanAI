@@ -17,11 +17,10 @@ import {
   getPatient,
   getPatientRecords,
   getPatients,
-  importPatientsFromExcel,
   saveRecord,
   updatePatient,
 } from "@/lib/api/patients";
-import { checkinPatient, getTodayQueue, QueueItem, updateQueueStatus } from "@/lib/api/queue";
+import { getTodayQueue, QueueItem, updateQueueStatus } from "@/lib/api/queue";
 import { useIsExpired } from "@/contexts/SubscriptionContext";
 import { DiagnosisResult, Patient } from "@/types";
 import {
@@ -30,14 +29,12 @@ import {
   ChevronUp,
   CircleCheck,
   Clipboard,
-  Download,
   FileText,
   FolderOpen,
   Leaf,
   MapPin,
   MessageCircle,
   Mic,
-  Pencil,
   Plus,
   Printer,
   ReceiptText,
@@ -147,8 +144,6 @@ export default function DiagnosisPage() {
   const [savingMedicalHistory, setSavingMedicalHistory] = useState<
     string | null
   >(null);
-  const [memoEditing, setMemoEditing] = useState(false);
-  const [memoDraft, setMemoDraft] = useState("");
   const [recordMedicalHistory, setRecordMedicalHistory] = useState<{
     hasHistory: boolean;
     text: string;
@@ -156,9 +151,7 @@ export default function DiagnosisPage() {
   const [recordsLastFetchedFor, setRecordsLastFetchedFor] = useState<
     string | null
   >(null);
-  const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
-  const excelInputRef = useRef<HTMLInputElement | null>(null);
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
   const [expandedCC, setExpandedCC] = useState<Set<string>>(new Set());
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -172,7 +165,6 @@ export default function DiagnosisPage() {
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [feedbackRecordId, setFeedbackRecordId] = useState<string | null>(null);
-  const [memoSectionOpen, setMemoSectionOpen] = useState(false);
   const [resultMemoOpen, setResultMemoOpen] = useState(false);
   const [recordMemoOpen, setRecordMemoOpen] = useState(false);
   const [recordHistoryOpen, setRecordHistoryOpen] = useState(false);
@@ -180,6 +172,7 @@ export default function DiagnosisPage() {
     new Set(),
   );
   const [todayQueue, setTodayQueue] = useState<QueueItem[]>([]);
+  const [selectedQueueItem, setSelectedQueueItem] = useState<QueueItem | null>(null);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueOpen, setQueueOpen] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -251,6 +244,7 @@ export default function DiagnosisPage() {
     getPatient(id)
       .then((p: Patient) => {
         setSelectedPatient(p);
+        setSelectedQueueItem(null);
         setMemo(p.memo || "");
       })
       .catch(console.error);
@@ -517,7 +511,7 @@ ${r.acupuncture?.join(", ")}`;
           );
           setSelectedPatient(updated);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
     try {
       if (audioFiles.length > 0) {
@@ -575,23 +569,6 @@ ${r.acupuncture?.join(", ")}`;
     } finally {
       setLoading(false);
       setLoadingResult2(false);
-    }
-  }
-
-  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    setImportLoading(true);
-    try {
-      const result = await importPatientsFromExcel(file);
-      setImportResult(result);
-      const updated = await getPatients();
-      setPatients(updated.items);
-    } catch {
-      // silent fail — user sees nothing if import errors
-    } finally {
-      setImportLoading(false);
     }
   }
 
@@ -825,22 +802,6 @@ ${blocks.join("\n\n")}
     }
   }
 
-  async function handleSaveMemo() {
-    if (!selectedPatient) return;
-    try {
-      await updatePatient(selectedPatient.id, { memo: memoDraft });
-      const updated = { ...selectedPatient, memo: memoDraft };
-      setPatients((prev) =>
-        prev.map((p) => (p.id === selectedPatient.id ? updated : p)),
-      );
-      setSelectedPatient(updated);
-      setMemo(memoDraft);
-      setMemoEditing(false);
-    } catch {
-      setErrorMessage("메모 저장에 실패했습니다.");
-    }
-  }
-
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
@@ -874,14 +835,14 @@ ${historyLine}
       const response = currentRecordId
         ? await finalizeRecord(currentRecordId, text, saveSelection)
         : await saveRecord(
-            selectedPatient.id,
-            text,
-            chiefComplaint || savedSymptomText,
-            recordMedicalHistory.hasHistory
-              ? recordMedicalHistory.text || null
-              : null,
-            saveSelection,
-          );
+          selectedPatient.id,
+          text,
+          chiefComplaint || savedSymptomText,
+          recordMedicalHistory.hasHistory
+            ? recordMedicalHistory.text || null
+            : null,
+          saveSelection,
+        );
       if (response?.id) {
         setCurrentRecordId(response.id);
       }
@@ -1010,7 +971,7 @@ ${historyLine}
           }
         }
       }
-    } catch {}
+    } catch { }
 
     const target =
       saveSelection === "result2" && result.claudeBased
@@ -1024,11 +985,11 @@ ${historyLine}
 
     const herbRows = (target.herbs ?? []).length > 0
       ? (target.herbs ?? []).map((h) => {
-          const m = h.match(/^(.+?)\s+(\d[\w.]*)$/);
-          const name = m ? m[1] : h;
-          const dosage = m ? m[2] : "-";
-          return `<tr><td>${name}</td><td>${dosage}</td></tr>`;
-        }).join("")
+        const m = h.match(/^(.+?)\s+(\d[\w.]*)$/);
+        const name = m ? m[1] : h;
+        const dosage = m ? m[2] : "-";
+        return `<tr><td>${name}</td><td>${dosage}</td></tr>`;
+      }).join("")
       : `<tr><td colspan="2" style="text-align:center;color:#888">-</td></tr>`;
 
     const acuSection =
@@ -1132,6 +1093,31 @@ ${historyLine}
     return parts.join(", ") || patient.phone || "-";
   }
 
+  function patientGenderAge(patient: Patient): string {
+    const gender =
+      (
+        { male: "남", female: "여", 남성: "남", 여성: "여" } as Record<
+          string,
+          string
+        >
+      )[patient.gender] ?? patient.gender;
+    let age: number | null = null;
+    if (patient.birth_date) {
+      const today = new Date();
+      const b = new Date(patient.birth_date);
+      age = today.getFullYear() - b.getFullYear();
+      if (today < new Date(today.getFullYear(), b.getMonth(), b.getDate())) age--;
+    }
+    const parts = [gender, age != null ? `${age}세` : null].filter(Boolean);
+    return parts.join(" · ") || "-";
+  }
+
+  function insuranceLabel(type?: string | null): string {
+    if (type === "health") return "건강보험";
+    if (type === "medical_aid") return "의료급여";
+    return "-";
+  }
+
   function buildResultCards(r: DiagnosisResult | undefined | null): {
     label: string;
     Icon: LucideIcon;
@@ -1224,9 +1210,9 @@ ${historyLine}
     const tags =
       isAcu && content !== "-"
         ? content
-            .split(/[,，\n]/)
-            .map((s) => s.trim())
-            .filter(Boolean)
+          .split(/[,，\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
         : null;
     return (
       <div key={`${keyPrefix}${sectionKey}`}>
@@ -1256,7 +1242,7 @@ ${historyLine}
   return (
     <div className="flex h-[calc(100vh-52px)] overflow-hidden">
       {/* 왼쪽 환자 패널 */}
-      <div className="hidden sm:flex w-[260px] flex-shrink-0 bg-card border-r border-border flex-col">
+      <div className="hidden sm:flex w-[220px] flex-shrink-0 bg-card border-r border-border flex-col">
         {/* 섹션 1: 오늘 접수 */}
         <div className="p-3 border-b border-border">
           <div
@@ -1287,21 +1273,27 @@ ${historyLine}
                 <div
                   key={item.id}
                   onClick={() => {
+                    setSelectedQueueItem(item);
                     const patient = patients.find((p) => p.id === item.patient_id);
-                    if (!patient) return;
-                    setSelectedPatient(patient);
-                    setResult(null);
-                    setRecordsLastFetchedFor(null);
-                    setSavedSymptomText(undefined);
-                    setActiveTab("record");
-                    setMemoEditing(false);
-                    setMemoSectionOpen(false);
-                    setMemo(patient.memo || "");
-                    setRecordMedicalHistory({ hasHistory: false, text: "" });
+                    const applyPatient = (patient: Patient) => {
+                      setSelectedPatient(patient);
+                      setResult(null);
+                      setRecordsLastFetchedFor(null);
+                      setSavedSymptomText(undefined);
+                      setActiveTab("record");
+                      setMemo(patient.memo || "");
+                      setRecordMedicalHistory({ hasHistory: false, text: "" });
+                    };
+                    if (patient) {
+                      applyPatient(patient);
+                    } else {
+                      getPatient(item.patient_id).then(applyPatient).catch(console.error);
+                    }
                   }}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all ${
-                    selectedPatient?.id === item.patient_id ? "bg-bg" : "hover:bg-bg"
-                  }`}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all border-l-[2.5px] ${selectedPatient?.id === item.patient_id
+                      ? "border-l-[#EF6600] bg-[#EF6600]/5"
+                      : "border-l-transparent hover:bg-bg"
+                    }`}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-sm text-text truncate">{item.patient_name}</div>
@@ -1338,227 +1330,28 @@ ${historyLine}
           ))}
         </div>
 
-        {/* 섹션 2: 환자 검색 */}
-        <div className="p-3 border-b border-border">
-          <div className="text-xs font-medium text-text uppercase tracking-wide mb-2">
-            환자 목록
-          </div>
-          <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2">
-            <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="검색 후 접수 추가..."
-              className="flex-1 bg-transparent text-xs text-text outline-none"
-            />
-          </div>
-        </div>
-        <div
-          ref={patientScrollRef}
-          className="flex-1 overflow-y-auto py-1"
-          onScroll={(e) => {
-            if (search) return;
-            const el = e.currentTarget;
-            if (el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
-              loadMorePatients();
-            }
-          }}
-        >
-          {patientsLoading ? (
-            <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto mt-8" />
-          ) : filtered.length === 0 ? (
-            <div className="text-xs text-muted text-center py-8">
-              등록된 환자가 없습니다
-            </div>
-          ) : (
-            filtered.map((patient) => (
-              <div
-                key={patient.id}
-                className={`group flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer transition-all border-l-[2.5px] ${
-                  selectedPatient?.id === patient.id
-                    ? "bg-bg border-l-[#EF6600]"
-                    : "border-l-transparent hover:bg-bg"
-                }`}
-                onClick={() => {
-                  checkinPatient(patient.id)
-                    .then((item) => {
-                      setTodayQueue((prev) => {
-                        const exists = prev.some((q) => q.id === item.id);
-                        return exists
-                          ? prev.map((q) => (q.id === item.id ? item : q))
-                          : [...prev, item];
-                      });
-                    })
-                    .catch(console.error);
-                  setSelectedPatient(patient);
-                  setResult(null);
-                  setRecordsLastFetchedFor(null);
-                  setSavedSymptomText(undefined);
-                  setActiveTab("record");
-                  setMemoEditing(false);
-                  setMemoSectionOpen(false);
-                  setMemo(patient.memo || "");
-                  setRecordMedicalHistory({ hasHistory: false, text: "" });
-                }}
-              >
-                <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
-                  {patient.name[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-text">
-                    {patient.name}
-                  </div>
-                  <div className="text-xs text-subtext">
-                    {patientSubtext(patient)}
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditPatient(patient);
-                    setEditForm({
-                      phone: patient.phone || "",
-                      memo: patient.memo || "",
-                      rrn: "",
-                      insurance_type: patient.insurance_type || "",
-                      disability_grade: patient.disability_grade || "",
-                      medical_aid_grade: patient.medical_aid_grade || "",
-                    });
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-border transition-all flex-shrink-0"
-                  title="환자 정보 수정"
-                >
-                  <Pencil className="w-3 h-3 text-subtext" />
-                </button>
-              </div>
-            ))
-          )}
-          {!search && patientLoadingMore && (
-            <div className="text-xs text-muted text-center py-2">불러오는 중...</div>
-          )}
-        </div>
-        {selectedPatient && (
-          <div className="border-t border-border">
-            <button
-              onClick={() => {
-                if (!memoEditing) setMemoSectionOpen((p) => !p);
-              }}
-              className="w-full flex items-center justify-between px-3 py-2 text-left"
-            >
-              <span className="text-xs text-subtext uppercase tracking-wide">
-                메모
-              </span>
-              {memoSectionOpen ? (
-                <ChevronUp className="w-3 h-3 text-muted" />
-              ) : (
-                <ChevronDown className="w-3 h-3 text-muted" />
-              )}
-            </button>
-            {memoSectionOpen && (
-              <div className="px-3 pb-3 flex flex-col gap-1.5">
-                {!memoEditing && (
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => {
-                        setMemoEditing(true);
-                        setMemoDraft(selectedPatient.memo || "");
-                      }}
-                      className="p-1 rounded hover:bg-border transition-all"
-                    >
-                      <Pencil className="w-3 h-3 text-subtext" />
-                    </button>
-                  </div>
-                )}
-                {memoEditing ? (
-                  <>
-                    <textarea
-                      value={memoDraft}
-                      onChange={(e) => setMemoDraft(e.target.value)}
-                      autoFocus
-                      rows={3}
-                      className="w-full bg-fill border border-border rounded-md px-2 py-1.5 text-xs text-text outline-none focus:border-[#EF6600] resize-none transition-colors"
-                    />
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={handleSaveMemo}
-                        className="flex-1 bg-[#EF6600] text-white rounded-md py-1.5 text-xs hover:opacity-90 transition-opacity"
-                      >
-                        저장
-                      </button>
-                      <button
-                        onClick={() => setMemoEditing(false)}
-                        className="flex-1 border border-border-strong rounded-md py-1.5 text-xs text-subtext hover:border-text transition-all"
-                      >
-                        취소
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    onClick={() => {
-                      setMemoEditing(true);
-                      setMemoDraft(selectedPatient.memo || "");
-                    }}
-                    className="text-xs text-text cursor-pointer hover:bg-fill rounded-md px-2 py-1.5 min-h-[28px] whitespace-pre-wrap transition-colors"
-                  >
-                    {selectedPatient.memo ? (
-                      selectedPatient.memo
-                    ) : (
-                      <span className="text-muted">
-                        클릭하여 메모 입력...
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        <div className="p-3 border-t border-border flex flex-col gap-2">
-          <button
-            onClick={() => excelInputRef.current?.click()}
-            disabled={importLoading}
-            className="w-full border border-border-strong rounded-md py-2 text-xs text-subtext hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-          >
-            <Download className="w-3.5 h-3.5" /> {importLoading ? "가져오는 중..." : "환자 정보 가져오기"}
-          </button>
-          <input
-            ref={excelInputRef}
-            type="file"
-            accept=".xls,.xlsx"
-            className="hidden"
-            onChange={handleExcelImport}
-          />
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="w-full bg-[#EF6600] text-white rounded-md py-2 text-xs flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
-          >
-            <Plus className="w-3.5 h-3.5" /> 신규 환자 등록
-          </button>
-        </div>
       </div>
 
       {/* 오른쪽 메인 */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* 모바일 환자 정보 바 */}
-        <div className="sm:hidden bg-card border-b border-border flex items-center justify-between px-4 py-2 flex-shrink-0">
+        <div className="sm:hidden bg-card border-b border-border px-4 py-2 flex-shrink-0">
           {selectedPatient ? (
-            <>
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white">
-                  {selectedPatient.name[0]}
-                </div>
-                <span className="text-sm font-medium text-text">
-                  {selectedPatient.name}
-                </span>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
+                {selectedPatient.name[0]}
               </div>
-              <button
-                onClick={() => router.push("/patients")}
-                className="text-xs text-subtext border border-border rounded-md px-3 py-1 hover:border-[#EF6600] hover:text-[#EF6600] transition-all"
-              >
-                변경
-              </button>
-            </>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-sm font-medium text-text">{selectedPatient.name}</span>
+                  <span className="text-xs text-subtext">{patientGenderAge(selectedPatient)}</span>
+                  <span className="text-xs text-subtext">{insuranceLabel(selectedPatient.insurance_type)}</span>
+                </div>
+                {selectedQueueItem?.symptom && (
+                  <div className="text-xs text-muted truncate">증상: {selectedQueueItem.symptom}</div>
+                )}
+              </div>
+            </div>
           ) : (
             <button
               onClick={() => router.push("/patients")}
@@ -1566,6 +1359,28 @@ ${historyLine}
             >
               환자를 선택하세요 →
             </button>
+          )}
+        </div>
+        {/* 데스크톱 환자 정보 바 */}
+        <div className="hidden sm:flex items-center px-5 py-3 border-b border-border bg-card flex-shrink-0">
+          {selectedPatient ? (
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
+                {selectedPatient.name[0]}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-text">{selectedPatient.name}</span>
+                  <span className="text-xs text-subtext">{patientGenderAge(selectedPatient)}</span>
+                  <span className="text-xs text-subtext">{insuranceLabel(selectedPatient.insurance_type)}</span>
+                </div>
+                {selectedQueueItem?.symptom && (
+                  <div className="text-xs text-muted mt-0.5 truncate">증상: {selectedQueueItem.symptom}</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted">접수 목록에서 환자를 선택해주세요</div>
           )}
         </div>
         <div className="flex border-b border-border bg-card flex-shrink-0">
@@ -1577,11 +1392,10 @@ ${historyLine}
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`px-5 py-3.5 text-xs transition-all border-b-2 ${
-                (id === "result" ? isOverviewTab : activeTab === id)
+              className={`px-5 py-3.5 text-xs transition-all border-b-2 ${(id === "result" ? isOverviewTab : activeTab === id)
                   ? "text-[#EF6600] border-[#EF6600]"
                   : "text-subtext border-transparent hover:text-text"
-              }`}
+                }`}
             >
               {label}
             </button>
@@ -1614,13 +1428,12 @@ ${historyLine}
                       }
                       toggleRecording();
                     }}
-                    className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 transition-all ${
-                      isExpired
+                    className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 transition-all ${isExpired
                         ? "bg-[#68413E]/40 opacity-50 cursor-not-allowed"
                         : isRecording
                           ? "bg-[#68413E] animate-pulse"
                           : "bg-[#EF6600] hover:scale-105"
-                    }`}
+                      }`}
                   >
                     {isRecording ? (
                       <Square className="w-5 h-5 text-white" />
@@ -1825,9 +1638,8 @@ ${historyLine}
                   disabled={
                     loading || (audioFiles.length === 0 && !symptomText.trim())
                   }
-                  className={`w-full bg-[#EF6600] text-white rounded-md py-3.5 text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40 ${
-                    isExpired ? "opacity-50 cursor-not-allowed" : ""
-                  }`}
+                  className={`w-full bg-[#EF6600] text-white rounded-md py-3.5 text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40 ${isExpired ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
                 >
                   {loading ? (
                     "분석 중..."
@@ -1845,28 +1657,28 @@ ${historyLine}
           {isOverviewTab && selectedPatient && (
             <div className="flex flex-col gap-8">
 
-          {/* ── 진단 결과 ── */}
-          <div>
-          <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">진단 결과</p>
-              {!result ? (
-                <div className="text-sm text-muted text-center py-12">
-                  아직 진단 결과가 없습니다.
-                </div>
-              ) : (
-                <>
-                  <BetaFeedbackBanner />
-                  {(result.chiefComplaintSummary || chiefComplaint) && (
-                    <div className="mb-3 bg-card border border-border rounded-lg p-4">
-                      <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
-                        <FileText className="w-3.5 h-3.5" /> 주소증
+              {/* ── 진단 결과 ── */}
+              <div>
+                <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">진단 결과</p>
+                {!result ? (
+                  <div className="text-sm text-muted text-center py-12">
+                    아직 진단 결과가 없습니다.
+                  </div>
+                ) : (
+                  <>
+                    <BetaFeedbackBanner />
+                    {(result.chiefComplaintSummary || chiefComplaint) && (
+                      <div className="mb-3 bg-card border border-border rounded-lg p-4">
+                        <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
+                          <FileText className="w-3.5 h-3.5" /> 주소증
+                        </div>
+                        <div className="text-sm text-text whitespace-pre-wrap">
+                          {result.chiefComplaintSummary || chiefComplaint}
+                        </div>
                       </div>
-                      <div className="text-sm text-text whitespace-pre-wrap">
-                        {result.chiefComplaintSummary || chiefComplaint}
-                      </div>
-                    </div>
-                  )}
-                  {claudeResultCards.length > 0
-                    ? resultCards.map(({ label, Icon, value, sub, tags }, i) => {
+                    )}
+                    {claudeResultCards.length > 0
+                      ? resultCards.map(({ label, Icon, value, sub, tags }, i) => {
                         const c2 = claudeResultCards[i];
                         return (
                           <div key={i} className="mb-3 last:mb-0">
@@ -1948,278 +1760,275 @@ ${historyLine}
                           </div>
                         );
                       })
-                    : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {resultCards.map(({ label, Icon, value, sub, tags }, i) => (
-                          <div
-                            key={i}
-                            className="bg-card border border-border rounded-lg p-4 relative"
-                          >
-                            <button
-                              onClick={() =>
-                                navigator.clipboard.writeText(`${label}: ${value}`)
-                              }
-                              className="absolute top-3 right-3 bg-fill border border-border rounded-md px-2 py-1 text-xs text-subtext hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
-                            >
-                              <Clipboard className="w-3 h-3" /> 복사
-                            </button>
-                            <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
-                              <Icon className="w-3.5 h-3.5" /> {label}
-                            </div>
+                      : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {resultCards.map(({ label, Icon, value, sub, tags }, i) => (
                             <div
-                              className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-text"}`}
+                              key={i}
+                              className="bg-card border border-border rounded-lg p-4 relative"
                             >
-                              {value}
-                            </div>
-                            {sub && (
-                              <div className="text-xs text-subtext mt-1">
-                                {sub}
-                              </div>
-                            )}
-                            {tags && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {tags.map((t, j) => (
-                                  <span
-                                    key={j}
-                                    className="px-2 py-0.5 bg-fill border border-border rounded text-xs text-subtext"
-                                  >
-                                    {t}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  {loadingResult2 && (
-                    <div className="flex items-center gap-2 text-xs text-subtext mt-2">
-                      <div className="w-3 h-3 border-2 border-border border-t-[#EF6600] rounded-full animate-spin" />
-                      결과 2 (일반 한의학 기반) 분석 중...
-                    </div>
-                  )}
-                  {(result.acupuncture?.length || result.claudeBased?.acupuncture?.length) ? (
-                    <div className="mt-3 bg-card border border-border rounded-lg p-4">
-                      <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-3">
-                        <MapPin className="w-3.5 h-3.5" /> 침 처방 위치
-                      </div>
-                      <AcupointViewer
-                        readOnly
-                        highlightedPoints={parseAcupointCodes([
-                          ...(result.acupuncture ?? []),
-                          ...(result.claudeBased?.acupuncture ?? []),
-                        ])}
-                      />
-                    </div>
-                  ) : null}
-                  <div className="mt-3 bg-card border border-border rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => setResultMemoOpen((p) => !p)}
-                      className="w-full flex items-center justify-between px-4 py-3 text-left"
-                    >
-                      <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide">
-                        <FileText className="w-3.5 h-3.5" /> 메모 · 병력
-                      </div>
-                      {resultMemoOpen ? (
-                        <ChevronUp className="w-3.5 h-3.5 text-muted" />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5 text-muted" />
-                      )}
-                    </button>
-                    {resultMemoOpen && (
-                      <div className="border-t border-border p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
-                            <FileText className="w-3.5 h-3.5" /> 메모
-                          </div>
-                          <div className="text-sm text-text whitespace-pre-wrap">
-                            {memo.trim() || selectedPatient?.memo || "-"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
-                            <Clipboard className="w-3.5 h-3.5" /> 병력
-                          </div>
-                          <div className="text-sm text-text whitespace-pre-wrap">
-                            {recordMedicalHistory.hasHistory &&
-                            recordMedicalHistory.text.trim()
-                              ? recordMedicalHistory.text.trim()
-                              : "없음"}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted mt-3 p-3 bg-fill border border-border rounded-lg">
-                    <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0" />본
-                    결과는 AI 참고용이며 최종 진단 및 처방은 반드시 한의사가
-                    직접 판단해야 합니다.
-                  </div>
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={() => setShowSaveModal(true)}
-                      className="flex-1 bg-[#EF6600] text-white rounded-md py-2.5 text-xs flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50"
-                      disabled={saved}
-                    >
-                      {saved ? (
-                        <>
-                          <CircleCheck className="w-3.5 h-3.5" /> 저장됨
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-3.5 h-3.5" /> 저장
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={handlePrescriptionPrint}
-                      className="flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <Printer className="w-3.5 h-3.5" /> 처방전 출력
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (isExpired) {
-                          alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
-                          return;
-                        }
-                        setActiveTab("record");
-                        setFeedbackAvailable(false);
-                        setFeedbackHelpful(null);
-                        setFeedbackComment("");
-                        setFeedbackSubmitted(false);
-                        setFeedbackRecordId(null);
-                        setResultMemoOpen(false);
-                      }}
-                      title={isExpired ? "구독을 갱신해주세요" : undefined}
-                      className={`flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5 ${
-                        isExpired ? "opacity-50 cursor-not-allowed" : ""
-                      }`}
-                    >
-                      <Plus className="w-3.5 h-3.5" /> 새 진료
-                    </button>
-                  </div>
-                  {feedbackRecordId && (
-                    <div className="mt-3 bg-card border border-border rounded-lg p-4">
-                      {feedbackSubmitted ? (
-                        <div className="flex items-center justify-center gap-2 py-1 text-sm text-subtext">
-                          <CircleCheck className="w-4 h-4 text-[#EF6600]" />
-                          피드백 감사합니다
-                        </div>
-                      ) : (
-                        <>
-                          <div className="text-xs text-subtext mb-3 text-center">
-                            이 진단이 도움이 됐나요?
-                          </div>
-                          <div className="flex gap-2 justify-center mb-3">
-                            <button
-                              onClick={() => setFeedbackHelpful(true)}
-                              className={`flex items-center gap-1.5 px-4 py-2 rounded-md border text-xs transition-all ${
-                                feedbackHelpful === true
-                                  ? "bg-[#EF6600] text-white border-[#EF6600]"
-                                  : "border-border text-subtext hover:border-[#EF6600] hover:text-[#EF6600]"
-                              }`}
-                            >
-                              <ThumbsUp className="w-3.5 h-3.5" /> 도움됨
-                            </button>
-                            <button
-                              onClick={() => setFeedbackHelpful(false)}
-                              className={`flex items-center gap-1.5 px-4 py-2 rounded-md border text-xs transition-all ${
-                                feedbackHelpful === false
-                                  ? "bg-[#232323] dark:bg-border-strong text-white border-text"
-                                  : "border-border text-subtext hover:border-text hover:text-text"
-                              }`}
-                            >
-                              <ThumbsDown className="w-3.5 h-3.5" /> 도움 안 됨
-                            </button>
-                          </div>
-                          {feedbackHelpful !== null && (
-                            <>
-                              <textarea
-                                value={feedbackComment}
-                                onChange={(e) =>
-                                  setFeedbackComment(e.target.value)
-                                }
-                                placeholder="추가 의견이 있으시면 입력해주세요 (선택)"
-                                rows={2}
-                                className="w-full bg-fill border border-border rounded-md px-3 py-2 text-xs text-text outline-none focus:border-[#EF6600] resize-none mb-2 transition-colors"
-                              />
                               <button
-                                onClick={handleFeedback}
-                                className="w-full bg-[#EF6600] text-white rounded-md py-2 text-xs hover:opacity-90 transition-opacity"
+                                onClick={() =>
+                                  navigator.clipboard.writeText(`${label}: ${value}`)
+                                }
+                                className="absolute top-3 right-3 bg-fill border border-border rounded-md px-2 py-1 text-xs text-subtext hover:border-[#EF6600] hover:text-[#EF6600] transition-all flex items-center gap-1"
                               >
-                                피드백 제출
+                                <Clipboard className="w-3 h-3" /> 복사
                               </button>
-                            </>
-                          )}
-                        </>
+                              <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
+                                <Icon className="w-3.5 h-3.5" /> {label}
+                              </div>
+                              <div
+                                className={`text-sm font-semibold ${tags ? "text-[#EF6600]" : "text-text"}`}
+                              >
+                                {value}
+                              </div>
+                              {sub && (
+                                <div className="text-xs text-subtext mt-1">
+                                  {sub}
+                                </div>
+                              )}
+                              {tags && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {tags.map((t, j) => (
+                                    <span
+                                      key={j}
+                                      className="px-2 py-0.5 bg-fill border border-border rounded text-xs text-subtext"
+                                    >
+                                      {t}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    {loadingResult2 && (
+                      <div className="flex items-center gap-2 text-xs text-subtext mt-2">
+                        <div className="w-3 h-3 border-2 border-border border-t-[#EF6600] rounded-full animate-spin" />
+                        결과 2 (일반 한의학 기반) 분석 중...
+                      </div>
+                    )}
+                    {(result.acupuncture?.length || result.claudeBased?.acupuncture?.length) ? (
+                      <div className="mt-3 bg-card border border-border rounded-lg p-4">
+                        <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-3">
+                          <MapPin className="w-3.5 h-3.5" /> 침 처방 위치
+                        </div>
+                        <AcupointViewer
+                          readOnly
+                          highlightedPoints={parseAcupointCodes([
+                            ...(result.acupuncture ?? []),
+                            ...(result.claudeBased?.acupuncture ?? []),
+                          ])}
+                        />
+                      </div>
+                    ) : null}
+                    <div className="mt-3 bg-card border border-border rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setResultMemoOpen((p) => !p)}
+                        className="w-full flex items-center justify-between px-4 py-3 text-left"
+                      >
+                        <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide">
+                          <FileText className="w-3.5 h-3.5" /> 메모 · 병력
+                        </div>
+                        {resultMemoOpen ? (
+                          <ChevronUp className="w-3.5 h-3.5 text-muted" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 text-muted" />
+                        )}
+                      </button>
+                      {resultMemoOpen && (
+                        <div className="border-t border-border p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
+                              <FileText className="w-3.5 h-3.5" /> 메모
+                            </div>
+                            <div className="text-sm text-text whitespace-pre-wrap">
+                              {memo.trim() || selectedPatient?.memo || "-"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
+                              <Clipboard className="w-3.5 h-3.5" /> 병력
+                            </div>
+                            <div className="text-sm text-text whitespace-pre-wrap">
+                              {recordMedicalHistory.hasHistory &&
+                                recordMedicalHistory.text.trim()
+                                ? recordMedicalHistory.text.trim()
+                                : "없음"}
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
+                    <div className="flex items-center gap-1.5 text-xs text-muted mt-3 p-3 bg-fill border border-border rounded-lg">
+                      <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0" />본
+                      결과는 AI 참고용이며 최종 진단 및 처방은 반드시 한의사가
+                      직접 판단해야 합니다.
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => setShowSaveModal(true)}
+                        className="flex-1 bg-[#EF6600] text-white rounded-md py-2.5 text-xs flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50"
+                        disabled={saved}
+                      >
+                        {saved ? (
+                          <>
+                            <CircleCheck className="w-3.5 h-3.5" /> 저장됨
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-3.5 h-3.5" /> 저장
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={handlePrescriptionPrint}
+                        className="flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Printer className="w-3.5 h-3.5" /> 처방전 출력
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (isExpired) {
+                            alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
+                            return;
+                          }
+                          setActiveTab("record");
+                          setFeedbackAvailable(false);
+                          setFeedbackHelpful(null);
+                          setFeedbackComment("");
+                          setFeedbackSubmitted(false);
+                          setFeedbackRecordId(null);
+                          setResultMemoOpen(false);
+                        }}
+                        title={isExpired ? "구독을 갱신해주세요" : undefined}
+                        className={`flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5 ${isExpired ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
+                      >
+                        <Plus className="w-3.5 h-3.5" /> 새 진료
+                      </button>
+                    </div>
+                    {feedbackRecordId && (
+                      <div className="mt-3 bg-card border border-border rounded-lg p-4">
+                        {feedbackSubmitted ? (
+                          <div className="flex items-center justify-center gap-2 py-1 text-sm text-subtext">
+                            <CircleCheck className="w-4 h-4 text-[#EF6600]" />
+                            피드백 감사합니다
+                          </div>
+                        ) : (
+                          <>
+                            <div className="text-xs text-subtext mb-3 text-center">
+                              이 진단이 도움이 됐나요?
+                            </div>
+                            <div className="flex gap-2 justify-center mb-3">
+                              <button
+                                onClick={() => setFeedbackHelpful(true)}
+                                className={`flex items-center gap-1.5 px-4 py-2 rounded-md border text-xs transition-all ${feedbackHelpful === true
+                                    ? "bg-[#EF6600] text-white border-[#EF6600]"
+                                    : "border-border text-subtext hover:border-[#EF6600] hover:text-[#EF6600]"
+                                  }`}
+                              >
+                                <ThumbsUp className="w-3.5 h-3.5" /> 도움됨
+                              </button>
+                              <button
+                                onClick={() => setFeedbackHelpful(false)}
+                                className={`flex items-center gap-1.5 px-4 py-2 rounded-md border text-xs transition-all ${feedbackHelpful === false
+                                    ? "bg-[#232323] dark:bg-border-strong text-white border-text"
+                                    : "border-border text-subtext hover:border-text hover:text-text"
+                                  }`}
+                              >
+                                <ThumbsDown className="w-3.5 h-3.5" /> 도움 안 됨
+                              </button>
+                            </div>
+                            {feedbackHelpful !== null && (
+                              <>
+                                <textarea
+                                  value={feedbackComment}
+                                  onChange={(e) =>
+                                    setFeedbackComment(e.target.value)
+                                  }
+                                  placeholder="추가 의견이 있으시면 입력해주세요 (선택)"
+                                  rows={2}
+                                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-xs text-text outline-none focus:border-[#EF6600] resize-none mb-2 transition-colors"
+                                />
+                                <button
+                                  onClick={handleFeedback}
+                                  className="w-full bg-[#EF6600] text-white rounded-md py-2 text-xs hover:opacity-90 transition-opacity"
+                                >
+                                  피드백 제출
+                                </button>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
 
-            {/* ── 진료 이력 ── */}
-            <div>
-              <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">진료 이력</p>
-              {recordsLoading ? (
-                <div className="text-sm text-muted text-center py-12">
-                  불러오는 중...
-                </div>
-              ) : records.length === 0 ? (
-                <div className="text-sm text-muted text-center py-12">
-                  진료 이력이 없습니다
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {records
-                    .slice()
-                    .sort((a, b) => {
-                      const da = a.recorded_at
-                        ? new Date(a.recorded_at).getTime()
-                        : 0;
-                      const db = b.recorded_at
-                        ? new Date(b.recorded_at).getTime()
-                        : 0;
-                      return db - da;
-                    })
-                    .map((r) => {
-                      const sections = parseChartSections(r.chart_structured);
-                      const blocks = splitResultBlocks(r.chart_structured);
-                      const sections1 = blocks
-                        ? parseChartSections(blocks.result1)
-                        : sections;
-                      const sections2 = blocks
-                        ? parseChartSections(blocks.result2)
-                        : null;
-                      const isOpen = expandedRecord === r.id;
-                      const diagSummary = sections1?.["한의학적 진단"]
-                        ?.split("\n")[0]
-                        ?.trim();
-                      const prescSummary = sections1?.["한약 처방"]
-                        ?.split("\n")[0]
-                        ?.trim();
-                      const ccRaw = sections?.["주소증"]
-                        ?.replace(/\n*■[^\n]*$/, "")
-                        ?.trim();
-                      const ccText = ccRaw || r.raw_transcription;
-                      return (
-                        <div
-                          key={r.id}
-                          className="bg-card border border-border rounded-lg overflow-hidden"
-                        >
-                          <div className="flex items-stretch">
-                            <button
-                              onClick={() =>
-                                setExpandedRecord(isOpen ? null : r.id)
-                              }
-                              className="flex-1 flex items-start justify-between px-4 py-3 text-left gap-2"
-                            >
-                              <div className="flex flex-col gap-0.5 min-w-0">
-                                <span className="text-sm font-medium text-text">
-                                  {r.recorded_at
-                                    ? new Date(r.recorded_at).toLocaleString(
+              {/* ── 진료 이력 ── */}
+              <div>
+                <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">진료 이력</p>
+                {recordsLoading ? (
+                  <div className="text-sm text-muted text-center py-12">
+                    불러오는 중...
+                  </div>
+                ) : records.length === 0 ? (
+                  <div className="text-sm text-muted text-center py-12">
+                    진료 이력이 없습니다
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {records
+                      .slice()
+                      .sort((a, b) => {
+                        const da = a.recorded_at
+                          ? new Date(a.recorded_at).getTime()
+                          : 0;
+                        const db = b.recorded_at
+                          ? new Date(b.recorded_at).getTime()
+                          : 0;
+                        return db - da;
+                      })
+                      .map((r) => {
+                        const sections = parseChartSections(r.chart_structured);
+                        const blocks = splitResultBlocks(r.chart_structured);
+                        const sections1 = blocks
+                          ? parseChartSections(blocks.result1)
+                          : sections;
+                        const sections2 = blocks
+                          ? parseChartSections(blocks.result2)
+                          : null;
+                        const isOpen = expandedRecord === r.id;
+                        const diagSummary = sections1?.["한의학적 진단"]
+                          ?.split("\n")[0]
+                          ?.trim();
+                        const prescSummary = sections1?.["한약 처방"]
+                          ?.split("\n")[0]
+                          ?.trim();
+                        const ccRaw = sections?.["주소증"]
+                          ?.replace(/\n*■[^\n]*$/, "")
+                          ?.trim();
+                        const ccText = ccRaw || r.raw_transcription;
+                        return (
+                          <div
+                            key={r.id}
+                            className="bg-card border border-border rounded-lg overflow-hidden"
+                          >
+                            <div className="flex items-stretch">
+                              <button
+                                onClick={() =>
+                                  setExpandedRecord(isOpen ? null : r.id)
+                                }
+                                className="flex-1 flex items-start justify-between px-4 py-3 text-left gap-2"
+                              >
+                                <div className="flex flex-col gap-0.5 min-w-0">
+                                  <span className="text-sm font-medium text-text">
+                                    {r.recorded_at
+                                      ? new Date(r.recorded_at).toLocaleString(
                                         "ko-KR",
                                         {
                                           year: "numeric",
@@ -2229,269 +2038,269 @@ ${historyLine}
                                           minute: "2-digit",
                                         },
                                       )
-                                    : "날짜 미상"}
-                                </span>
-                                {(diagSummary || prescSummary) && (
-                                  <span className="text-xs text-subtext truncate">
-                                    {[diagSummary, prescSummary]
-                                      .filter(Boolean)
-                                      .join(" · ")}
+                                      : "날짜 미상"}
                                   </span>
+                                  {(diagSummary || prescSummary) && (
+                                    <span className="text-xs text-subtext truncate">
+                                      {[diagSummary, prescSummary]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                    </span>
+                                  )}
+                                </div>
+                                {isOpen ? (
+                                  <ChevronUp className="w-4 h-4 text-subtext flex-shrink-0 mt-0.5" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-subtext flex-shrink-0 mt-0.5" />
                                 )}
-                              </div>
-                              {isOpen ? (
-                                <ChevronUp className="w-4 h-4 text-subtext flex-shrink-0 mt-0.5" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-subtext flex-shrink-0 mt-0.5" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (!r.chart_structured) return;
-                                navigator.clipboard.writeText(r.chart_structured);
-                                setHistoryCopied(r.id);
-                                setTimeout(() => setHistoryCopied(null), 2000);
-                              }}
-                              className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
-                              title="복사"
-                            >
-                              {historyCopied === r.id ? (
-                                <Check className="w-3.5 h-3.5 text-green-500" />
-                              ) : (
-                                <Clipboard className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setCurrentRecordId(r.id);
-                                setActiveTab("billing");
-                              }}
-                              className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
-                              title="청구"
-                            >
-                              <ReceiptText className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteRecord(r.id)}
-                              className="px-3 border-l border-border text-muted hover:text-red-500 hover:bg-red-50 transition-colors"
-                              title="삭제"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          {isOpen && (
-                            <div className="border-t border-border p-4 flex flex-col gap-4">
-                              {ccText && (
-                                <div>
-                                  <button
-                                    onClick={() =>
-                                      setExpandedCC((prev) => {
-                                        const next = new Set(prev);
-                                        next.has(r.id)
-                                          ? next.delete(r.id)
-                                          : next.add(r.id);
-                                        return next;
-                                      })
-                                    }
-                                    className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5 w-full text-left"
-                                  >
-                                    <FileText className="w-3.5 h-3.5" /> 주소증
-                                    {expandedCC.has(r.id) ? (
-                                      <ChevronUp className="w-3 h-3 ml-auto" />
-                                    ) : (
-                                      <ChevronDown className="w-3 h-3 ml-auto" />
-                                    )}
-                                  </button>
-                                  {expandedCC.has(r.id) && (
-                                    <div className="text-sm text-text whitespace-pre-wrap bg-bg rounded p-2">
-                                      {ccText}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {blocks ? (
-                                <>
-                                  <div className="text-xs font-semibold text-[#EF6600] uppercase tracking-wide">
-                                    ■ 결과 1
-                                  </div>
-                                  {historySections.map(({ key, Icon }) =>
-                                    renderHistorySection(
-                                      sections1,
-                                      key,
-                                      Icon,
-                                      "r1-",
-                                    ),
-                                  )}
-                                  <div className="text-xs font-semibold text-subtext uppercase tracking-wide">
-                                    ■ 결과 2
-                                  </div>
-                                  {historySections.map(({ key, Icon }) =>
-                                    renderHistorySection(
-                                      sections2,
-                                      key,
-                                      Icon,
-                                      "r2-",
-                                    ),
-                                  )}
-                                </>
-                              ) : sections ? (
-                                historySections.map(({ key, Icon }) =>
-                                  renderHistorySection(sections, key, Icon),
-                                )
-                              ) : (
-                                <div className="text-sm text-text whitespace-pre-wrap">
-                                  {r.chart_structured || "차트 내용 없음"}
-                                </div>
-                              )}
-                              {(sections?.["메모"] ||
-                                sections?.["병력"] ||
-                                r.medical_history) && (
-                                <div>
-                                  <button
-                                    onClick={() =>
-                                      setHistoryMemoOpenIds((prev) => {
-                                        const next = new Set(prev);
-                                        next.has(r.id)
-                                          ? next.delete(r.id)
-                                          : next.add(r.id);
-                                        return next;
-                                      })
-                                    }
-                                    className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide w-full text-left"
-                                  >
-                                    <FileText className="w-3.5 h-3.5" /> 메모 ·
-                                    병력
-                                    {historyMemoOpenIds.has(r.id) ? (
-                                      <ChevronUp className="w-3 h-3 ml-auto" />
-                                    ) : (
-                                      <ChevronDown className="w-3 h-3 ml-auto" />
-                                    )}
-                                  </button>
-                                  {historyMemoOpenIds.has(r.id) && (
-                                    <div className="flex flex-col gap-3 mt-2">
-                                      {sections?.["메모"] && (
-                                        <div>
-                                          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5">
-                                            <FileText className="w-3.5 h-3.5" />{" "}
-                                            메모
-                                          </div>
-                                          <div className="text-sm text-text whitespace-pre-wrap">
-                                            {sections["메모"]}
-                                          </div>
-                                        </div>
-                                      )}
-                                      {(sections?.["병력"] ||
-                                        r.medical_history) && (
-                                        <div>
-                                          <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5">
-                                            <Clipboard className="w-3.5 h-3.5" />{" "}
-                                            병력
-                                          </div>
-                                          <div className="text-sm text-text whitespace-pre-wrap">
-                                            {sections?.["병력"] ||
-                                              r.medical_history}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (!r.chart_structured) return;
+                                  navigator.clipboard.writeText(r.chart_structured);
+                                  setHistoryCopied(r.id);
+                                  setTimeout(() => setHistoryCopied(null), 2000);
+                                }}
+                                className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
+                                title="복사"
+                              >
+                                {historyCopied === r.id ? (
+                                  <Check className="w-3.5 h-3.5 text-green-500" />
+                                ) : (
+                                  <Clipboard className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setCurrentRecordId(r.id);
+                                  setActiveTab("billing");
+                                }}
+                                className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
+                                title="청구"
+                              >
+                                <ReceiptText className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRecord(r.id)}
+                                className="px-3 border-l border-border text-muted hover:text-red-500 hover:bg-red-50 transition-colors"
+                                title="삭제"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-
-            {/* ── 청구 ── */}
-            <div>
-              <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">청구</p>
-              <div className="mb-4 bg-card border border-border rounded-lg p-4">
-                <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
-                  <Search className="w-3.5 h-3.5" /> 상병코드 (KCD)
-                </div>
-                {kcdCode ? (
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm text-text">
-                      <span className="font-medium text-[#EF6600]">{kcdCode.code}</span>
-                      {kcdCode.korean_name ? <span> {kcdCode.korean_name}</span> : null}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setKcdCode(null); setKcdQuery(""); }}
-                      className="text-subtext hover:text-text transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <input
-                      value={kcdQuery}
-                      onChange={(e) => { setKcdQuery(e.target.value); setKcdDropdownOpen(true); }}
-                      onFocus={() => setKcdDropdownOpen(true)}
-                      onBlur={() => setTimeout(() => setKcdDropdownOpen(false), 150)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && kcdQuery.trim()) {
-                          const match = kcdResults[0];
-                          const code = match ?? { code: kcdQuery.trim().toUpperCase(), korean_name: "" };
-                          setKcdCode(code);
-                          setKcdQuery("");
-                          setKcdResults([]);
-                          setKcdDropdownOpen(false);
-                        }
-                      }}
-                      placeholder="코드 또는 진단명 검색 (예: M545, 요통)"
-                      className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
-                    />
-                    {kcdDropdownOpen && (kcdResults.length > 0 || kcdQuery.trim().length > 0) && (
-                      <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto z-10">
-                        {kcdResults.map((item) => (
-                          <button
-                            key={item.code}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => { setKcdCode(item); setKcdQuery(""); setKcdResults([]); setKcdDropdownOpen(false); }}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors border-b border-border last:border-b-0"
-                          >
-                            <span className="font-medium text-[#EF6600]">{item.code}</span>{" "}
-                            <span className="text-text">{item.korean_name}</span>
-                          </button>
-                        ))}
-                        {kcdResults.length === 0 && kcdQuery.trim().length > 0 && (
-                          <button
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              setKcdCode({ code: kcdQuery.trim().toUpperCase(), korean_name: "" });
-                              setKcdQuery("");
-                              setKcdResults([]);
-                              setKcdDropdownOpen(false);
-                            }}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors"
-                          >
-                            <span className="text-subtext">직접 입력:</span>{" "}
-                            <span className="font-medium text-text">{kcdQuery.trim()}</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
+                            {isOpen && (
+                              <div className="border-t border-border p-4 flex flex-col gap-4">
+                                {ccText && (
+                                  <div>
+                                    <button
+                                      onClick={() =>
+                                        setExpandedCC((prev) => {
+                                          const next = new Set(prev);
+                                          next.has(r.id)
+                                            ? next.delete(r.id)
+                                            : next.add(r.id);
+                                          return next;
+                                        })
+                                      }
+                                      className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5 w-full text-left"
+                                    >
+                                      <FileText className="w-3.5 h-3.5" /> 주소증
+                                      {expandedCC.has(r.id) ? (
+                                        <ChevronUp className="w-3 h-3 ml-auto" />
+                                      ) : (
+                                        <ChevronDown className="w-3 h-3 ml-auto" />
+                                      )}
+                                    </button>
+                                    {expandedCC.has(r.id) && (
+                                      <div className="text-sm text-text whitespace-pre-wrap bg-bg rounded p-2">
+                                        {ccText}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {blocks ? (
+                                  <>
+                                    <div className="text-xs font-semibold text-[#EF6600] uppercase tracking-wide">
+                                      ■ 결과 1
+                                    </div>
+                                    {historySections.map(({ key, Icon }) =>
+                                      renderHistorySection(
+                                        sections1,
+                                        key,
+                                        Icon,
+                                        "r1-",
+                                      ),
+                                    )}
+                                    <div className="text-xs font-semibold text-subtext uppercase tracking-wide">
+                                      ■ 결과 2
+                                    </div>
+                                    {historySections.map(({ key, Icon }) =>
+                                      renderHistorySection(
+                                        sections2,
+                                        key,
+                                        Icon,
+                                        "r2-",
+                                      ),
+                                    )}
+                                  </>
+                                ) : sections ? (
+                                  historySections.map(({ key, Icon }) =>
+                                    renderHistorySection(sections, key, Icon),
+                                  )
+                                ) : (
+                                  <div className="text-sm text-text whitespace-pre-wrap">
+                                    {r.chart_structured || "차트 내용 없음"}
+                                  </div>
+                                )}
+                                {(sections?.["메모"] ||
+                                  sections?.["병력"] ||
+                                  r.medical_history) && (
+                                    <div>
+                                      <button
+                                        onClick={() =>
+                                          setHistoryMemoOpenIds((prev) => {
+                                            const next = new Set(prev);
+                                            next.has(r.id)
+                                              ? next.delete(r.id)
+                                              : next.add(r.id);
+                                            return next;
+                                          })
+                                        }
+                                        className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide w-full text-left"
+                                      >
+                                        <FileText className="w-3.5 h-3.5" /> 메모 ·
+                                        병력
+                                        {historyMemoOpenIds.has(r.id) ? (
+                                          <ChevronUp className="w-3 h-3 ml-auto" />
+                                        ) : (
+                                          <ChevronDown className="w-3 h-3 ml-auto" />
+                                        )}
+                                      </button>
+                                      {historyMemoOpenIds.has(r.id) && (
+                                        <div className="flex flex-col gap-3 mt-2">
+                                          {sections?.["메모"] && (
+                                            <div>
+                                              <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5">
+                                                <FileText className="w-3.5 h-3.5" />{" "}
+                                                메모
+                                              </div>
+                                              <div className="text-sm text-text whitespace-pre-wrap">
+                                                {sections["메모"]}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {(sections?.["병력"] ||
+                                            r.medical_history) && (
+                                              <div>
+                                                <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-1.5">
+                                                  <Clipboard className="w-3.5 h-3.5" />{" "}
+                                                  병력
+                                                </div>
+                                                <div className="text-sm text-text whitespace-pre-wrap">
+                                                  {sections?.["병력"] ||
+                                                    r.medical_history}
+                                                </div>
+                                              </div>
+                                            )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 )}
               </div>
-              {currentRecordId ? (
-                <BillableItemPicker medicalRecordId={currentRecordId} />
-              ) : (
-                <div className="text-sm text-muted text-center py-8">
-                  먼저 진료 기록을 저장해주세요
-                </div>
-              )}
-            </div>
 
-          </div>
+              {/* ── 청구 ── */}
+              <div>
+                <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">청구</p>
+                <div className="mb-4 bg-card border border-border rounded-lg p-4">
+                  <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
+                    <Search className="w-3.5 h-3.5" /> 상병코드 (KCD)
+                  </div>
+                  {kcdCode ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm text-text">
+                        <span className="font-medium text-[#EF6600]">{kcdCode.code}</span>
+                        {kcdCode.korean_name ? <span> {kcdCode.korean_name}</span> : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setKcdCode(null); setKcdQuery(""); }}
+                        className="text-subtext hover:text-text transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        value={kcdQuery}
+                        onChange={(e) => { setKcdQuery(e.target.value); setKcdDropdownOpen(true); }}
+                        onFocus={() => setKcdDropdownOpen(true)}
+                        onBlur={() => setTimeout(() => setKcdDropdownOpen(false), 150)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && kcdQuery.trim()) {
+                            const match = kcdResults[0];
+                            const code = match ?? { code: kcdQuery.trim().toUpperCase(), korean_name: "" };
+                            setKcdCode(code);
+                            setKcdQuery("");
+                            setKcdResults([]);
+                            setKcdDropdownOpen(false);
+                          }
+                        }}
+                        placeholder="코드 또는 진단명 검색 (예: M545, 요통)"
+                        className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                      />
+                      {kcdDropdownOpen && (kcdResults.length > 0 || kcdQuery.trim().length > 0) && (
+                        <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto z-10">
+                          {kcdResults.map((item) => (
+                            <button
+                              key={item.code}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => { setKcdCode(item); setKcdQuery(""); setKcdResults([]); setKcdDropdownOpen(false); }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors border-b border-border last:border-b-0"
+                            >
+                              <span className="font-medium text-[#EF6600]">{item.code}</span>{" "}
+                              <span className="text-text">{item.korean_name}</span>
+                            </button>
+                          ))}
+                          {kcdResults.length === 0 && kcdQuery.trim().length > 0 && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setKcdCode({ code: kcdQuery.trim().toUpperCase(), korean_name: "" });
+                                setKcdQuery("");
+                                setKcdResults([]);
+                                setKcdDropdownOpen(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors"
+                            >
+                              <span className="text-subtext">직접 입력:</span>{" "}
+                              <span className="font-medium text-text">{kcdQuery.trim()}</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {currentRecordId ? (
+                  <BillableItemPicker medicalRecordId={currentRecordId} />
+                ) : (
+                  <div className="text-sm text-muted text-center py-8">
+                    먼저 진료 기록을 저장해주세요
+                  </div>
+                )}
+              </div>
+
+            </div>
           )}
 
           {activeTab === "ask" && (
@@ -2545,22 +2354,20 @@ ${historyLine}
                   <button
                     type="button"
                     onClick={() => setAskMode("ask")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                      askMode === "ask"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${askMode === "ask"
                         ? "bg-card text-text shadow-sm"
                         : "text-subtext hover:text-text"
-                    }`}
+                      }`}
                   >
                     <MessageCircle className="w-3.5 h-3.5" /> 질문하기
                   </button>
                   <button
                     type="button"
                     onClick={() => setAskMode("diagnose")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                      askMode === "diagnose"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${askMode === "diagnose"
                         ? "bg-card text-text shadow-sm"
                         : "text-subtext hover:text-text"
-                    }`}
+                      }`}
                   >
                     <Stethoscope className="w-3.5 h-3.5" /> 증상 분석
                   </button>
@@ -2884,11 +2691,10 @@ ${historyLine}
                       onClick={() =>
                         setNewPatient({ ...newPatient, gender: g })
                       }
-                      className={`flex-1 py-2.5 text-sm rounded-md border transition-all ${
-                        newPatient.gender === g
+                      className={`flex-1 py-2.5 text-sm rounded-md border transition-all ${newPatient.gender === g
                           ? "bg-[#EF6600] text-white border-[#EF6600]"
                           : "bg-card text-subtext border-border hover:border-[#EF6600]"
-                      }`}
+                        }`}
                     >
                       {g}
                     </button>

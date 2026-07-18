@@ -44,7 +44,8 @@ _TABLE_CONFIG = {
 async def purge_old_logs() -> None:
     now = datetime.now(timezone.utc)
     async with AsyncSessionLocal() as db:
-        for table, delta in RETENTION.items():
+        for table in _TABLE_CONFIG:
+            delta = RETENTION[table]
             cutoff = now - delta
             col, is_str = _TABLE_CONFIG[table]
             if is_str:
