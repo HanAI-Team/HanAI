@@ -1,24 +1,20 @@
 "use client";
 import MiniCalendar from "@/components/reception/MiniCalendar";
-import PatientManagementPanel from "@/components/reception/PatientManagementPanel";
+import CheckinSearchPanel from "@/components/reception/CheckinSearchPanel";
 import BillingModal from "@/components/billing/BillingModal";
-import { getPatients } from "@/lib/api/patients";
 import {
-  checkinPatient,
   getQueueByDate,
   getQueueCalendar,
   getTodayQueue,
   updateQueueBed,
   QueueItem,
 } from "@/lib/api/queue";
-import { Patient } from "@/types";
-import { useEffect, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { useEffect, useState } from "react";
 
 const STATUS_LABEL: Record<QueueItem["status"], string> = {
   waiting: "대기",
   in_progress: "진료중",
-  billed: "처치·수납대기",
+  billed: "수납대기",
   paid: "진료완료",
 };
 
@@ -28,6 +24,16 @@ const STATUS_STYLE: Record<QueueItem["status"], { border: string; badge: string 
   billed: { border: "border-l-amber-500", badge: "bg-amber-500/15 text-amber-600" },
   paid: { border: "border-l-green-500", badge: "bg-green-500/15 text-green-500" },
 };
+
+// 구 3단계 상태 체계(waiting/in_progress/done) 시절에 생성된 레코드가 DB에 남아있을 수 있어
+// 4단계 맵에 없는 status가 들어와도 화면이 죽지 않도록 안전한 기본값을 둔다.
+const FALLBACK_STYLE = { border: "border-l-gray-300", badge: "bg-gray-300/15 text-gray-400" };
+function statusLabel(status: QueueItem["status"]): string {
+  return STATUS_LABEL[status] ?? status;
+}
+function statusStyle(status: QueueItem["status"]): { border: string; badge: string } {
+  return STATUS_STYLE[status] ?? FALLBACK_STYLE;
+}
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
@@ -50,11 +56,6 @@ export default function HomePage() {
 
   const [queueList, setQueueList] = useState<QueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
-
-  const [checkinSearch, setCheckinSearch] = useState("");
-  const [checkinResults, setCheckinResults] = useState<Patient[]>([]);
-  const [checkinLoading, setCheckinLoading] = useState(false);
-  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [billingQueueItem, setBillingQueueItem] = useState<QueueItem | null>(null);
   const [bedDrafts, setBedDrafts] = useState<Record<string, string>>({});
@@ -84,35 +85,21 @@ export default function HomePage() {
     loadCalendar(calYear, calMonth);
   }, [calYear, calMonth]);
 
-  useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!checkinSearch) {
-      setCheckinResults([]);
-      return;
-    }
-    setCheckinLoading(true);
-    searchTimerRef.current = setTimeout(() => {
-      getPatients(checkinSearch)
-        .then((result) => setCheckinResults(result.items))
-        .catch(() => setCheckinResults([]))
-        .finally(() => setCheckinLoading(false));
-    }, 300);
-  }, [checkinSearch]);
-
   function handleMonthChange(year: number, month: number) {
     setCalYear(year);
     setCalMonth(month);
   }
 
-  function handleCheckin(patient: Patient) {
-    checkinPatient(patient.id)
-      .then((item) => {
-        setQueueList((prev) => [...prev, item]);
-        setCheckinSearch("");
-        setCheckinResults([]);
-        loadCalendar(calYear, calMonth);
-      })
-      .catch(console.error);
+  function handleCheckedIn(item: QueueItem) {
+    // 오늘 접수한 건은 오늘 목록을 보고 있을 때만 즉시 반영 — 다른 날짜를 보고 있으면
+    // 그 날짜 목록에 섞이지 않도록 한다.
+    if (isToday) {
+      setQueueList((prev) => [...prev, item]);
+    }
+    setCalendarCounts((prev) => ({
+      ...prev,
+      [todayStr()]: (prev[todayStr()] || 0) + 1,
+    }));
   }
 
   function handleBedBlur(item: QueueItem) {
@@ -130,16 +117,14 @@ export default function HomePage() {
     setBillingQueueItem(null);
   }
 
-  const sortedQueue = [...queueList].sort((a, b) => {
-    const order = { waiting: 0, in_progress: 1, billed: 2, paid: 3 };
-    if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
-    return new Date(a.checked_in_at).getTime() - new Date(b.checked_in_at).getTime();
-  });
+  const sortedQueue = [...queueList].sort(
+    (a, b) => new Date(a.checked_in_at).getTime() - new Date(b.checked_in_at).getTime()
+  );
 
   return (
     <div className="flex gap-4 p-4 md:p-6" style={{ minHeight: "calc(100vh - 52px)" }}>
-      {/* 좌측 사이드바: 달력 + 검색 + 접수목록 */}
-      <div className="w-[260px] flex-shrink-0 flex flex-col gap-3">
+      {/* 좌측 사이드바: 달력 + 접수 현황 */}
+      <div className="w-[280px] flex-shrink-0 flex flex-col gap-3">
         <div className="bg-card border border-border rounded-lg p-3">
           <MiniCalendar
             year={calYear}
@@ -151,46 +136,12 @@ export default function HomePage() {
           />
         </div>
 
-        {isToday && (
-          <div className="bg-card border border-border rounded-lg p-3">
-            <div className="flex items-center gap-2 bg-fill border border-border rounded-md px-3 py-2 mb-2">
-              <Search className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-              <input
-                value={checkinSearch}
-                onChange={(e) => setCheckinSearch(e.target.value)}
-                placeholder="환자 검색 후 접수..."
-                className="flex-1 bg-transparent text-xs text-text outline-none"
-              />
-            </div>
-            {checkinSearch && (
-              <div className="max-h-[160px] overflow-y-auto">
-                {checkinLoading ? (
-                  <div className="text-xs text-muted text-center py-2">검색 중...</div>
-                ) : checkinResults.length === 0 ? (
-                  <div className="text-xs text-muted text-center py-2">검색 결과 없음</div>
-                ) : (
-                  checkinResults.map((p) => (
-                    <div
-                      key={p.id}
-                      onClick={() => handleCheckin(p)}
-                      className="flex flex-col py-1.5 px-1 cursor-pointer hover:bg-fill rounded transition-colors"
-                    >
-                      <span className="text-xs font-medium text-text">{p.name}</span>
-                      <span className="text-[10px] text-subtext">{p.birth_date || "-"}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="bg-card border border-border rounded-lg p-3 flex-1 overflow-hidden flex flex-col">
           <div className="flex items-center gap-2 mb-2">
             <div className="text-xs font-medium text-text uppercase tracking-wide">
-              {isToday ? "오늘 접수" : `${selectedDate} 접수`}
+              {isToday ? "오늘 접수 현황" : `${selectedDate} 접수 현황`}
             </div>
-            <span className="text-xs text-muted bg-fill rounded-full px-1.5 py-0.5">{queueList.length}</span>
+            <span className="text-xs text-muted bg-fill rounded-full px-1.5 py-0.5">{queueList.length}명</span>
           </div>
           <div className="flex-1 overflow-y-auto">
             {queueLoading ? (
@@ -198,8 +149,8 @@ export default function HomePage() {
             ) : sortedQueue.length === 0 ? (
               <div className="text-xs text-muted text-center py-4">접수된 환자가 없습니다</div>
             ) : (
-              sortedQueue.map((item) => {
-                const style = STATUS_STYLE[item.status];
+              sortedQueue.map((item, i) => {
+                const style = statusStyle(item.status);
                 return (
                   <div
                     key={item.id}
@@ -208,6 +159,7 @@ export default function HomePage() {
                   >
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-sm font-medium text-text truncate">
+                        <span className="text-[10px] text-muted font-normal mr-1">{i + 1}.</span>
                         {item.patient_name}
                         {(calcAge(item.patient_birth_date) !== null || genderLabel(item.patient_gender)) && (
                           <span className="text-[10px] text-subtext font-normal ml-1">
@@ -221,7 +173,7 @@ export default function HomePage() {
                         )}
                       </span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${style.badge}`}>
-                        {STATUS_LABEL[item.status]}
+                        {statusLabel(item.status)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-1">
@@ -250,9 +202,9 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* 우측: 환자 관리 패널 */}
+      {/* 우측: 환자 검색 · 접수 */}
       <div className="flex-1 min-w-0">
-        <PatientManagementPanel />
+        <CheckinSearchPanel onCheckedIn={handleCheckedIn} />
       </div>
 
       {billingQueueItem && (

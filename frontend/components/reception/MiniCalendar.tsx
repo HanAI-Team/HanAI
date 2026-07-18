@@ -77,6 +77,7 @@ export default function MiniCalendar({
           const count = counts[dateStr] || 0;
           const isSelected = selectedDate === dateStr;
           const isToday = dateStr === todayStr;
+          const isFuture = dateStr > todayStr;
           return (
             <button
               key={dateStr}
@@ -92,10 +93,10 @@ export default function MiniCalendar({
               <span className="text-[10px]">{day}</span>
               <span
                 className={`text-[8px] leading-tight ${
-                  isSelected ? "text-white/80" : count > 0 ? "text-[#EF6600]" : "text-transparent"
+                  isSelected ? "text-white/80" : count > 0 ? "text-[#EF6600]" : "text-muted"
                 }`}
               >
-                {count > 0 ? `${count}건` : "-"}
+                {isFuture ? "-" : `${count}명`}
               </span>
             </button>
           );

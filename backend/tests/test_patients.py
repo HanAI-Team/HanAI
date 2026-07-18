@@ -36,6 +36,22 @@ async def test_get_patients_with_data(client, approved_doctor):
     assert len(data["items"]) >= 1
 
 
+async def test_get_patients_search_filters_by_name(client, approved_doctor):
+    """접수 대시보드 검색·접수 패널이 쓰는 search 파라미터 — 이름 부분일치로만 걸러진다."""
+    _, headers = approved_doctor
+    await client.post("/api/patients/register", json={**PATIENT_DATA, "name": "김환자"}, headers=headers)
+    await client.post("/api/patients/register", json={**PATIENT_DATA, "name": "이환자"}, headers=headers)
+
+    resp = await client.get("/api/patients/", params={"search": "김"}, headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["name"] == "김환자"
+
+    resp_no_match = await client.get("/api/patients/", params={"search": "박"}, headers=headers)
+    assert resp_no_match.status_code == 404
+
+
 async def test_get_patient_detail(client, approved_doctor):
     _, headers = approved_doctor
     create_resp = await client.post(

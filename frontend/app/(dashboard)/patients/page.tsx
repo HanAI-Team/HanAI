@@ -1,12 +1,12 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import PatientManagementPanel from "@/components/reception/PatientManagementPanel";
 
-// 환자 목록은 /home(접수 대시보드)에 통합됐다. 기존 링크/북마크 호환용 리다이렉트.
-export default function PatientsRedirectPage() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace("/home");
-  }, [router]);
-  return null;
+export default function PatientsPage() {
+  return (
+    <div className="p-4 md:p-6" style={{ minHeight: "calc(100vh - 52px)" }}>
+      <div className="h-full" style={{ minHeight: "calc(100vh - 100px)" }}>
+        <PatientManagementPanel />
+      </div>
+    </div>
+  );
 }
