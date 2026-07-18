@@ -1,6 +1,6 @@
 import json
 import uuid as uuid_mod
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -72,7 +72,7 @@ async def save_text_diagnosis(
         raw_transcription=transcription,
         chart_structured=_format_chart_structured(diagnosis),
         status="completed",
-        recorded_at=datetime.utcnow(),
+        recorded_at=datetime.now(timezone.utc),
     )
     db.add(record)
     await db.flush()

@@ -10,6 +10,7 @@ from app.core.csv_export import csv_response
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import KcdUCode
+from app.core.timezone import today_kst
 from app.kcd.schema import (
     KcdCodeCreate,
     KcdCodeUpdate,
@@ -45,7 +46,7 @@ async def validate_kcd_codes(
     - 환자 성별과 상병코드 sex_restriction 불일치 체크
     - 법정감염병 여부 반환
     """
-    ref_date = body.as_of or date.today()
+    ref_date = body.as_of or today_kst()
     results = []
 
     for raw_code in body.codes:
@@ -115,7 +116,7 @@ async def search_kcd_codes(
     current_doctor=Depends(get_current_doctor),
     db: AsyncSession = Depends(get_db),
 ):
-    ref_date = as_of or date.today()
+    ref_date = as_of or today_kst()
     stmt = select(KcdUCode).where(
         or_(
             KcdUCode.code.ilike(f"{q}%"),
@@ -183,7 +184,7 @@ async def get_kcd_code(
     current_doctor=Depends(get_current_doctor),
     db: AsyncSession = Depends(get_db),
 ):
-    ref_date = as_of or date.today()
+    ref_date = as_of or today_kst()
     result = await db.execute(
         select(KcdUCode).where(
             KcdUCode.code == code.upper(),

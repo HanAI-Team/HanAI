@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 const LINE_1 = [
-  "상호명: (주)비와이진",
+  "상호명: (주)비와이진 | © 2026 BYzin",
   "대표자: 이승희",
   "사업자등록번호: 2818703849",
   "사업장 주소: 서울특별시 관악구 남부순환로198길7,101동 111호",

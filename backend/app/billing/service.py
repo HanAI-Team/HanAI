@@ -33,6 +33,8 @@ from app.billing.schema import (
     StatementProcedureRow,
 )
 from app.charting.service import update_kcd_code
+from app.core.config import settings
+from app.core.timezone import KST, today_kst
 from app.core.models import (
     AcupuncturePoint,
     Claim,
@@ -158,7 +160,7 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
     )
     registrations = result.scalars().all()
 
-    today = date.today()
+    today = today_kst()
     active = [
         r for r in registrations
         if r.expires_at is None or r.expires_at >= today
@@ -213,8 +215,8 @@ async def _count_annual_chuna_sessions(
       (하루에 추나 코드가 여러 줄 찍혀도 1회로 취급).
     """
     exclude = exclude_medical_record_ids or set()
-    year_start = date(year, 1, 1)
-    year_end = date(year, 12, 31)
+    kst_year_start = datetime(year, 1, 1, tzinfo=KST)
+    kst_year_end = datetime(year + 1, 1, 1, tzinfo=KST)
 
     r1 = await db.execute(
         select(MedicalRecordProcedure.medical_record_id)
@@ -223,8 +225,8 @@ async def _count_annual_chuna_sessions(
             MedicalRecord.patient_id == patient_id,
             MedicalRecordProcedure.fee_master_code.in_(CHUNA_CODES),
             MedicalRecord.recorded_at.is_not(None),
-            func.date(MedicalRecord.recorded_at) >= year_start,
-            func.date(MedicalRecord.recorded_at) <= year_end,
+            MedicalRecord.recorded_at >= kst_year_start,
+            MedicalRecord.recorded_at < kst_year_end,
         )
         .distinct()
     )
@@ -237,8 +239,8 @@ async def _count_annual_chuna_sessions(
             MedicalRecord.patient_id == patient_id,
             ClaimLineItem.code.in_(CHUNA_CODES),
             MedicalRecord.recorded_at.is_not(None),
-            func.date(MedicalRecord.recorded_at) >= year_start,
-            func.date(MedicalRecord.recorded_at) <= year_end,
+            MedicalRecord.recorded_at >= kst_year_start,
+            MedicalRecord.recorded_at < kst_year_end,
         )
         .distinct()
     )
@@ -256,6 +258,9 @@ async def _count_daily_chuna_patients(
     ※ 위 _count_annual_chuna_sessions와 동일하게 MedicalRecordProcedure /
       ClaimLineItem 두 경로를 합산한다.
     """
+    kst_day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=KST)
+    kst_day_end = kst_day_start + timedelta(days=1)
+
     r1 = await db.execute(
         select(MedicalRecord.patient_id)
         .join(MedicalRecordProcedure, MedicalRecordProcedure.medical_record_id == MedicalRecord.id)
@@ -263,7 +268,8 @@ async def _count_daily_chuna_patients(
             MedicalRecord.doctor_id == doctor_id,
             MedicalRecordProcedure.fee_master_code.in_(CHUNA_CODES),
             MedicalRecord.recorded_at.is_not(None),
-            func.date(MedicalRecord.recorded_at) == target_date,
+            MedicalRecord.recorded_at >= kst_day_start,
+            MedicalRecord.recorded_at < kst_day_end,
         )
         .distinct()
     )
@@ -276,7 +282,8 @@ async def _count_daily_chuna_patients(
             MedicalRecord.doctor_id == doctor_id,
             ClaimLineItem.code.in_(CHUNA_CODES),
             MedicalRecord.recorded_at.is_not(None),
-            func.date(MedicalRecord.recorded_at) == target_date,
+            MedicalRecord.recorded_at >= kst_day_start,
+            MedicalRecord.recorded_at < kst_day_end,
         )
         .distinct()
     )
@@ -1178,7 +1185,7 @@ async def _build_claim_edi_file(
             )
         r_kcd = await db.execute(select(KcdUCode).where(KcdUCode.code == record.kcd_code))
         kcd = r_kcd.scalar_one_or_none()
-        today = date.today()
+        today = today_kst()
         if not kcd or (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
             raise HTTPException(
                 status_code=400,
@@ -1491,7 +1498,7 @@ async def build_claim_prescription(
         (r.recorded_at or r.created_at).date()
         for r in medical_records if r.recorded_at or r.created_at
     })
-    issue_date = (visit_dates[-1] if visit_dates else date.today()).strftime("%Y-%m-%d")
+    issue_date = (visit_dates[-1] if visit_dates else today_kst()).strftime("%Y-%m-%d")
 
     birth_masked = (
         f"{patient.birth_date.strftime('%y%m%d')}-XXXXXXX" if patient and patient.birth_date else "-"

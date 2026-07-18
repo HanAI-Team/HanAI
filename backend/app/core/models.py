@@ -678,6 +678,10 @@ class DailyQueue(Base):
     source = Column(String(20), nullable=False, default="manual")
     assigned_bed = Column(String(20), nullable=True)  # 베드 배정 (자유 입력, 예: "1번", "A실")
     claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=True)  # 청구 모달에서 생성된 청구
+    symptom = Column(String(500), nullable=True)
+    queue_number = Column(Integer, nullable=True)
+    payment_method = Column(String(20), nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
     # UniqueConstraint 없음
 
     patient = relationship("Patient", lazy="raise")
