@@ -64,13 +64,15 @@ const ASK_SAVE_FIELDS: { key: string; label: string }[] = [
 const QUEUE_STATUS_LABEL: Record<string, string> = {
   waiting: "대기",
   in_progress: "진료중",
-  done: "완료",
+  billed: "처치·수납대기",
+  paid: "완료",
 };
 
 const QUEUE_STATUS_CLASS: Record<string, string> = {
-  waiting: "bg-muted/20 text-muted",
-  in_progress: "bg-[#EF6600]/15 text-[#EF6600]",
-  done: "bg-green-500/15 text-green-500",
+  waiting: "bg-gray-400/15 text-gray-500",
+  in_progress: "bg-blue-500/15 text-blue-500",
+  billed: "bg-amber-500/15 text-amber-600",
+  paid: "bg-green-500/15 text-green-500",
 };
 
 export default function DiagnosisPage() {
@@ -185,8 +187,8 @@ export default function DiagnosisPage() {
 
   const filtered = patients.filter((p) => p.name.includes(search));
   const sortedQueue = [...todayQueue].sort((a, b) => {
-    const aDone = a.status === "done" ? 1 : 0;
-    const bDone = b.status === "done" ? 1 : 0;
+    const aDone = a.status === "paid" ? 1 : 0;
+    const bDone = b.status === "paid" ? 1 : 0;
     if (aDone !== bDone) return aDone - bDone;
     return new Date(a.checked_in_at).getTime() - new Date(b.checked_in_at).getTime();
   });
@@ -1312,7 +1314,7 @@ ${historyLine}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      updateQueueStatus(item.id, "done")
+                      updateQueueStatus(item.id, "paid")
                         .then((updated) => {
                           setTodayQueue((prev) =>
                             prev.map((q) => (q.id === updated.id ? updated : q)),
@@ -1354,7 +1356,7 @@ ${historyLine}
             </div>
           ) : (
             <button
-              onClick={() => router.push("/patients")}
+              onClick={() => router.push("/home")}
               className="text-sm text-[#EF6600] font-medium"
             >
               환자를 선택하세요 →

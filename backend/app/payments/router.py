@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.payments import service
 from app.payments.schema import (
+    PaddleConfirmRequest,
     PaymentConfirmRequest,
     PaymentConfirmResponse,
     PaymentPrepareRequest,
@@ -56,6 +57,19 @@ async def confirm_payment(
         payment_key=body.payment_key,
         order_id=body.order_id,
         amount=body.amount,
+    )
+
+
+@router.post("/paddle/confirm", response_model=PaymentConfirmResponse)
+async def confirm_paddle_payment(
+    body: PaddleConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return await service.confirm_paddle_payment(
+        db=db,
+        hospital_id=current_user.hospital_id,
+        transaction_id=body.transaction_id,
     )
 
 

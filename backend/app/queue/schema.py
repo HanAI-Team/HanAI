@@ -9,11 +9,15 @@ class QueueResponse(BaseModel):
     id: UUID
     patient_id: UUID
     patient_name: str = ""
+    patient_birth_date: date | None = None
+    patient_gender: str | None = None
     doctor_id: UUID | None
     queue_date: date
     checked_in_at: datetime
     status: str
     source: str
+    assigned_bed: str | None = None
+    claim_id: UUID | None = None
     symptom: str | None = None
     queue_number: int | None = None
     payment_method: str | None = None
@@ -25,11 +29,15 @@ class QueueResponse(BaseModel):
             id=queue.id,
             patient_id=queue.patient_id,
             patient_name=queue.patient.name if queue.patient else "",
+            patient_birth_date=queue.patient.birth_date if queue.patient else None,
+            patient_gender=queue.patient.gender if queue.patient else None,
             doctor_id=queue.doctor_id,
             queue_date=queue.queue_date,
             checked_in_at=queue.checked_in_at,
             status=queue.status,
             source=queue.source,
+            assigned_bed=queue.assigned_bed,
+            claim_id=queue.claim_id,
             symptom=queue.symptom,
             queue_number=queue.queue_number,
             payment_method=queue.payment_method,
@@ -46,6 +54,21 @@ class QueueCreateRequest(BaseModel):
 
 class QueueStatusUpdateRequest(BaseModel):
     status: str
+
+class QueueBedUpdateRequest(BaseModel):
+    assigned_bed: str | None = None
+
+class QueueCalendarResponse(BaseModel):
+    counts: dict[str, int]  # {"2026-07-14": 4, ...}
+
+class QueueCheckoutLineItem(BaseModel):
+    code: str
+    qty: float = 1
+    days: int = 1
+
+class QueueCheckoutRequest(BaseModel):
+    kcd_code: str
+    line_items: list[QueueCheckoutLineItem]
 
 class QueuePayRequest(BaseModel):
     payment_method: str
