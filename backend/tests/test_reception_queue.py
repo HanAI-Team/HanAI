@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.core.models import Claim, ClaimLineItem, MedicalRecord, Patient
+from app.core.timezone import today_kst
 from app.billing.service import checkout_queue_item, preview_checkout_billing
 from app.queue import service as queue_service
 
@@ -37,7 +38,7 @@ async def test_베드_배정(db, approved_doctor, patient):
 async def test_날짜별_접수목록_조회(db, approved_doctor, patient):
     doctor, _ = approved_doctor
     await queue_service.checkin_patient(db, doctor.hospital_id, patient.id)
-    today_list = await queue_service.get_queue_by_date(db, doctor.hospital_id, date.today())
+    today_list = await queue_service.get_queue_by_date(db, doctor.hospital_id, today_kst())
     assert len(today_list) == 1
     other_day_list = await queue_service.get_queue_by_date(db, doctor.hospital_id, date(2020, 1, 1))
     assert len(other_day_list) == 0
@@ -46,10 +47,11 @@ async def test_날짜별_접수목록_조회(db, approved_doctor, patient):
 async def test_달력_집계(db, approved_doctor, patient):
     doctor, _ = approved_doctor
     await queue_service.checkin_patient(db, doctor.hospital_id, patient.id)
+    today = today_kst()
     counts = await queue_service.get_queue_calendar(
-        db, doctor.hospital_id, date.today().year, date.today().month
+        db, doctor.hospital_id, today.year, today.month
     )
-    assert counts.get(date.today().isoformat()) == 1
+    assert counts.get(today.isoformat()) == 1
 
 
 async def test_체크아웃_상병코드_없으면_에러(db, approved_doctor, patient, kcd_codes):
