@@ -1,7 +1,8 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from app.core.models import Claim, DailyQueue
+from app.core.timezone import KST, today_kst
 from fastapi import HTTPException
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +31,24 @@ async def get_queue_by_date(
 
 
 async def get_today_queue(db: AsyncSession, hospital_id: UUID) -> list[DailyQueue]:
-    return await get_queue_by_date(db, hospital_id, date.today())
+    return await get_queue_by_date(db, hospital_id, today_kst())
+
+
+async def get_monthly_queue_counts(
+    db: AsyncSession, hospital_id: UUID, year: int, month: int
+) -> dict[str, int]:
+    start = date(year, month, 1)
+    end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    result = await db.execute(
+        select(DailyQueue.queue_date, func.count())
+        .where(
+            DailyQueue.hospital_id == hospital_id,
+            DailyQueue.queue_date >= start,
+            DailyQueue.queue_date < end,
+        )
+        .group_by(DailyQueue.queue_date)
+    )
+    return {queue_date.isoformat(): count for queue_date, count in result.all()}
 
 
 async def checkin_patient(
@@ -41,7 +59,8 @@ async def checkin_patient(
     source: str = "manual",
     symptom: str | None = None,
 ) -> DailyQueue:
-    today = date.today()
+    today = today_kst()
+
     max_result = await db.execute(
         select(func.max(DailyQueue.queue_number)).where(
             DailyQueue.hospital_id == hospital_id,
@@ -155,12 +174,17 @@ async def get_queue_billing(
     if not target_queue:
         raise HTTPException(status_code=404, detail="접수 내역을 찾을 수 없습니다.")
 
+    queue_date = target_queue.queue_date
+    kst_start = datetime(queue_date.year, queue_date.month, queue_date.day, tzinfo=KST)
+    kst_end = kst_start + timedelta(days=1)
+
     claim_result = await db.execute(
         select(Claim)
         .where(
             Claim.patient_id == target_queue.patient_id,
             Claim.hospital_id == hospital_id,
-            func.date(Claim.created_at) == date.today(),
+            Claim.created_at >= kst_start,
+            Claim.created_at < kst_end,
         )
         .order_by(Claim.created_at.desc())
     )

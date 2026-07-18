@@ -55,3 +55,6 @@ class QueueBillingResponse(BaseModel):
     claim_amount: int
     total_amount: int
     patient_copay: int
+
+class QueueMonthlyCountsResponse(BaseModel):
+    counts: dict[str, int]

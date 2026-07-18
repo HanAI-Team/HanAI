@@ -3,10 +3,12 @@ from uuid import UUID
 
 from app.core.deps import get_current_user, get_db
 from app.core.models import Doctor
+from app.core.timezone import today_kst
 from app.queue import service
 from app.queue.schema import (
     QueueBillingResponse,
     QueueCreateRequest,
+    QueueMonthlyCountsResponse,
     QueuePayRequest,
     QueueResponse,
     QueueStatusUpdateRequest,
@@ -24,6 +26,18 @@ async def get_queue_today(
     queues = await service.get_today_queue(db, current_user.hospital_id)
     return [QueueResponse.from_orm_with_patient(q) for q in queues]
 
+@router.get("/monthly-counts", response_model=QueueMonthlyCountsResponse)
+async def get_monthly_queue_counts(
+    year: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    counts = await service.get_monthly_queue_counts(
+        db, current_user.hospital_id, year, month
+    )
+    return QueueMonthlyCountsResponse(counts=counts)
+
 @router.get("/", response_model=list[QueueResponse])
 async def get_queue_by_date(
     queue_date: date | None = Query(None, alias="date"),
@@ -31,7 +45,7 @@ async def get_queue_by_date(
     current_user=Depends(get_current_user),
 ):
     queues = await service.get_queue_by_date(
-        db, current_user.hospital_id, queue_date or date.today()
+        db, current_user.hospital_id, queue_date or today_kst()
     )
     return [QueueResponse.from_orm_with_patient(q) for q in queues]
 
