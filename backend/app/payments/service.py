@@ -160,3 +160,108 @@ async def confirm_payment(
         "message": "결제가 완료됐습니다.",
     }
 
+
+async def confirm_paddle_payment(
+    db: AsyncSession,
+    hospital_id: UUID,
+    transaction_id: str,
+) -> dict:
+    """Paddle 결제 확인. 프론트가 넘겨준 transaction_id로 Paddle 서버에 직접 조회해
+    결제 상태/금액을 검증한 뒤 구독을 갱신한다 (토스 confirm_payment와 동일한 패턴)."""
+
+    # 이미 처리된 거래면 재처리하지 않고 현재 구독 상태 그대로 반환 (중복 호출 대비)
+    existing_result = await db.execute(
+        select(Payment).where(Payment.order_id == transaction_id)
+    )
+    existing_payment = existing_result.scalar_one_or_none()
+    if existing_payment and existing_payment.status == "paid":
+        sub_result = await db.execute(
+            select(Subscription).where(Subscription.hospital_id == hospital_id)
+        )
+        subscription = sub_result.scalar_one_or_none()
+        return {
+            "success": True,
+            "tier": existing_payment.tier,
+            "billing_period": existing_payment.billing_period,
+            "expired_at": subscription.expired_at.isoformat()
+            if subscription and subscription.expired_at
+            else "",
+            "message": "이미 처리된 결제입니다.",
+        }
+
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            f"{settings.PADDLE_API_BASE_URL}/transactions/{transaction_id}",
+            headers={"Authorization": f"Bearer {settings.PADDLE_API_KEY}"},
+        )
+    if res.status_code != 200:
+        print(f"Paddle 에러: {res.status_code} {res.text}")
+        raise HTTPException(status_code=400, detail="Paddle 거래 정보를 확인할 수 없습니다.")
+
+    txn = res.json().get("data", {})
+    if txn.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="결제가 완료되지 않았습니다.")
+
+    custom_data = txn.get("custom_data") or {}
+    tier = custom_data.get("tier")
+    billing_period = custom_data.get("billing_period")
+    config = TIER_CONFIG.get((tier, billing_period))
+    if not config:
+        raise HTTPException(status_code=400, detail="유효하지 않은 결제 정보입니다.")
+
+    # KRW는 소수점 없는 정수 문자열로 청구되므로 그대로 비교
+    totals = (txn.get("details") or {}).get("totals") or {}
+    paid_amount = int(totals.get("total", 0))
+    if paid_amount != config["amount"]:
+        raise HTTPException(status_code=400, detail="결제 금액이 일치하지 않습니다.")
+
+    if existing_payment:
+        existing_payment.status = "paid"
+        existing_payment.payment_key = transaction_id
+        existing_payment.paid_at = datetime.now(timezone.utc)
+    else:
+        db.add(
+            Payment(
+                hospital_id=hospital_id,
+                order_id=transaction_id,
+                payment_key=transaction_id,
+                tier=tier,
+                billing_period=billing_period,
+                amount=paid_amount,
+                status="paid",
+                paid_at=datetime.now(timezone.utc),
+            )
+        )
+
+    display_tier = config["display_tier"]
+    days = 30 if billing_period == "monthly" else 365
+
+    sub_result = await db.execute(
+        select(Subscription).where(Subscription.hospital_id == hospital_id)
+    )
+    subscription = sub_result.scalar_one_or_none()
+
+    if subscription:
+        subscription.tier = display_tier
+        subscription.status = "active"
+        subscription.expired_at = datetime.now(timezone.utc) + timedelta(days=days)
+    else:
+        subscription = Subscription(
+            hospital_id=hospital_id,
+            tier=display_tier,
+            status="active",
+            started_at=datetime.now(timezone.utc),
+            expired_at=datetime.now(timezone.utc) + timedelta(days=days),
+        )
+        db.add(subscription)
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "tier": display_tier,
+        "billing_period": billing_period,
+        "expired_at": subscription.expired_at.isoformat(),
+        "message": "결제가 완료됐습니다.",
+    }
+

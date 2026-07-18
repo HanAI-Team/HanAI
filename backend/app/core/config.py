@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     TOSS_SECRET_KEY :Optional[str] = None
     TOSS_CLINET_KEY:Optional[str] = None
     TOSS_WEBHOOK_SECRET: Optional[str] = None
+    PADDLE_API_KEY: Optional[str] = None
+    PADDLE_API_BASE_URL: str = "https://sandbox-api.paddle.com"  # 정식 전환 시 https://api.paddle.com 로 교체
 
     LANGFUSE_PUBLIC_KEY: str = ""
     LANGFUSE_SECRET_KEY: str = ""
