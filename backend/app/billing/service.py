@@ -33,13 +33,13 @@ from app.billing.schema import (
     StatementProcedureRow,
 )
 from app.charting.service import update_kcd_code
-from app.core.config import settings
 from app.core.models import (
     AcupuncturePoint,
     Claim,
     ClaimLineItem,
     ClaimLineItemAcupoint,
     ClaimResubmissionHistory,
+    ClaimSequence,
     DailyQueue,
     Doctor,
     DoctorWorkDays,
@@ -55,6 +55,7 @@ from app.core.models import (
 )
 from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -810,24 +811,61 @@ async def get_quick_fee_items(db: AsyncSession, hospital_id: UUID, favorites_lim
     }
 
 
-def resolve_institution_code(hospital: Hospital | None, test_mode: bool) -> str:
+def resolve_institution_code(hospital: Hospital | None) -> str:
     """SAM(EDI)과 처방전 등 모든 출력물이 요양기관기호를 같은 소스에서 가져오도록
     통일하는 공용 함수.
 
-    상시점검(테스트) SAM FILE은 실 요양기관기호 대신 심평원에 등록된
-    청구소프트웨어 업체기호를 기재하는 것이 공식 방법(신규SW검사
-    신청방법.pdf). 테스트 모드가 아닌데 요양기관기호가 비어있으면(과거엔
-    "00000000"으로 조용히 채워 MCPoS "청구서·명세서 요양기관기호 불일치"
-    오류의 원인이 됐다) 출력 자체를 막고 명확한 에러를 던진다.
+    청구소프트웨어 업체기호(EDI_VENDOR_CODE)는 McPoS 프로그램 자체의 로컬
+    "사용자정보/환경설정" 화면에만 기재하는 값이고, SAM 파일(청구명세서)
+    안의 요양기관기호는 상시점검용이든 실제 청구든 항상 실제 요양기관기호를
+    써야 한다 — 「청구소프트웨어 신규검사 신청방법」(2025.7판) 23·26페이지
+    "청구명세서에는 실제 요양기관 기호 입력, 청구포털(McPoS) 환경설정의
+    요양기호에는 업체기호 기재" 명시 확인(2026-07-16). 과거엔 test_mode일
+    때 업체기호로 바꿔치기했으나 이는 이 문서를 잘못 해석한 것이었다.
+
+    요양기관기호가 비어있으면(과거엔 "00000000"으로 조용히 채워 MCPoS
+    "청구서·명세서 요양기관기호 불일치" 오류의 원인이 됐다) 출력 자체를
+    막고 명확한 에러를 던진다.
     """
-    if test_mode:
-        return settings.EDI_VENDOR_CODE
     if not hospital or not hospital.institution_code:
         raise HTTPException(
             status_code=400,
             detail="요양기관기호가 설정되지 않아 청구파일을 생성할 수 없습니다. 설정에서 요양기관기호를 입력해주세요.",
         )
     return hospital.institution_code
+
+
+async def next_claim_serial(db: AsyncSession, hospital_id: UUID, year: int, month: int) -> int:
+    """청구번호(H010 an(10)) 뒷자리 4자리 일련번호를 병원+진료년월 조합별로
+    원자적으로 1씩 증가시켜 반환한다.
+
+    INSERT ... ON CONFLICT DO UPDATE ... RETURNING 한 문장으로 처리해
+    동시에 여러 요청이 들어와도(예: 같은 병원에서 여러 청구를 동시에 다운로드)
+    같은 번호가 두 번 나가지 않는다 — Postgres가 유니크 인덱스 충돌 시
+    해당 행에 대해 자동으로 락을 걸고 순서대로 처리해주므로 별도의
+    SELECT ... FOR UPDATE가 필요 없다.
+    """
+    stmt = (
+        pg_insert(ClaimSequence)
+        .values(hospital_id=hospital_id, claim_period_year=year, claim_period_month=month, last_serial=1)
+        .on_conflict_do_update(
+            index_elements=["hospital_id", "claim_period_year", "claim_period_month"],
+            set_={"last_serial": ClaimSequence.last_serial + 1},
+        )
+        .returning(ClaimSequence.last_serial)
+    )
+    result = await db.execute(stmt)
+    serial = result.scalar_one()
+    await db.commit()
+    return serial
+
+
+# 차등수가제(상대가치점수표 제1부 일반원칙 Ⅲ.차등수가) 1일 평균 진찰횟수 기준.
+# 기준 이하면 차등지수=1.0(감액 없음), 초과 구간은 구간별 지수표가 필요한데
+# 코드베이스에 아직 없어 자동 산정하지 않고 명확히 막는다(추측값을 넣는 것보다
+# 안전). 2026-07-16 기준 "75명"으로 알고 있으나 최신 고시로 재확인 필요 — 확정
+# 전까지는 이 상수만 최신화하면 된다.
+DIFFERENTIAL_FEE_DAILY_LIMIT = 75
 
 
 async def _build_claim_edi_file(
@@ -876,11 +914,15 @@ async def _build_claim_edi_file(
     hospital = r7.scalar_one_or_none()
 
     # 2. ClaimHeader 조립
-    inst_code = resolve_institution_code(hospital, test_mode)
+    inst_code = resolve_institution_code(hospital)
 
     treatment_ym = f"{claim.claim_period_year}{claim.claim_period_month:02d}"
-    # 청구번호 an(10) = 진료년월(6) + 일련번호(4, 이 앱은 청구서 1건=파일 1개라 항상 "0001").
-    claim_no = f"{treatment_ym}0001"
+    # 청구번호 an(10) = 진료년월(6) + 일련번호(4). 보완·추가청구 재전송, 상시점검
+    # 재시험 등으로 같은 달에 여러 번 청구서를 만들 수 있어 병원+진료년월 조합별로
+    # 실제로 증가하는 일련번호를 써야 한다(2026-07-16 확인 — 항상 "0001" 고정이던
+    # 과거 로직은 같은 달 재전송 시 청구번호가 겹치는 문제가 있었다).
+    serial = await next_claim_serial(db, hospital_id, claim.claim_period_year, claim.claim_period_month)
+    claim_no = f"{treatment_ym}{serial:04d}"
 
     # 의료급여 환자 여부 판정 (MT019 진료확인번호 부착 조건, 서식번호/보험자종별구분 선택에 사용)
     patient_insurance_type = _INSURANCE_MAP.get(
@@ -905,6 +947,29 @@ async def _build_claim_edi_file(
     # 항상 외래로 고정 — 입원 케이스 다루게 되면 스키마 추가 필요 (2026-07-09 확인).
     patient_form_no = "K031" if is_medical_aid_patient else "K021"
 
+    # 차등수가 진료(조제)일수·차등지수·차등수가청구액 — 전부 0으로 나가면 MCPoS
+    # 반송사유 33-01/07 등에 그대로 걸린다(2026-07-16 확인). 진료일수는 이 청구서에
+    # 속한 명세서(MedicalRecord)들의 서로 다른 진료일자 수로 정확히 계산하고,
+    # 1일 평균 진찰횟수(총 진찰횟수/진료일수)가 기준 이하면 차등지수 미적용(1.0,
+    # 감액 없음)으로 확정한다 — 이건 우회가 아니라 공식대로 계산해도 실제로
+    # 나오는 값이다. 기준을 넘는 구간은 구간별 지수표가 없어 값을 만들어내지
+    # 않고 명확히 에러로 막는다(사람이 확인해야 하는 영역).
+    distinct_treatment_dates = {r.recorded_at.date() for r in medical_records if r.recorded_at}
+    graduated_days = Decimal(max(len(distinct_treatment_dates), 1))
+    avg_daily_exam_count = Decimal(len(medical_records)) / graduated_days
+    if avg_daily_exam_count > DIFFERENTIAL_FEE_DAILY_LIMIT:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"1일 평균 진찰횟수({avg_daily_exam_count})가 기준"
+                f"({DIFFERENTIAL_FEE_DAILY_LIMIT}회)을 초과해 차등지수를 자동으로 "
+                "산정할 수 없습니다. 상대가치점수표 제1부 일반원칙 Ⅲ.차등수가 "
+                "구간별 지수표를 확인해 수동으로 처리해주세요."
+            ),
+        )
+    graduated_index = Decimal("1.0000000")
+    graduated_claim = claim.claim_amount
+
     header = ClaimHeader(
         claim_no=claim_no,
         form_no=header_form_no,
@@ -915,12 +980,16 @@ async def _build_claim_edi_file(
         claim_date=datetime.now().strftime("%Y%m%d"),
         claimer=doctor.name if doctor else "",
         writer="상시점검" if test_mode else (doctor.name if doctor else ""),
+        writer_birth=doctor.birth_date.strftime("%Y%m%d") if doctor and doctor.birth_date else "",
         claim_count=len(medical_records),
         benefit_total_1=claim.total_amount,
         copayment=claim.patient_copay,
         claim_amount=claim.claim_amount,
         approval_no=claim.approval_no or "",
         agency_code=(hospital.agency_code if hospital else None) or "",
+        graduated_days=graduated_days,
+        graduated_index=graduated_index,
+        graduated_claim=graduated_claim,
     )
 
     if not patient or not patient.rrn:
@@ -1387,7 +1456,7 @@ async def build_claim_statement(
 
 
 async def build_claim_prescription(
-    db: AsyncSession, hospital_id: UUID, claim_id: UUID, test_mode: bool = False
+    db: AsyncSession, hospital_id: UUID, claim_id: UUID
 ) -> ClaimPrescriptionResponse:
     """처방전(별지9호서식) 출력용 데이터 조립.
 
@@ -1409,7 +1478,7 @@ async def build_claim_prescription(
     patient = await db.get(Patient, claim.patient_id)
     doctor = await db.get(Doctor, claim.doctor_id)
     hospital = await db.get(Hospital, hospital_id)
-    institution_code = resolve_institution_code(hospital, test_mode)
+    institution_code = resolve_institution_code(hospital)
 
     kcd_codes = sorted({r.kcd_code for r in medical_records if r.kcd_code})
     disease_names = []

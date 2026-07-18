@@ -244,6 +244,32 @@ class Claim(Base):
     patient = relationship("Patient", foreign_keys=[patient_id])
 
 
+class ClaimSequence(Base):
+    """청구번호(SAM/EDI H010 7-16, an(10) = 진료년월6 + 일련번호4) 뒷자리 4자리
+    일련번호를 병원+진료년월 조합별로 관리하는 카운터.
+
+    같은 달에 여러 번 청구서를 만들어야 하는 경우(보완·추가청구로 인한
+    재전송, 상시점검 재시험, 다병원 확장 등) 매번 겹치지 않는 번호를 내주기
+    위해 둔다. last_serial은 INSERT ... ON CONFLICT DO UPDATE ...
+    RETURNING 한 문장으로 원자적으로 증가시켜 동시 요청에도 중복이 나지
+    않게 한다(app.billing.service.next_claim_serial 참고).
+    """
+    __tablename__ = "claim_sequences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    claim_period_year = Column(Integer, nullable=False)
+    claim_period_month = Column(Integer, nullable=False)
+    last_serial = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "hospital_id", "claim_period_year", "claim_period_month",
+            name="uq_claim_sequence_hospital_period",
+        ),
+    )
+
+
 class ClaimResubmissionHistory(Base):
     """보완·추가청구 처리 이력 (append-only). PATCH 호출마다 한 줄씩 쌓인다."""
     __tablename__ = "claim_resubmission_histories"

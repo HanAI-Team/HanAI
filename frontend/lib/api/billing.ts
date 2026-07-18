@@ -215,8 +215,8 @@ export interface ClaimPrescription {
   license_no: string;
 }
 
-export async function getClaimPrescription(claimId: string, testMode = false): Promise<ClaimPrescription> {
-  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/prescription${testMode ? "?test=true" : ""}`, {
+export async function getClaimPrescription(claimId: string): Promise<ClaimPrescription> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/prescription`, {
     headers: getHeaders(),
   });
   if (!res.ok) {
