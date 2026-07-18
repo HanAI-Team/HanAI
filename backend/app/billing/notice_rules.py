@@ -3,6 +3,7 @@ from datetime import date, datetime
 from typing import Any
 
 from app.billing.catalog import CHUNA_CODES
+from app.core.timezone import today_kst
 
 
 def _get(obj: Any, key: str, default=None):
@@ -181,7 +182,7 @@ def validate_notice_rules(
             item_date = (
                 _get(item, "date")
                 or _get(item, "treatment_date")
-                or date.today()
+                or today_kst()
             )
             try:
                 age = _age_at(birth_date, item_date)

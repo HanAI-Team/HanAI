@@ -11,10 +11,11 @@ from app.pipeline.deidentifier import deidentifier
 from app.pipeline.postprocessor import postprocessor
 from app.core.audit import write_audit
 from uuid import UUID
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from sqlalchemy import select
 from fastapi import HTTPException, status
 from app.core.models import KcdUCode, MedicalRecord, Patient, Doctor
+from app.core.timezone import today_kst
 
 
 async def create_medical_record(db, doctor, patient_id: UUID) -> MedicalRecord:
@@ -34,7 +35,7 @@ async def create_medical_record(db, doctor, patient_id: UUID) -> MedicalRecord:
         doctor_id=doctor.id,
         hospital_id=doctor.hospital_id,
         status="recording",
-        recorded_at=datetime.utcnow(),
+        recorded_at=datetime.now(timezone.utc),
     )
     db.add(medical_record)
     await db.flush()
@@ -296,7 +297,7 @@ async def update_kcd_code(
                 status_code=400,
                 detail=f"'{kcd_code}'는 완전코드 목록에 없는 상병코드입니다. 청구 가능한 KCD 완전코드를 입력해주세요.",
             )
-        today = date.today()
+        today = today_kst()
         if (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
             raise HTTPException(
                 status_code=400,

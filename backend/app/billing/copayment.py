@@ -12,6 +12,8 @@ from decimal import ROUND_HALF_UP, ROUND_UP, Decimal
 from enum import Enum
 from typing import Optional
 
+from app.core.timezone import today_kst
+
 
 class InsuranceType(str, Enum):
     HEALTH = "4"       # 건강보험
@@ -191,7 +193,7 @@ def calculate_billing(inp: BillingInput) -> BillingResult:
     result = BillingResult()
     total1 = inp.benefit_total
     non_benefit = inp.non_benefit_total
-    ref_date = inp.treatment_date or date.today()
+    ref_date = inp.treatment_date or today_kst()
 
     result.benefit_total_1 = total1
     result.benefit_total_2 = total1 + non_benefit
