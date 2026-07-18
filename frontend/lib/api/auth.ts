@@ -34,7 +34,14 @@ export async function updateMyProfile(data: { birth_date?: string; chuna_trainin
   })
 }
 
-export async function login(license_number: string, password: string) {
+export type LoginResponse = {
+  access_token: string
+  token_type: string
+  expires_in: number
+  force_password_change: boolean
+}
+
+export async function login(license_number: string, password: string): Promise<LoginResponse> {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -48,7 +55,7 @@ export async function login(license_number: string, password: string) {
   return res.json()
 }
 
-export async function staffLogin(username: string, password: string) {
+export async function staffLogin(username: string, password: string): Promise<LoginResponse> {
   const res = await fetch(`${BASE_URL}/api/auth/staff/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

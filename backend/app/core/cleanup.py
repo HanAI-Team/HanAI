@@ -4,6 +4,7 @@
 - login_logs: 1년 (개인정보보호법)
 - audit_logs: 5년 (의료법)
 - account_histories: 5년 (의료법)
+- access_control_logs: 3년 (HIRA 청구SW 기능검사 보안 기준)
 - medical_records: 10년 (의료법)
 - claims: 5년 (건보법 명세서 기준)
 - prescriptions: 3년 (건보법 처방전 기준)
@@ -22,6 +23,7 @@ RETENTION = {
     "login_logs": timedelta(days=365 * 2),
     "audit_logs": timedelta(days=365 * 5),
     "account_histories": timedelta(days=365 * 5),
+    "access_control_logs": timedelta(days=365 * 3),
     "medical_records": timedelta(days=365 * 10),
     "claims": timedelta(days=365 * 5),
     "prescriptions": timedelta(days=365 * 3),
@@ -35,6 +37,7 @@ _TABLE_CONFIG = {
     "login_logs":       ("attempted_at", False),
     "audit_logs":       ("changed_at",   True),   # String "YYYYMMDDHHMMSS"
     "account_histories": ("started_at",   False),
+    "access_control_logs": ("acted_at",  True),   # String "YYYYMMDDHHMMSS"
 }
 
 

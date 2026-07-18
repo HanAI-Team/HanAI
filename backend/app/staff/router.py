@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.auth.service import record_account_history
+from app.auth.service import record_access_control_log, record_account_history
 from app.core.database import get_db
 from app.core.deps import get_current_doctor
 from app.core.models import Doctor
@@ -29,11 +29,21 @@ async def create_staff(
         db=db, hospital_id=UUID(str(doctor.hospital_id)), data=data
     )
     await record_account_history(
-        db, "staff", staff.id, "created", 
+        db, "staff", staff.id, "created",
         actor_id=doctor.id
     )
+    await record_access_control_log(
+        db,
+        hospital_id=UUID(str(doctor.hospital_id)),
+        target_account_id=staff.id,
+        target_account_type="staff",
+        role=str(staff.role),
+        action_type="부여",
+        reason="입사",
+        acted_by=doctor.id,
+    )
     await db.commit()
-    return staff 
+    return staff
 
 
 @router.get("/", response_model=list[StaffResponse])
@@ -61,11 +71,21 @@ async def deactivate_staff(
         db=db, hospital_id=UUID(str(doctor.hospital_id)), staff_id=staff_id
     )
     await record_account_history(
-        db, "staff", staff.id, "deactivated", 
+        db, "staff", staff.id, "deactivated",
         actor_id=doctor.id
     )
+    await record_access_control_log(
+        db,
+        hospital_id=UUID(str(doctor.hospital_id)),
+        target_account_id=staff.id,
+        target_account_type="staff",
+        role=str(staff.role),
+        action_type="말소",
+        reason="퇴사",
+        acted_by=doctor.id,
+    )
     await db.commit()
-    return staff 
+    return staff
 
 
 

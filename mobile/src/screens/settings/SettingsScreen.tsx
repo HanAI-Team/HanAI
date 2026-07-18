@@ -39,11 +39,20 @@ export function SettingsScreen() {
       Alert.alert("오류", "새 비밀번호가 일치하지 않습니다.");
       return;
     }
-    const hasLetter = /[a-zA-Z]/.test(newPassword);
-    const hasNumber = /[0-9]/.test(newPassword);
-    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
-    if (newPassword.length < 8 || !hasLetter || !hasNumber || !hasSpecial) {
-      Alert.alert("오류", "비밀번호는 8자 이상, 영문/숫자/특수문자를 포함해야 합니다.");
+    const categories = [
+      /[A-Z]/.test(newPassword),
+      /[a-z]/.test(newPassword),
+      /[0-9]/.test(newPassword),
+      /[!@#$%^&*(),.?":{}|<>]/.test(newPassword),
+    ];
+    const count = categories.filter(Boolean).length;
+    const isValid =
+      (count >= 3 && newPassword.length >= 8) || (count >= 2 && newPassword.length >= 10);
+    if (!isValid) {
+      Alert.alert(
+        "오류",
+        "비밀번호는 영대문자/영소문자/숫자/특수문자 중 3종류 이상 조합 시 8자리 이상, 2종류 이상 조합 시 10자리 이상이어야 합니다."
+      );
       return;
     }
     mutation.mutate();
