@@ -649,8 +649,12 @@ class DailyQueue(Base):
     checked_in_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     status = Column(String(20), nullable=False, default="waiting")
     source = Column(String(20), nullable=False, default="manual")
+    symptom = Column(String(500), nullable=True)
+    queue_number = Column(Integer, nullable=True)
+    payment_method = Column(String(20), nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
     # UniqueConstraint 없음
-    
+
     patient = relationship("Patient", lazy="raise")
 
 

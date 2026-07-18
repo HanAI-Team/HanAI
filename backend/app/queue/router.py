@@ -1,9 +1,17 @@
+from datetime import date
 from uuid import UUID
 
 from app.core.deps import get_current_user, get_db
+from app.core.models import Doctor
 from app.queue import service
-from app.queue.schema import QueueCreateRequest, QueueResponse, QueueStatusUpdateRequest
-from fastapi import APIRouter, Depends
+from app.queue.schema import (
+    QueueBillingResponse,
+    QueueCreateRequest,
+    QueuePayRequest,
+    QueueResponse,
+    QueueStatusUpdateRequest,
+)
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
@@ -14,6 +22,17 @@ async def get_queue_today(
     current_user=Depends(get_current_user),
 ):
     queues = await service.get_today_queue(db, current_user.hospital_id)
+    return [QueueResponse.from_orm_with_patient(q) for q in queues]
+
+@router.get("/", response_model=list[QueueResponse])
+async def get_queue_by_date(
+    queue_date: date | None = Query(None, alias="date"),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    queues = await service.get_queue_by_date(
+        db, current_user.hospital_id, queue_date or date.today()
+    )
     return [QueueResponse.from_orm_with_patient(q) for q in queues]
 
 @router.post("/", response_model=QueueResponse)
@@ -28,6 +47,7 @@ async def checkin(
         patient_id=body.patient_id,
         doctor_id=body.doctor_id,
         source="manual",
+        symptom=body.symptom,
     )
     return QueueResponse.from_orm_with_patient(queue)
 
@@ -52,3 +72,31 @@ async def change_status(
         db, queue_id, body.status, current_user.hospital_id
     )
     return QueueResponse.from_orm_with_patient(queue)
+
+@router.patch("/{queue_id}/pay", response_model=QueueResponse)
+async def pay_queue(
+    queue_id: UUID,
+    body: QueuePayRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if isinstance(current_user, Doctor) and str(current_user.role) != "owner":
+        raise HTTPException(status_code=403, detail="owner 또는 staff 계정만 접근 가능합니다.")
+    queue = await service.pay_queue(
+        db, queue_id, body.payment_method, current_user.hospital_id
+    )
+    return QueueResponse.from_orm_with_patient(queue)
+
+@router.get("/{queue_id}/billing", response_model=QueueBillingResponse)
+async def get_queue_billing(
+    queue_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    claim = await service.get_queue_billing(db, queue_id, current_user.hospital_id)
+    return QueueBillingResponse(
+        claim_id=claim.id,
+        claim_amount=claim.claim_amount,
+        total_amount=claim.total_amount,
+        patient_copay=claim.patient_copay,
+    )

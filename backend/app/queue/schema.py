@@ -14,6 +14,10 @@ class QueueResponse(BaseModel):
     checked_in_at: datetime
     status: str
     source: str
+    symptom: str | None = None
+    queue_number: int | None = None
+    payment_method: str | None = None
+    paid_at: datetime | None = None
 
     @classmethod
     def from_orm_with_patient(cls, queue: "DailyQueue") -> "QueueResponse":
@@ -26,6 +30,10 @@ class QueueResponse(BaseModel):
             checked_in_at=queue.checked_in_at,
             status=queue.status,
             source=queue.source,
+            symptom=queue.symptom,
+            queue_number=queue.queue_number,
+            payment_method=queue.payment_method,
+            paid_at=queue.paid_at,
         )
 
     class Config:
@@ -34,6 +42,16 @@ class QueueResponse(BaseModel):
 class QueueCreateRequest(BaseModel):
     patient_id: UUID
     doctor_id: UUID | None = None
+    symptom: str | None = None
 
 class QueueStatusUpdateRequest(BaseModel):
     status: str
+
+class QueuePayRequest(BaseModel):
+    payment_method: str
+
+class QueueBillingResponse(BaseModel):
+    claim_id: UUID
+    claim_amount: int
+    total_amount: int
+    patient_copay: int
