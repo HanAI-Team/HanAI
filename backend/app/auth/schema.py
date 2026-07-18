@@ -131,6 +131,22 @@ class DoctorProfileUpdate(BaseModel):
     chuna_training_certified: Optional[bool] = None
     chuna_training_banner_seen: Optional[bool] = None
 
+    @field_validator("birth_date")
+    @classmethod
+    def validate_birth_date(cls, v: Optional[date]) -> Optional[date]:
+        """SAM/EDI H010 작성자생년월일(294-306)에 그대로 들어가는 값이라, 오타로
+        미래 날짜나 비현실적인 나이가 저장되면 청구파일이 통째로 반려될 수 있다
+        (요양기관기호 필수화와 같은 이유로 2026-07-16 추가)."""
+        if v is None:
+            return v
+        today = date.today()
+        if v >= today:
+            raise ValueError("생년월일은 오늘 이전 날짜여야 합니다.")
+        min_birth_date = date(today.year - 100, today.month, today.day)
+        if v < min_birth_date:
+            raise ValueError("생년월일이 너무 과거입니다. 다시 확인해주세요.")
+        return v
+
 
 class VerifyInitResponse(BaseModel):
     callback_id: str

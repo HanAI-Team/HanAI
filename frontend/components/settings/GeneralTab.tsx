@@ -213,11 +213,20 @@ export default function GeneralTab() {
           <div className="bg-card border border-border rounded-2xl p-6">
             <div className="text-sm font-medium text-text mb-5">병원 정보</div>
             <div className="flex flex-col gap-4">
+              {hospitalId !== null && !institutionCode && (
+                <div className="text-amber-600 text-sm bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  요양기관기호가 설정되지 않았습니다. 입력하지 않으면 EDI/SAM 청구파일 및
+                  처방전 생성이 불가능합니다.
+                </div>
+              )}
               <div>
-                <label className="block text-xs text-subtext mb-1.5">요양기관기호</label>
+                <label className="block text-xs text-subtext mb-1.5">
+                  요양기관기호 <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   maxLength={8}
+                  required
                   value={institutionCode}
                   onChange={(e) => setInstitutionCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                   className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-[#EF6600]"
@@ -276,10 +285,19 @@ export default function GeneralTab() {
           <div className="bg-card border border-border rounded-2xl p-6">
             <div className="text-sm font-medium text-text mb-5">원장 프로필</div>
             <div className="flex flex-col gap-4">
+              {hospitalId !== null && !birthDate && (
+                <div className="text-amber-600 text-sm bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  생년월일이 설정되지 않았습니다. 입력하지 않으면 EDI/SAM 청구파일의
+                  작성자생년월일란이 비어 청구가 반려될 수 있습니다.
+                </div>
+              )}
               <div>
-                <label className="block text-xs text-subtext mb-1.5">생년월일</label>
+                <label className="block text-xs text-subtext mb-1.5">
+                  생년월일 <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="date"
+                  required
                   value={birthDate}
                   onChange={(e) => setBirthDate(e.target.value)}
                   className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-[#EF6600]"

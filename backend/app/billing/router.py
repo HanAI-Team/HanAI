@@ -971,12 +971,11 @@ async def get_claim_statement(
 @router.get("/claims/{claim_id}/prescription", response_model=ClaimPrescriptionResponse)
 async def get_claim_prescription(
     claim_id: UUID,
-    test: bool = Query(False, description="True이면 SAM 파일과 동일하게 요양기관기호 자리에 상시점검용 업체기호를 기재"),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """처방전(의료법 시행규칙 별지9호서식) 출력용 데이터."""
-    return await build_claim_prescription(db, current_user.hospital_id, claim_id, test_mode=test)
+    return await build_claim_prescription(db, current_user.hospital_id, claim_id)
 
 
 @router.post("/claims/{claim_id}/payments", response_model=ClaimPaymentResponse, status_code=201)
