@@ -21,6 +21,12 @@ from app.kcd.schema import (
 
 router = APIRouter(tags=["kcd"])
 
+# K00~K14: ICD-10 "구강, 타액선 및 턱의 질환"(치과 영역). Zinmac은 한의원 전용
+# 앱이라 진단 검색 결과에 치과 전용 상병코드가 섞여 나올 이유가 없어 제외한다
+# (2026-07-16, 실사용 중 "K0522 급성 치관주위염" 등이 섞여 나온다는 피드백으로
+# 확인). K20 이상 일반 소화기 질환(위염 등)은 한의과에서도 다루므로 그대로 둔다.
+_EXCLUDED_KCD_PREFIXES = [f"K{i:02d}" for i in range(15)]
+
 
 def _check_admin(key: str) -> None:
     if key != settings.ADMIN_API_KEY:
@@ -124,6 +130,9 @@ async def search_kcd_codes(
             or_(KcdUCode.effective_date.is_(None), KcdUCode.effective_date <= ref_date),
             or_(KcdUCode.expired_date.is_(None), KcdUCode.expired_date >= ref_date),
         )
+    )
+    stmt = stmt.where(
+        ~or_(*(KcdUCode.code.like(f"{prefix}%") for prefix in _EXCLUDED_KCD_PREFIXES))
     )
     stmt = stmt.order_by(KcdUCode.code).limit(limit)
     result = await db.execute(stmt)
