@@ -74,7 +74,8 @@ async def test_doctor_비활성화시_말소_기록_작업자없음(client):
 
 async def test_access_control_logs_조회는_owner만(client, approved_doctor):
     doctor, headers = approved_doctor
-    await client.post("/api/staff/", json=STAFF_DATA, headers=headers)
+    create_resp = await client.post("/api/staff/", json=STAFF_DATA, headers=headers)
+    staff_id = create_resp.json()["id"]
 
     resp = await client.get("/api/auth/access-control-logs", headers=headers)
     assert resp.status_code == 200
@@ -82,3 +83,7 @@ async def test_access_control_logs_조회는_owner만(client, approved_doctor):
     assert len(data) == 1
     assert data[0]["action_type"] == "부여"
     assert len(data[0]["acted_at"]) == 14
+    assert data[0]["target_account_id"] == staff_id
+    assert data[0]["target_account_name"] == STAFF_DATA["name"]
+    assert data[0]["acted_by"] == str(doctor.id)
+    assert data[0]["acted_by_name"] == doctor.name

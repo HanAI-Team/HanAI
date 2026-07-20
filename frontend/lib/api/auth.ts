@@ -27,6 +27,23 @@ export async function getAccountHistories(): Promise<AccountHistory[]> {
   return apiCall('/api/auth/account-histories')
 }
 
+export type AccessControlLog = {
+  id: string
+  target_account_id: string
+  target_account_name: string | null
+  target_account_type: string
+  role: string
+  action_type: string
+  reason: string | null
+  acted_at: string
+  acted_by: string | null
+  acted_by_name: string | null
+}
+
+export async function getAccessControlLogs(): Promise<AccessControlLog[]> {
+  return apiCall('/api/auth/access-control-logs')
+}
+
 export async function updateMyProfile(data: { birth_date?: string; chuna_training_certified?: boolean }) {
   return apiCall('/api/auth/me', {
     method: 'PATCH',

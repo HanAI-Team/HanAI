@@ -695,16 +695,27 @@ async def get_access_control_logs(
         .order_by(AccessControlLog.acted_at.desc())
     )
     logs = result.scalars().all()
+
+    doctor_rows = (await db.execute(
+        select(Doctor.id, Doctor.name).where(Doctor.hospital_id == user.hospital_id)
+    )).all()
+    staff_rows = (await db.execute(
+        select(StaffAccount.id, StaffAccount.name).where(StaffAccount.hospital_id == user.hospital_id)
+    )).all()
+    name_map = {str(i): n for i, n in [*doctor_rows, *staff_rows]}
+
     return [
         {
             "id": str(log.id),
             "target_account_id": str(log.target_account_id),
+            "target_account_name": name_map.get(str(log.target_account_id)),
             "target_account_type": log.target_account_type,
             "role": log.role,
             "action_type": log.action_type,
             "reason": log.reason,
             "acted_at": log.acted_at,
             "acted_by": str(log.acted_by) if log.acted_by else None,
+            "acted_by_name": name_map.get(str(log.acted_by)) if log.acted_by else None,
         }
         for log in logs
     ]
