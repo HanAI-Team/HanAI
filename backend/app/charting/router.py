@@ -179,7 +179,9 @@ async def update_kcd_code(
     current_doctor: Doctor | StaffAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await service.update_kcd_code(db, current_doctor, record_id, data.kcd_code)
+    return await service.update_kcd_code(
+        db, current_doctor, record_id, data.kcd_code, data.secondary_kcd_codes
+    )
 
 
 @router.patch("/{record_id}/finalize", response_model=MedicalRecordResponse)

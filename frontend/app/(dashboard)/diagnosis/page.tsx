@@ -10,7 +10,8 @@ import {
   updateKcdCode,
   uploadAndAnalyze,
 } from "@/lib/api/diagnosis";
-import { KcdSearchResult, searchKcd } from "@/lib/api/kcd";
+import { KcdSearchResult, KcdValidateResult, searchKcd, validateKcdCodes } from "@/lib/api/kcd";
+import { ClaimStatement, getClaimStatement } from "@/lib/api/billing";
 import {
   createPatient,
   deleteRecord,
@@ -33,10 +34,12 @@ import {
   FolderOpen,
   Leaf,
   MapPin,
+  History,
   MessageCircle,
   Mic,
   Plus,
   Printer,
+  Receipt,
   ReceiptText,
   Save,
   Search,
@@ -52,7 +55,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const ASK_SAVE_FIELDS: { key: string; label: string }[] = [
   { key: "constitution", label: "사상체질" },
@@ -112,11 +115,14 @@ export default function DiagnosisPage() {
     undefined,
   );
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null);
+  const [recordClaimIds, setRecordClaimIds] = useState<Record<string, string>>({});
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [kcdQuery, setKcdQuery] = useState("");
   const [kcdResults, setKcdResults] = useState<KcdSearchResult[]>([]);
-  const [kcdCode, setKcdCode] = useState<KcdSearchResult | null>(null);
+  const [kcdCodes, setKcdCodes] = useState<KcdSearchResult[]>([]);
   const [kcdDropdownOpen, setKcdDropdownOpen] = useState(false);
+  const [kcdValidation, setKcdValidation] = useState<Record<string, KcdValidateResult>>({});
+  const [showPastKcd, setShowPastKcd] = useState(false);
   const [saveSelection, setSaveSelection] = useState<
     "both" | "result1" | "result2"
   >("both");
@@ -127,6 +133,8 @@ export default function DiagnosisPage() {
       chart_structured: string | null;
       raw_transcription: string | null;
       medical_history: string | null;
+      kcd_code: string | null;
+      secondary_kcd_codes: string[] | null;
     }[]
   >([]);
   const [latestChartStructured, setLatestChartStructured] = useState<
@@ -271,9 +279,60 @@ export default function DiagnosisPage() {
   useEffect(() => {
     setKcdQuery("");
     setKcdResults([]);
-    setKcdCode(null);
+    setKcdCodes([]);
+    setKcdValidation({});
     setKcdDropdownOpen(false);
+    setShowPastKcd(false);
   }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (kcdCodes.length === 0) {
+      setKcdValidation({});
+      return;
+    }
+    const genderMap: Record<string, "M" | "F"> = { male: "M", female: "F", 남성: "M", 여성: "F" };
+    const patientGenderCode = selectedPatient ? genderMap[selectedPatient.gender] : undefined;
+    validateKcdCodes(kcdCodes.map((c) => c.code), patientGenderCode)
+      .then((res) => {
+        const map: Record<string, KcdValidateResult> = {};
+        for (const r of res.results) map[r.code] = r;
+        setKcdValidation(map);
+      })
+      .catch(() => setKcdValidation({}));
+  }, [kcdCodes, selectedPatient?.gender]);
+
+  const pastKcdCodes = useMemo(() => {
+    const codes = new Set<string>();
+    for (const r of records) {
+      if (r.kcd_code) codes.add(r.kcd_code);
+      for (const c of r.secondary_kcd_codes ?? []) codes.add(c);
+    }
+    return Array.from(codes);
+  }, [records]);
+
+  function addKcdCode(item: KcdSearchResult) {
+    setKcdCodes((prev) => (prev.some((c) => c.code === item.code) ? prev : [...prev, item]));
+  }
+
+  function removeKcdCode(code: string) {
+    setKcdCodes((prev) => prev.filter((c) => c.code !== code));
+  }
+
+  function kcdWarnings(code: string): string[] {
+    const v = kcdValidation[code];
+    if (!v) return [];
+    const warnings: string[] = [];
+    if (v.reason === "not_found" || v.reason === "expired") {
+      warnings.push("완전코드가 아닙니다. 하위 코드를 선택하세요");
+    } else if (v.reason === "gender_mismatch") {
+      const label = v.sex_restriction === "M" ? "남성" : "여성";
+      warnings.push(`이 상병코드는 ${label}에게만 적용 가능합니다`);
+    }
+    if (v.is_notifiable) {
+      warnings.push("법정감염병 상병입니다. 신고 의무를 확인하세요");
+    }
+    return warnings;
+  }
 
   useEffect(() => {
     if (!kcdQuery.trim()) {
@@ -840,8 +899,9 @@ ${historyLine}
       if (response?.id) {
         setCurrentRecordId(response.id);
       }
-      if (kcdCode && response?.id) {
-        await updateKcdCode(response.id, kcdCode.code).catch(() => {
+      if (kcdCodes.length > 0 && response?.id) {
+        const [primary, ...secondary] = kcdCodes;
+        await updateKcdCode(response.id, primary.code, secondary.map((c) => c.code)).catch(() => {
           setErrorMessage("상병코드 저장에 실패했습니다.");
         });
       }
@@ -1047,6 +1107,110 @@ ${historyLine}
       + acuSection
       + `<hr/>`
       + `<div class="notice">※ 본 처방전은 AI 보조 도구를 활용한 참고용이며, 최종 처방은 담당 한의사의 판단에 따릅니다.</div>`
+      + `</body></html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onafterprint = () => printWindow.close();
+    printWindow.print();
+  }
+
+  async function handleReceiptPrint(claimId?: string) {
+    if (!claimId) {
+      setErrorMessage("청구 정보가 없습니다. 청구 탭에서 항목을 등록한 뒤 다시 시도해주세요.");
+      return;
+    }
+    const printWindow = window.open("", "_blank", "width=620,height=880");
+    if (!printWindow) {
+      setErrorMessage("팝업이 차단되어 인쇄할 수 없습니다. 팝업 차단을 해제해주세요.");
+      return;
+    }
+
+    let statement: ClaimStatement;
+    try {
+      statement = await getClaimStatement(claimId);
+    } catch {
+      printWindow.close();
+      setErrorMessage("영수증 데이터를 불러오지 못했습니다.");
+      return;
+    }
+
+    const won = (n: number) => n.toLocaleString() + "원";
+    const today = new Date().toLocaleDateString("ko-KR");
+    const sum = (rows: ClaimStatement["procedures"]) => rows.reduce((a, p) => a + p.amount, 0);
+
+    // claim_line_items 기반 항목별 금액 (hang: 01=진찰료 04=시술및처치료 11=투약료 05=검사료 09=비급여)
+    const itemRows = [
+      { label: "진찰료", amount: sum(statement.procedures.filter((p) => p.hang === "01")) },
+      { label: "시술료", amount: sum(statement.procedures.filter((p) => p.hang === "04")) },
+      { label: "투약료", amount: sum(statement.procedures.filter((p) => p.hang === "11")) },
+      { label: "검사료", amount: sum(statement.procedures.filter((p) => p.hang === "05")) },
+      {
+        label: "비급여",
+        amount: sum(statement.procedures.filter((p) => p.hang === "09" || p.is_non_benefit)),
+      },
+    ].filter((r) => r.amount > 0);
+
+    const itemRowsHtml =
+      itemRows.length > 0
+        ? itemRows
+            .map((r) => `<tr><td class="item-name">${r.label}</td><td class="amount">${won(r.amount)}</td></tr>`)
+            .join("")
+        : `<tr><td class="item-name" colspan="2" style="text-align:center;color:#888">청구 항목이 없습니다</td></tr>`;
+
+    const html = "<!DOCTYPE html>"
+      + `<html lang="ko"><head><meta charset="UTF-8"/>`
+      + `<title>영수증 - ${statement.patient_name}</title>`
+      + `<style>`
+      + `*{margin:0;padding:0;box-sizing:border-box}`
+      + `body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#000;background:#fff;padding:28px 36px;max-width:560px;margin:0 auto}`
+      + `h1{font-size:18px;font-weight:bold;text-align:center;letter-spacing:6px;margin-bottom:3px}`
+      + `.subtitle{text-align:center;font-size:11px;color:#555;margin-bottom:12px}`
+      + `hr{border:none;border-top:1.5px solid #000;margin:10px 0}`
+      + `hr.thin{border-top:1px solid #ccc;margin:8px 0}`
+      + `.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px 16px;font-size:13px;margin:8px 0}`
+      + `.item{display:flex;gap:6px;align-items:baseline}`
+      + `.lbl{color:#444;min-width:72px;font-weight:500;flex-shrink:0}`
+      + `table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}`
+      + `th{border:1px solid #999;padding:6px 10px;background:#f0f0f0;font-weight:500}`
+      + `th.left{text-align:left}`
+      + `th.right{text-align:right}`
+      + `td{border:1px solid #ccc;padding:6px 10px}`
+      + `td.item-name{text-align:left}`
+      + `td.amount{text-align:right}`
+      + `.totals{font-size:13px;margin-top:4px}`
+      + `.t-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee}`
+      + `.t-row.bold{font-weight:bold;font-size:14px;border-top:1.5px solid #000;border-bottom:none;padding-top:10px;margin-top:4px}`
+      + `.notice{margin-top:14px;font-size:11px;color:#888;border-top:1px dashed #bbb;padding-top:8px;text-align:center}`
+      + `@media print{body{padding:0}@page{margin:12mm;size:A5}}`
+      + `</style></head><body>`
+      + `<h1>진료비 계산서·영수증</h1>`
+      + `<div class="subtitle">「국민건강보험 요양급여의 기준에 관한 규칙」별지 제9호 서식</div>`
+      + `<hr/>`
+      + `<div class="grid2">`
+      + `<div class="item"><span class="lbl">요양기관명</span><span>${statement.hospital_name}</span></div>`
+      + `<div class="item"><span class="lbl">요양기관기호</span><span>${statement.institution_code}</span></div>`
+      + `<div class="item"><span class="lbl">환자명</span><span>${statement.patient_name}</span></div>`
+      + `<div class="item"><span class="lbl">생년월일</span><span>${statement.birth_masked}</span></div>`
+      + `<div class="item"><span class="lbl">진료일자</span><span>${statement.visit_dates.join(", ") || "-"}</span></div>`
+      + `<div class="item"><span class="lbl">발행일자</span><span>${today}</span></div>`
+      + `</div>`
+      + `<hr/>`
+      + `<table>`
+      + `<thead><tr><th class="left">항목</th><th class="right">금액</th></tr></thead>`
+      + `<tbody>${itemRowsHtml}</tbody>`
+      + `</table>`
+      + `<hr class="thin"/>`
+      + `<div class="totals">`
+      + `<div class="t-row"><span>본인부담금</span><span>${won(statement.copayment)}</span></div>`
+      + `<div class="t-row"><span>공단부담금</span><span>${won(statement.claim_amount)}</span></div>`
+      + (statement.non_benefit_total > 0
+        ? `<div class="t-row"><span>비급여</span><span>${won(statement.non_benefit_total)}</span></div>`
+        : "")
+      + `<div class="t-row bold"><span>총액</span><span>${won(statement.benefit_total_2)}</span></div>`
+      + `</div>`
+      + `<div class="notice">발행자: ${statement.doctor_name} (한의사) · 본 영수증은 보험 청구 목적으로 발급된 것입니다.</div>`
       + `</body></html>`;
 
     printWindow.document.write(html);
@@ -1874,6 +2038,16 @@ ${historyLine}
                         <Printer className="w-3.5 h-3.5" /> 처방전 출력
                       </button>
                       <button
+                        onClick={() =>
+                          handleReceiptPrint(
+                            currentRecordId ? recordClaimIds[currentRecordId] : undefined
+                          )
+                        }
+                        className="flex-1 border border-border-strong rounded-md py-2.5 text-xs text-subtext hover:border-text transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Receipt className="w-3.5 h-3.5" /> 영수증 출력
+                      </button>
+                      <button
                         onClick={() => {
                           if (isExpired) {
                             alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
@@ -2065,6 +2239,13 @@ ${historyLine}
                                 <ReceiptText className="w-3.5 h-3.5" />
                               </button>
                               <button
+                                onClick={() => handleReceiptPrint(recordClaimIds[r.id])}
+                                className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
+                                title="영수증 출력"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                              </button>
+                              <button
                                 onClick={() => handleDeleteRecord(r.id)}
                                 className="px-3 border-l border-border text-muted hover:text-red-500 hover:bg-red-50 transition-colors"
                                 title="삭제"
@@ -2203,80 +2384,157 @@ ${historyLine}
               <div>
                 <p className="text-[10px] font-semibold text-subtext uppercase tracking-widest mb-4 pb-2 border-b border-border">청구</p>
                 <div className="mb-4 bg-card border border-border rounded-lg p-4">
-                  <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide mb-2">
-                    <Search className="w-3.5 h-3.5" /> 상병코드 (KCD)
-                  </div>
-                  {kcdCode ? (
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm text-text">
-                        <span className="font-medium text-[#EF6600]">{kcdCode.code}</span>
-                        {kcdCode.korean_name ? <span> {kcdCode.korean_name}</span> : null}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { setKcdCode(null); setKcdQuery(""); }}
-                        className="text-subtext hover:text-text transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-1.5 text-xs text-subtext uppercase tracking-wide">
+                      <Search className="w-3.5 h-3.5" /> 상병코드 (KCD)
                     </div>
-                  ) : (
-                    <div className="relative">
-                      <input
-                        value={kcdQuery}
-                        onChange={(e) => { setKcdQuery(e.target.value); setKcdDropdownOpen(true); }}
-                        onFocus={() => setKcdDropdownOpen(true)}
-                        onBlur={() => setTimeout(() => setKcdDropdownOpen(false), 150)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && kcdQuery.trim()) {
-                            const match = kcdResults[0];
-                            const code = match ?? { code: kcdQuery.trim().toUpperCase(), korean_name: "" };
-                            setKcdCode(code);
-                            setKcdQuery("");
-                            setKcdResults([]);
-                            setKcdDropdownOpen(false);
-                          }
-                        }}
-                        placeholder="코드 또는 진단명 검색 (예: M545, 요통)"
-                        className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
-                      />
-                      {kcdDropdownOpen && (kcdResults.length > 0 || kcdQuery.trim().length > 0) && (
-                        <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto z-10">
-                          {kcdResults.map((item) => (
-                            <button
-                              key={item.code}
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => { setKcdCode(item); setKcdQuery(""); setKcdResults([]); setKcdDropdownOpen(false); }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors border-b border-border last:border-b-0"
+                    <button
+                      type="button"
+                      onClick={() => setShowPastKcd((v) => !v)}
+                      className="flex items-center gap-1 text-[11px] text-subtext hover:text-[#EF6600] transition-colors"
+                    >
+                      <History className="w-3 h-3" /> 과거 상병
+                    </button>
+                  </div>
+
+                  {kcdCodes.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mb-2">
+                      {kcdCodes.map((c, idx) => {
+                        const warnings = kcdWarnings(c.code);
+                        return (
+                          <div key={c.code}>
+                            <div
+                              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs w-fit ${
+                                warnings.length > 0
+                                  ? "border-amber-400 bg-amber-50 text-amber-700"
+                                  : "border-border bg-fill text-text"
+                              }`}
                             >
-                              <span className="font-medium text-[#EF6600]">{item.code}</span>{" "}
-                              <span className="text-text">{item.korean_name}</span>
+                              <span
+                                className={`text-[9px] font-semibold px-1 rounded ${
+                                  idx === 0 ? "bg-[#EF6600] text-white" : "bg-border text-subtext"
+                                }`}
+                              >
+                                {idx === 0 ? "주상병" : "부상병"}
+                              </span>
+                              <span className="font-medium">{c.code}</span>
+                              {c.korean_name && <span>{c.korean_name}</span>}
+                              <button
+                                type="button"
+                                onClick={() => removeKcdCode(c.code)}
+                                className="text-subtext hover:text-text transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                            {warnings.length > 0 && (
+                              <div className="mt-1 flex flex-col gap-0.5">
+                                {warnings.map((w) => (
+                                  <span
+                                    key={w}
+                                    className="flex items-center gap-1 text-[11px] text-amber-600"
+                                  >
+                                    <TriangleAlert className="w-3 h-3 flex-shrink-0" /> {w}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {kcdCodes.length >= 2 && (
+                    <div className="mb-2 flex items-center gap-1.5 text-[11px] text-subtext bg-fill rounded-md px-2.5 py-1.5">
+                      <TriangleAlert className="w-3 h-3 flex-shrink-0" />
+                      상병 자동 묶음이 적용되지 않습니다. 각 진료내역은 개별적으로 연결해주세요.
+                    </div>
+                  )}
+
+                  {showPastKcd && (
+                    <div className="mb-2 rounded-md border border-border bg-fill p-2">
+                      {pastKcdCodes.length === 0 ? (
+                        <p className="text-[11px] text-subtext px-1 py-0.5">과거 진료기록에 등록된 상병이 없습니다.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {pastKcdCodes.map((code) => (
+                            <button
+                              key={code}
+                              type="button"
+                              onClick={() => addKcdCode({ code, korean_name: "" })}
+                              disabled={kcdCodes.some((c) => c.code === code)}
+                              className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] text-text hover:border-[#EF6600] hover:text-[#EF6600] transition-colors disabled:opacity-40"
+                            >
+                              {code}
                             </button>
                           ))}
-                          {kcdResults.length === 0 && kcdQuery.trim().length > 0 && (
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setKcdCode({ code: kcdQuery.trim().toUpperCase(), korean_name: "" });
-                                setKcdQuery("");
-                                setKcdResults([]);
-                                setKcdDropdownOpen(false);
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors"
-                            >
-                              <span className="text-subtext">직접 입력:</span>{" "}
-                              <span className="font-medium text-text">{kcdQuery.trim()}</span>
-                            </button>
-                          )}
                         </div>
                       )}
                     </div>
                   )}
+
+                  <div className="relative">
+                    <input
+                      value={kcdQuery}
+                      onChange={(e) => { setKcdQuery(e.target.value); setKcdDropdownOpen(true); }}
+                      onFocus={() => setKcdDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setKcdDropdownOpen(false), 150)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && kcdQuery.trim()) {
+                          const match = kcdResults[0];
+                          const code = match ?? { code: kcdQuery.trim().toUpperCase(), korean_name: "" };
+                          addKcdCode(code);
+                          setKcdQuery("");
+                          setKcdResults([]);
+                          setKcdDropdownOpen(false);
+                        }
+                      }}
+                      placeholder={kcdCodes.length > 0 ? "부상병 추가 검색" : "코드 또는 진단명 검색 (예: M545, 요통)"}
+                      className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                    />
+                    {kcdDropdownOpen && (kcdResults.length > 0 || kcdQuery.trim().length > 0) && (
+                      <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto z-10">
+                        {kcdResults.map((item) => (
+                          <button
+                            key={item.code}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => { addKcdCode(item); setKcdQuery(""); setKcdResults([]); setKcdDropdownOpen(false); }}
+                            disabled={kcdCodes.some((c) => c.code === item.code)}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors border-b border-border last:border-b-0 disabled:opacity-40"
+                          >
+                            <span className="font-medium text-[#EF6600]">{item.code}</span>{" "}
+                            <span className="text-text">{item.korean_name}</span>
+                          </button>
+                        ))}
+                        {kcdResults.length === 0 && kcdQuery.trim().length > 0 && (
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              addKcdCode({ code: kcdQuery.trim().toUpperCase(), korean_name: "" });
+                              setKcdQuery("");
+                              setKcdResults([]);
+                              setKcdDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-bg transition-colors"
+                          >
+                            <span className="text-subtext">직접 입력:</span>{" "}
+                            <span className="font-medium text-text">{kcdQuery.trim()}</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {currentRecordId ? (
-                  <BillableItemPicker medicalRecordId={currentRecordId} />
+                  <BillableItemPicker
+                    medicalRecordId={currentRecordId}
+                    onConfirmed={(claim) =>
+                      setRecordClaimIds((prev) => ({ ...prev, [currentRecordId]: claim.id }))
+                    }
+                  />
                 ) : (
                   <div className="text-sm text-muted text-center py-8">
                     먼저 진료 기록을 저장해주세요
