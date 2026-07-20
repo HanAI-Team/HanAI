@@ -56,6 +56,9 @@ from app.billing.schema import (
     FeeCreate,
     FeeItem,
     FeeUpdate,
+    MaterialCreate,
+    MaterialItem,
+    MaterialUpdate,
     NeedsReviewClaimItem,
     NeedsReviewClaimsResponse,
     PrescriptionCheckRequest,
@@ -95,6 +98,8 @@ from app.core.models import (
     Patient,
 )
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Response, UploadFile
+from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, DrugMaster, FeeMaster, MaterialMaster, MedicalRecord, Patient
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -880,6 +885,72 @@ async def export_fees(
         "effective_date", "expired_date",
     ]
     return csv_response("fee_master.csv", header, rows)
+
+
+@router.get("/materials", response_model=list[MaterialItem])
+async def list_materials(
+    db: AsyncSession = Depends(get_db),
+    current_doctor=Depends(get_current_doctor),
+):
+    """치료재료대 마스터 목록 조회."""
+    stmt = (
+        select(MaterialMaster)
+        .where(MaterialMaster.expired_date == None)  # noqa: E711
+        .order_by(MaterialMaster.code)
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.post("/materials", response_model=MaterialItem, status_code=201)
+async def create_material(
+    body: MaterialCreate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    existing = await db.execute(select(MaterialMaster).where(MaterialMaster.code == body.code))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 존재하는 치료재료 코드입니다.")
+    material = MaterialMaster(**body.model_dump())
+    db.add(material)
+    await db.commit()
+    await db.refresh(material)
+    return material
+
+
+@router.put("/materials/{code}", response_model=MaterialItem)
+async def update_material(
+    code: str,
+    body: MaterialUpdate,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(MaterialMaster).where(MaterialMaster.code == code))
+    material = result.scalar_one_or_none()
+    if not material:
+        raise HTTPException(status_code=404, detail="치료재료 코드를 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(material, field, value)
+    await db.commit()
+    await db.refresh(material)
+    return material
+
+
+@router.delete("/materials/{code}", status_code=204)
+async def delete_material(
+    code: str,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    _check_admin(x_admin_key)
+    result = await db.execute(select(MaterialMaster).where(MaterialMaster.code == code))
+    material = result.scalar_one_or_none()
+    if not material:
+        raise HTTPException(status_code=404, detail="치료재료 코드를 찾을 수 없습니다.")
+    await db.delete(material)
+    await db.commit()
 
 
 def _work_days_to_item(r: DoctorWorkDays) -> DoctorWorkDaysItem:

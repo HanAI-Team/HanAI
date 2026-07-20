@@ -634,6 +634,20 @@ class DrugMaster(Base):
     effective_date = Column(Date, nullable=True)                                  # 고시 적용일 (파일 스냅샷 기준)
 
 
+class MaterialMaster(Base):
+    """치료재료대 마스터 (HIRA 치료재료 급여목록 기준)."""
+
+    __tablename__ = "material_master"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(20), unique=True, nullable=False, index=True)   # 치료재료 코드
+    name = Column(String(200), nullable=False)                            # 치료재료명
+    category = Column(String(50), nullable=True)                          # 분류
+    unit_price = Column(Integer, nullable=False)                          # 상한금액(원)
+    effective_date = Column(Date, nullable=True)
+    expired_date = Column(Date, nullable=True)
+
+
 # ================================================================
 # 보안 / 로그
 # ================================================================

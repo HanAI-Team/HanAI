@@ -5,6 +5,7 @@ import os
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from fastapi import HTTPException
+from langfuse import get_client
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import asyncio
@@ -130,20 +131,21 @@ async def diagnose_stream(transcription: str):
     general_diag_prompt = PROMPT_DIAG_TEMPLATE_GENERAL.format(transcription=anon)
     general_rx_prompt = PROMPT_RX_TEMPLATE_GENERAL.format(transcription=anon)
 
-    dataset_task = asyncio.gather(
-        _diagnose_from_prompt_async(dataset_diag_prompt),
-        _diagnose_from_prompt_async(dataset_rx_prompt),
-    )
-    general_task = asyncio.gather(
-        _diagnose_from_prompt_async(general_diag_prompt),
-        _diagnose_from_prompt_async(general_rx_prompt),
-    )
+    with get_client().start_as_current_observation(name="diagnose_stream"):
+        dataset_task = asyncio.gather(
+            _diagnose_from_prompt_async(dataset_diag_prompt),
+            _diagnose_from_prompt_async(dataset_rx_prompt),
+        )
+        general_task = asyncio.gather(
+            _diagnose_from_prompt_async(general_diag_prompt),
+            _diagnose_from_prompt_async(general_rx_prompt),
+        )
 
-    dataset_diag, dataset_rx = await dataset_task
-    yield "dataset_based", {**dataset_diag, **dataset_rx}
+        dataset_diag, dataset_rx = await dataset_task
+        yield "dataset_based", {**dataset_diag, **dataset_rx}
 
-    general_diag, general_rx = await general_task
-    yield "claude_based", {**general_diag, **general_rx}
+        general_diag, general_rx = await general_task
+        yield "claude_based", {**general_diag, **general_rx}
 
 
 async def diagnose(transcription: str) -> dict:

@@ -160,6 +160,35 @@ class FeeUpdate(BaseModel):
     expired_date: Optional[date] = None
 
 
+class MaterialItem(BaseModel):
+    code: str
+    name: str
+    category: Optional[str] = None
+    unit_price: int
+    effective_date: Optional[date]
+    expired_date: Optional[date]
+
+    class Config:
+        from_attributes = True
+
+
+class MaterialCreate(BaseModel):
+    code: str
+    name: str
+    category: Optional[str] = None
+    unit_price: int
+    effective_date: Optional[date] = None
+    expired_date: Optional[date] = None
+
+
+class MaterialUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: Optional[int] = None
+    effective_date: Optional[date] = None
+    expired_date: Optional[date] = None
+
+
 class DoctorWorkDaysItem(BaseModel):
     id: int
     claim_period_year: int
@@ -341,12 +370,14 @@ class ClaimRejectionCodeResponse(BaseModel):
 class DrugMasterResponse(BaseModel):
     product_code: str
     product_name: str
+    ingredient_code: Optional[str]
     ingredient_name: Optional[str]
     company_name: Optional[str]
     spec: Optional[str]
     unit: Optional[str]
     unit_price: int
     administration_route: Optional[str]
+    classification_code: Optional[str]
     is_prescription: Optional[bool]
     effective_date: Optional[date]
 
