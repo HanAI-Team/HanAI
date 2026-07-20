@@ -32,6 +32,8 @@ from app.diagnosis.router import router as diagnosis_router
 from app.feedback.router import router as feedback_router
 from app.hospitals.router import router as hospitals_router
 from app.kcd.router import router as kcd_router
+from app.manage.router import router as manage_router
+from app.masters.router import router as masters_router
 from app.patients.router import router as patients_router
 from app.queue.router import router as queue_router
 from app.staff.router import router as staff_router
@@ -164,6 +166,8 @@ app.include_router(kcd_router, prefix="/api/kcd", tags=["kcd"])
 app.include_router(acupuncture_router, prefix="/api/acupuncture", tags=["acupuncture"])
 app.include_router(billing_router, prefix="/api/billing", tags=["billing"])
 app.include_router(hospitals_router, prefix="/api/hospitals", tags=["hospitals"])
+app.include_router(masters_router, prefix="/api", tags=["masters"])
+app.include_router(manage_router, prefix="/api/manage", tags=["manage"])
 app.include_router(queue_router )
 app.include_router(payments_router)
 

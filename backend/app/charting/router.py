@@ -1,10 +1,13 @@
 import json
 import logging
 import uuid
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from app.charting import prescription_service, procedure_service, service
 from app.charting.schema import (
+    ChangeLogItem,
+    ChangeLogListResponse,
     FinalizeRecordRequest,
     MedicalRecordResponse,
     PrescriptionCreateRequest,
@@ -19,9 +22,10 @@ from app.charting.schema import (
 from app.core.audit import write_audit
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.core.models import Doctor, StaffAccount
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from app.core.models import Doctor, MedicalRecord, Patient, StaffAccount
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["charting"])
@@ -73,6 +77,47 @@ async def get_patient_records(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.get_records_by_patient(db, patient_id, current_doctor)
+
+
+@router.get("/change-log", response_model=ChangeLogListResponse)
+async def get_change_log(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    date_from: date | None = Query(None, description="조회 시작일 (최초입력일 created_at 기준)"),
+    date_to: date | None = Query(None, description="조회 종료일 (최초입력일 created_at 기준)"),
+    current_doctor: Doctor | StaffAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """진료기록 최초입력일자/최종수정일자 조회 (HIRA 변경일 관리)."""
+    stmt = (
+        select(MedicalRecord, Patient.name)
+        .join(Patient, Patient.id == MedicalRecord.patient_id)
+        .where(MedicalRecord.hospital_id == current_doctor.hospital_id)
+    )
+    if date_from:
+        stmt = stmt.where(
+            MedicalRecord.created_at >= datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc)
+        )
+    if date_to:
+        stmt = stmt.where(
+            MedicalRecord.created_at <= datetime.combine(date_to, datetime.max.time(), tzinfo=timezone.utc)
+        )
+
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    stmt = stmt.order_by(MedicalRecord.created_at.desc()).offset((page - 1) * size).limit(size)
+    rows = (await db.execute(stmt)).all()
+    items = [
+        ChangeLogItem(
+            id=record.id,
+            patient_id=record.patient_id,
+            patient_name=patient_name,
+            doctor_id=record.doctor_id,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+        for record, patient_name in rows
+    ]
+    return ChangeLogListResponse(total=total, page=page, size=size, items=items)
 
 
 @router.get("/{record_id}", response_model=MedicalRecordResponse)
