@@ -485,6 +485,26 @@ class ClaimPaymentResponse(BaseModel):
     paid_at: str
     processed_by_name: str
 
+
+class ClaimBillingAgentUpdateRequest(BaseModel):
+    billing_agent_code: str | None = None
+    billing_agent_name: str | None = None
+
+
+class ClaimReviewResultResponse(BaseModel):
+    id: UUID
+    claim_id: UUID | None = None
+    receipt_number: str
+    review_type: str
+    result_code: str
+    original_amount: int
+    approved_amount: int
+    reduced_amount: int
+    reduce_reason: str | None = None
+    review_date: date
+    received_at: datetime
+    raw_content: str | None = None
+
     class Config:
         from_attributes = True
 
@@ -532,3 +552,15 @@ class CheckoutPreviewResponse(BaseModel):
     patient_copay: int         # 본인부담금
     claim_amount: int          # 청구액
     special_code: str | None   # 산정특례 코드 (있으면 산정특례 적용)
+
+
+class ClaimReviewResultListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    items: list[ClaimReviewResultResponse]
+
+
+class ClaimReviewResultUploadResponse(BaseModel):
+    inserted: int
+    skipped: int

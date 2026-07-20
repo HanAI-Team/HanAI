@@ -23,6 +23,43 @@ export interface ClaimListItem {
   approval_no?: string | null;
   from_reception: boolean;
   is_paid: boolean;
+  claim_type?: "supplement" | "addition" | null;
+  original_receipt_no?: number | null;
+  original_record_serial?: number | null;
+  rejection_reason_code?: string | null;
+  billing_agent_code?: string | null;
+  billing_agent_name?: string | null;
+}
+
+const CLAIM_TYPE_LABEL: Record<string, string> = {
+  supplement: "보완",
+  addition: "추가",
+};
+
+export function claimTypeLabel(claimType: string | null | undefined): string {
+  return claimType ? CLAIM_TYPE_LABEL[claimType] ?? claimType : "당초";
+}
+
+export interface RejectionCodeSearchResult {
+  category: string;
+  code: string;
+  detail_code: string;
+  description: string;
+}
+
+export async function searchRejectionCodes(
+  query: string,
+  category?: string,
+  limit = 20
+): Promise<RejectionCodeSearchResult[]> {
+  if (!query.trim()) return [];
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  if (category) params.set("category", category);
+  const res = await fetch(`${BASE_URL}/api/billing/rejection-codes?${params.toString()}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("심사불능사유코드 검색 실패");
+  return res.json();
 }
 
 export interface ClaimResubmissionRequest {
@@ -387,4 +424,80 @@ export async function previewCheckoutBilling(
     method: "POST",
     body: JSON.stringify({ patient_id: patientId, line_items: lineItems }),
   });
+}
+
+export async function updateClaimBillingAgent(
+  claimId: string,
+  billingAgentCode: string | null,
+  billingAgentName: string | null,
+): Promise<{ id: string; billing_agent_code: string | null; billing_agent_name: string | null }> {
+  return apiCall(`/api/billing/claims/${claimId}/billing-agent`, {
+    method: "PATCH",
+    body: JSON.stringify({ billing_agent_code: billingAgentCode, billing_agent_name: billingAgentName }),
+  });
+}
+
+export interface ClaimReviewResult {
+  id: string;
+  claim_id: string | null;
+  receipt_number: string;
+  review_type: string;
+  result_code: string;
+  original_amount: number;
+  approved_amount: number;
+  reduced_amount: number;
+  reduce_reason: string | null;
+  review_date: string;
+  received_at: string;
+  raw_content: string | null;
+}
+
+export interface ClaimReviewResultListResponse {
+  total: number;
+  page: number;
+  size: number;
+  items: ClaimReviewResult[];
+}
+
+export async function uploadReviewResults(file: File): Promise<{ inserted: number; skipped: number }> {
+  const token = localStorage.getItem("token");
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${BASE_URL}/api/billing/claims/review-results/upload`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "심사결과 업로드 실패");
+  }
+  return res.json();
+}
+
+export async function getReviewResults(params?: {
+  startDate?: string;
+  endDate?: string;
+  resultCode?: string;
+  page?: number;
+  size?: number;
+}): Promise<ClaimReviewResultListResponse> {
+  const query = new URLSearchParams();
+  if (params?.startDate) query.set("start_date", params.startDate);
+  if (params?.endDate) query.set("end_date", params.endDate);
+  if (params?.resultCode) query.set("result_code", params.resultCode);
+  query.set("page", String(params?.page ?? 1));
+  query.set("size", String(params?.size ?? 20));
+  const url = `${BASE_URL}/api/billing/claims/review-results?${query.toString()}`;
+  const res = await fetch(url, { headers: getHeaders() });
+  if (!res.ok) throw new Error("심사결과 목록 조회 실패");
+  return res.json();
+}
+
+export async function getReviewResult(id: string): Promise<ClaimReviewResult> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/review-results/${id}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("심사결과 상세 조회 실패");
+  return res.json();
 }

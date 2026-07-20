@@ -28,6 +28,7 @@ from app.billing.schema import (
     BillingCalcRequest,
     BillingCalcResponse,
     ClaimApprovalUpdateRequest,
+    ClaimBillingAgentUpdateRequest,
     ClaimLineItemResponse,
     ClaimPaymentCreateRequest,
     ClaimPaymentListResponse,
@@ -39,6 +40,9 @@ from app.billing.schema import (
     ClaimRejectionCodeUpdate,
     ClaimResubmissionResponse,
     ClaimResubmissionUpdate,
+    ClaimReviewResultListResponse,
+    ClaimReviewResultResponse,
+    ClaimReviewResultUploadResponse,
     ClaimStatementResponse,
     ClaimSummaryResponse,
     CheckoutPreviewRequest,
@@ -64,6 +68,7 @@ from app.billing.service import (
     build_claim_prescription,
     build_claim_statement,
     create_claim,
+    create_review_results_from_csv,
     generate_claim_edi,
     generate_claim_sam_files,
     get_quick_fee_items as service_get_quick_fee_items,
@@ -80,14 +85,16 @@ from app.core.models import (
     ClaimLineItem,
     ClaimLineItemAcupoint,
     ClaimPayment,
+    ClaimRejectionCode,
+    ClaimReviewResult,
     DailyQueue,
     DoctorWorkDays,
+    DrugMaster,
     FeeMaster,
     MedicalRecord,
     Patient,
 )
-from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, DrugMaster, FeeMaster, MedicalRecord, Patient
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -109,6 +116,12 @@ class ClaimListItem(BaseModel):
     approval_no: str | None = None
     from_reception: bool = False  # 접수 대시보드 청구 모달에서 생성된 청구인지 여부
     is_paid: bool = False         # from_reception 건에 한해 수납 완료 여부
+    claim_type: str | None = None
+    original_receipt_no: int | None = None
+    original_record_serial: int | None = None
+    rejection_reason_code: str | None = None
+    billing_agent_code: str | None = None
+    billing_agent_name: str | None = None
 
 
 class ClaimCreateRequest(BaseModel):
@@ -119,6 +132,8 @@ class ClaimCreateRequest(BaseModel):
     visit_type: str = "외래"  # "외래" 또는 "입원" (VisitType enum과 일치)
     approval_no: str | None
     approval_no: str | None = None
+    billing_agent_code: str | None = None
+    billing_agent_name: str | None = None
 
 
 class ClaimCreateResponse(BaseModel):
@@ -151,7 +166,9 @@ async def create_new_claim(
         claim_period_year=body.claim_period_year,
         claim_period_month=body.claim_period_month,
         visit_type=body.visit_type,
-        approval_no=body.approval_no
+        approval_no=body.approval_no,
+        billing_agent_code=body.billing_agent_code,
+        billing_agent_name=body.billing_agent_name,
     )
     return ClaimCreateResponse(
         id=str(claim.id),
@@ -221,6 +238,12 @@ async def list_claims(
             approval_no=claim.approval_no,
             from_reception=claim.id in reception_claim_ids,
             is_paid=claim.id in paid_claim_ids,
+            claim_type=claim.claim_type,
+            original_receipt_no=claim.original_receipt_no,
+            original_record_serial=claim.original_record_serial,
+            rejection_reason_code=claim.rejection_reason_code,
+            billing_agent_code=claim.billing_agent_code,
+            billing_agent_name=claim.billing_agent_name,
         )
         for claim, patient in results
     ]
@@ -331,6 +354,70 @@ async def bulk_download_edi(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.post("/claims/review-results/upload", response_model=ClaimReviewResultUploadResponse)
+async def upload_review_results(
+    file: UploadFile = File(...),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """심사결과(수신) CSV 업로드. 실제 심평원 EDI 수신 연동 전까지의 임시 경로."""
+    content = await file.read()
+    inserted, skipped = await create_review_results_from_csv(db, current_user.hospital_id, content)
+    return ClaimReviewResultUploadResponse(inserted=inserted, skipped=skipped)
+
+
+@router.get("/claims/review-results", response_model=ClaimReviewResultListResponse)
+async def list_review_results(
+    start_date: date | None = Query(None, description="심사일자 시작 (YYYY-MM-DD)"),
+    end_date: date | None = Query(None, description="심사일자 종료 (YYYY-MM-DD)"),
+    result_code: str | None = Query(None, description="인정 | 삭감 | 보류"),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    base_query = select(ClaimReviewResult).where(
+        ClaimReviewResult.hospital_id == current_user.hospital_id
+    )
+    if start_date:
+        base_query = base_query.where(ClaimReviewResult.review_date >= start_date)
+    if end_date:
+        base_query = base_query.where(ClaimReviewResult.review_date <= end_date)
+    if result_code:
+        base_query = base_query.where(ClaimReviewResult.result_code == result_code)
+
+    total_result = await db.execute(select(func.count()).select_from(base_query.subquery()))
+    total = total_result.scalar_one()
+
+    stmt = (
+        base_query.order_by(ClaimReviewResult.review_date.desc(), ClaimReviewResult.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    rows = await db.execute(stmt)
+    items = rows.scalars().all()
+
+    return ClaimReviewResultListResponse(
+        total=total,
+        page=page,
+        size=size,
+        items=[ClaimReviewResultResponse.model_validate(item) for item in items],
+    )
+
+
+@router.get("/claims/review-results/{result_id}", response_model=ClaimReviewResultResponse)
+async def get_review_result(
+    result_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await db.get(ClaimReviewResult, result_id)
+    if not item or item.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="심사결과를 찾을 수 없습니다.")
+    return ClaimReviewResultResponse.model_validate(item)
+
 
 # 심평원 기준 상수 (성인 기준)
 _GAMI_MAX_TYPES = 5       # 가미제 추가 약재 최대 종수
@@ -1286,6 +1373,26 @@ async def update_claim_approval(
     claim.approval_no = body.approval_no
     await db.commit()
     return {"id": str(claim_id), "approval_no": claim.approval_no}
+
+
+@router.patch("/claims/{claim_id}/billing-agent")
+async def update_claim_billing_agent(
+    claim_id: UUID,
+    body: ClaimBillingAgentUpdateRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await db.get(Claim, claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구를 찾을 수 없습니다.")
+    claim.billing_agent_code = body.billing_agent_code
+    claim.billing_agent_name = body.billing_agent_name
+    await db.commit()
+    return {
+        "id": str(claim_id),
+        "billing_agent_code": claim.billing_agent_code,
+        "billing_agent_name": claim.billing_agent_name,
+    }
 
 
 class SupportFundBody(BaseModel):
