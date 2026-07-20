@@ -48,7 +48,7 @@ const ARTICLES = [
           <p>회사는 다음 각 호의 서비스를 제공합니다.</p>
           <ul className="list-disc list-inside space-y-1 mt-1">
             <li>STT(음성인식) 기반 오토차팅</li>
-            <li>AI 진단 보조</li>
+            <li>AI 진료 기록 보조</li>
             <li>HIRA(건강보험심사평가원) 청구 파일 생성</li>
           </ul>
         </div>
@@ -102,7 +102,7 @@ const ARTICLES = [
     body: (
       <ul className="list-disc list-inside text-subtext leading-relaxed space-y-1">
         <li>
-          서비스가 제공하는 AI 진단 보조 결과는 참고용 정보이며, 의료법상 의료행위를 대체하지
+          서비스가 제공하는 AI 분석 참고자료는 참고용 정보이며, 의료법상 의료행위를 대체하지
           않습니다. 최종 진단 및 처방에 대한 판단과 책임은 이용자인 한의사에게 있습니다.
         </li>
         <li>회사는 천재지변, 시스템 장애 등 회사의 귀책사유 없는 불가항력으로 인하여 서비스를 제공할 수 없는 경우 이에 대한 책임을 지지 않습니다.</li>

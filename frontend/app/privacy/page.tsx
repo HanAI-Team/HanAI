@@ -11,7 +11,7 @@ const ARTICLES = [
         </li>
         <li>
           <span className="text-text font-medium">서비스 이용 중 생성되는 항목</span>: 환자
-          진료기록, 음성 녹음 파일, AI 진단 결과, HIRA 청구 데이터
+          진료기록, 음성 녹음 파일, AI 분석 결과, HIRA 청구 데이터
         </li>
         <li>
           <span className="text-text font-medium">자동 수집 항목</span>: 접속 IP, 브라우저 정보,
@@ -25,7 +25,7 @@ const ARTICLES = [
     body: (
       <ul className="list-disc list-inside text-subtext leading-relaxed space-y-1">
         <li>한의사 면허 인증 및 서비스 가입</li>
-        <li>AI 진단 보조 및 오토차팅 서비스 제공</li>
+        <li>AI 진료 기록 보조 및 오토차팅 서비스 제공</li>
         <li>HIRA 청구 파일 생성</li>
         <li>고객 지원 및 서비스 개선</li>
       </ul>
@@ -59,7 +59,7 @@ const ARTICLES = [
           <p>회사는 서비스 제공을 위해 다음과 같이 개인정보 처리업무를 위탁하고 있습니다.</p>
           <ul className="list-disc list-inside space-y-1 mt-1">
             <li>Clova Speech (네이버클라우드): STT 음성인식 처리</li>
-            <li>Anthropic: AI 진단 보조 처리</li>
+            <li>Anthropic: AI 분석 처리</li>
             <li>Supabase: 데이터베이스 저장</li>
           </ul>
         </div>

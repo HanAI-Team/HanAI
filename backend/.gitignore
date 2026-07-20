@@ -1,0 +1,6 @@
+data/*.jsonl
+scripts/compare_stt_vito_vs_clova.py
+scripts/compare_diagnosis_vito_vs_clova.py
+scripts/speaker_disagreement_analysis.py
+scripts/stt_stability_test.py
+test_audio/

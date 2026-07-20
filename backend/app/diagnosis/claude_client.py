@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
@@ -24,8 +25,8 @@ logger = logging.getLogger(__name__)
 load_dotenv(override=True)
 async_client = AsyncAnthropic(api_key=(os.getenv("ANTHROPIC_API_KEY") or "").strip())
 
-_default_data_dir = os.path.join(os.path.dirname(__file__), "../../../data")
-DATA_DIR = os.environ.get("DATA_DIR", _default_data_dir)
+_default_data_dir = Path(__file__).resolve().parents[2] / "data"  # backend/data
+DATA_DIR = os.environ.get("DATA_DIR", str(_default_data_dir))
 
 
 def _load_jsonl(path: str) -> list[dict]:
