@@ -82,3 +82,67 @@ async def test_patch_hospital_rejects_other_hospital(client, approved_doctor, db
         headers=headers,
     )
     assert resp.status_code == 404
+
+
+# ── 요양기관기호 형식 검증 (2026-07-16 추가) ──────────────────────────────
+# SAM/EDI/처방전 생성이 이 값에 의존하는데, 기존엔 서버쪽 형식 검증이
+# 전혀 없어 프론트 정규식만 우회하면(직접 API 호출 등) 깨진 값이 그대로
+# 저장될 수 있었다. 실제로 DB의 병원 4곳 전부 이 값이 비어있는 채로
+# 방치돼 있던 걸 계기로 서버쪽 검증을 추가했다.
+
+async def test_요양기관기호_8자리_숫자_아니면_거부(client, approved_doctor):
+    doctor, headers = approved_doctor
+
+    resp = await client.patch(
+        f"/api/hospitals/{doctor.hospital_id}",
+        json={"institution_code": "123"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+async def test_요양기관기호_숫자아닌문자_포함시_거부(client, approved_doctor):
+    doctor, headers = approved_doctor
+
+    resp = await client.patch(
+        f"/api/hospitals/{doctor.hospital_id}",
+        json={"institution_code": "1234567A"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+async def test_요양기관기호_빈문자열로_비우기_시도시_거부(client, approved_doctor):
+    """이미 설정된 요양기관기호를 빈 문자열로 지우려는 시도도 막는다
+    (한 번 채워지면 실수로 비워질 수 없도록)."""
+    doctor, headers = approved_doctor
+    await client.patch(
+        f"/api/hospitals/{doctor.hospital_id}",
+        json={"institution_code": "12345678"},
+        headers=headers,
+    )
+
+    resp = await client.patch(
+        f"/api/hospitals/{doctor.hospital_id}",
+        json={"institution_code": ""},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+async def test_요양기관기호_생략하면_기존값_유지(client, approved_doctor):
+    """institution_code 필드 자체를 안 보내면(부분 업데이트) 기존 값을 그대로 둔다."""
+    doctor, headers = approved_doctor
+    await client.patch(
+        f"/api/hospitals/{doctor.hospital_id}",
+        json={"institution_code": "12345678"},
+        headers=headers,
+    )
+
+    resp = await client.patch(
+        f"/api/hospitals/{doctor.hospital_id}",
+        json={"phone": "02-0000-0000"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["institution_code"] == "12345678"

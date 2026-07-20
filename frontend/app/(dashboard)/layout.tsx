@@ -20,6 +20,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const { showWarning, extendSession } = useIdleTimeout();
 
   useEffect(() => {
@@ -29,7 +30,10 @@ export default function DashboardLayout({
 
   useEffect(() => {
     getMe().then((data: Me | undefined) => {
-      if (data) setIsExpired(!!data.is_expired);
+      if (data) {
+        setIsExpired(!!data.is_expired);
+        setIsOwner(data.role === "owner");
+      }
     });
   }, []);
 
@@ -45,6 +49,7 @@ export default function DashboardLayout({
     { label: "청구", path: "/billing" },
     { label: "멤버쉽", path: "/membership" },
     { label: "설정", path: "/settings" },
+    ...(isOwner ? [{ label: "관리", path: "/manage" }] : []),
   ];
 
   const mobileNavLinks = [
@@ -214,9 +219,7 @@ export default function DashboardLayout({
       <nav className="sm:hidden border-t border-border bg-card py-2 pb-3">
         <div className="flex justify-around">
           {mobileNavLinks.map((link) => {
-            const isActive =
-              pathname === link.path ||
-              (link.path === "/patients" && pathname === "/diagnosis");
+            const isActive = pathname === link.path;
             return (
               <button
                 key={link.path}

@@ -36,6 +36,11 @@ class TossWebhookPayload(BaseModel):
     data: dict
 
 
+# Paddle 결제 확인 요청 (프론트 → 백엔드, Paddle 오버레이 checkout.completed 이후)
+class PaddleConfirmRequest(BaseModel):
+    transaction_id: str  # Paddle 거래 ID (예: txn_...)
+
+
 
 
 TIER_CONFIG = {

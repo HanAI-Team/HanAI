@@ -160,6 +160,35 @@ class FeeUpdate(BaseModel):
     expired_date: Optional[date] = None
 
 
+class MaterialItem(BaseModel):
+    code: str
+    name: str
+    category: Optional[str] = None
+    unit_price: int
+    effective_date: Optional[date]
+    expired_date: Optional[date]
+
+    class Config:
+        from_attributes = True
+
+
+class MaterialCreate(BaseModel):
+    code: str
+    name: str
+    category: Optional[str] = None
+    unit_price: int
+    effective_date: Optional[date] = None
+    expired_date: Optional[date] = None
+
+
+class MaterialUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: Optional[int] = None
+    effective_date: Optional[date] = None
+    expired_date: Optional[date] = None
+
+
 class DoctorWorkDaysItem(BaseModel):
     id: int
     claim_period_year: int
@@ -341,12 +370,14 @@ class ClaimRejectionCodeResponse(BaseModel):
 class DrugMasterResponse(BaseModel):
     product_code: str
     product_name: str
+    ingredient_code: Optional[str]
     ingredient_name: Optional[str]
     company_name: Optional[str]
     spec: Optional[str]
     unit: Optional[str]
     unit_price: int
     administration_route: Optional[str]
+    classification_code: Optional[str]
     is_prescription: Optional[bool]
     effective_date: Optional[date]
 
@@ -468,3 +499,67 @@ class ClaimPrescriptionResponse(BaseModel):
 
 class ClaimApprovalUpdateRequest(BaseModel):
     approval_no: str | None = None
+
+
+class ClaimPaymentCreateRequest(BaseModel):
+    method: Literal["cash", "card", "transfer"]
+    amount: int = Field(..., gt=0)
+
+
+class ClaimPaymentResponse(BaseModel):
+    id: UUID
+    claim_id: UUID
+    patient_name: str
+    method: Literal["cash", "card", "transfer"]
+    claim_amount: int  # 청구액 (Claim.claim_amount, 참고용)
+    amount: int         # 실제 수납액
+    paid_at: str
+    processed_by_name: str
+
+    class Config:
+        from_attributes = True
+
+
+class ClaimPaymentListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    items: list[ClaimPaymentResponse]
+
+
+class ClaimPaymentSummaryResponse(BaseModel):
+    today_total: int
+    month_total: int
+    cash_ratio: float   # 0~100, 필터링된 범위 내 현금 비율
+    card_ratio: float   # 0~100, 필터링된 범위 내 카드 비율
+
+
+class QuickFeeItemResponse(BaseModel):
+    code: str
+    name: str
+    category: str
+    unit_price: int
+
+
+class QuickFeeItemsResponse(BaseModel):
+    categories: list[str]                              # FeeMaster에 실제 존재하는 카테고리 목록
+    favorites: list[QuickFeeItemResponse]               # "자주" 탭 — 최근 사용빈도 상위 N개
+    by_category: dict[str, list[QuickFeeItemResponse]]  # 카테고리별 전체 목록
+
+
+class CheckoutPreviewLineItem(BaseModel):
+    code: str
+    qty: float = 1
+    days: int = 1
+
+
+class CheckoutPreviewRequest(BaseModel):
+    patient_id: UUID
+    line_items: list[CheckoutPreviewLineItem]
+
+
+class CheckoutPreviewResponse(BaseModel):
+    total_amount: int          # 총진료비
+    patient_copay: int         # 본인부담금
+    claim_amount: int          # 청구액
+    special_code: str | None   # 산정특례 코드 (있으면 산정특례 적용)

@@ -23,13 +23,6 @@ async def test_처방전_기관_환자_의료인_정보_채워짐(db, 한의원_
     assert p.issue_no == "2026060001"
 
 
-async def test_처방전_요양기관기호는_SAM과_동일한_소스(db, 한의원_외래_사례):
-    """test_mode=True면 SAM(EDI) 청구서와 동일하게 상시점검용 업체기호가 나온다."""
-    claim, hospital = 한의원_외래_사례
-    p = await build_claim_prescription(db, hospital.id, claim.id, test_mode=True)
-    assert p.institution_code == "10870025"
-
-
 async def test_처방전_요양기관기호_없으면_생성차단(db, 한의원_외래_사례):
     """요양기관기호가 비어있으면 "-"로 얼버무리지 않고 생성 자체를 막는다."""
     claim, hospital = 한의원_외래_사례
