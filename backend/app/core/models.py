@@ -239,6 +239,8 @@ class Claim(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     approval_no = Column(String(35), nullable=True)  # 검사승인번호 an(35)
     warn_notices = Column(JSON, nullable=True)
+    billing_agent_code = Column(String(5), nullable=True)   # 대행청구단체기호 (건별 지정, 미지정 시 Hospital.agency_code 사용)
+    billing_agent_name = Column(String(100), nullable=True)  # 대행청구단체명
 
     medical_records = relationship("MedicalRecord", back_populates="claim")
     line_items = relationship("ClaimLineItem", back_populates="claim", cascade="all, delete-orphan")
@@ -282,6 +284,30 @@ class ClaimResubmissionHistory(Base):
     receipt_no = Column(Integer, nullable=True)
     record_serial = Column(Integer, nullable=True)
     reason_code = Column(String(2), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ClaimReviewResult(Base):
+    """심평원 심사결과 (수신). 실연동 전까지는 수동 업로드(CSV)로 채운다.
+
+    claim_id는 원청구(Claim.original_receipt_no)와 매칭될 때만 채워지며,
+    매칭 실패 시 접수번호만 남긴 채 null로 둔다.
+    """
+    __tablename__ = "claim_review_results"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=True)
+    receipt_number = Column(String, nullable=False)
+    review_type = Column(String, nullable=False)       # 원심사 | 재심사 | 이의신청
+    result_code = Column(String, nullable=False)        # 인정 | 삭감 | 보류
+    original_amount = Column(Integer, nullable=False, default=0)
+    approved_amount = Column(Integer, nullable=False, default=0)
+    reduced_amount = Column(Integer, nullable=False, default=0)
+    reduce_reason = Column(Text, nullable=True)
+    review_date = Column(Date, nullable=False)
+    received_at = Column(DateTime(timezone=True), server_default=func.now())
+    raw_content = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -388,7 +414,8 @@ class MedicalRecord(Base):
     chart_structured = Column(Text)
     audio_file_url = Column(String)
     status = Column(String, default="recording")
-    kcd_code = Column(String(10), nullable=True)  # KCD 상병코드 (EDI C2-02)
+    kcd_code = Column(String(10), nullable=True)  # KCD 상병코드 (EDI C2-02, 주상병)
+    secondary_kcd_codes = Column(JSON, nullable=True)  # 부상병 코드 목록 (착오청구 예방 — 묶음 자동생성 방지)
     recorded_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

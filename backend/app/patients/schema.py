@@ -63,6 +63,8 @@ class RecentRecordSummary(BaseModel):
     chart_structured: Optional[str] = None
     medical_history: Optional[str] = None
     raw_transcription: Optional[str] = None
+    kcd_code: Optional[str] = None
+    secondary_kcd_codes: Optional[list[str]] = None
 
 
 class PatientDetailResponse(PatientResponse):
