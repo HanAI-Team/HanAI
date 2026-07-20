@@ -1,7 +1,7 @@
 {
   "name": "Zinmac",
   "short_name": "Zinmac",
-  "description": "한의사 전용 AI 진단 보조",
+  "description": "한의사 전용 AI 진료 기록 보조",
   "start_url": "/home",
   "display": "standalone",
   "background_color": "#ffffff",

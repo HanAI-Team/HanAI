@@ -61,7 +61,7 @@ const ARTICLES = [
     title: "6. 환불 불가 항목",
     body: (
       <ul className="list-disc list-inside text-subtext leading-relaxed space-y-1">
-        <li>이미 사용된 STT 오토차팅, AI 진단, HIRA 청구 건은 환불 대상에서 제외됩니다.</li>
+        <li>이미 사용된 STT 오토차팅, AI 분석, HIRA 청구 건은 환불 대상에서 제외됩니다.</li>
         <li>자동갱신 취소 후에도 만료일까지는 서비스를 계속 이용할 수 있습니다.</li>
       </ul>
     ),
