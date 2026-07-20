@@ -10,6 +10,8 @@ class KcdUCodeResponse(BaseModel):
     category: Optional[str]
     effective_date: Optional[date]
     expired_date: Optional[date]
+    sex_restriction: Optional[str] = None  # "M"=남성만, "F"=여성만, None=제한없음
+    is_notifiable: bool = False            # 법정감염병 여부
 
     model_config = {"from_attributes": True}
 
@@ -25,6 +27,8 @@ class KcdValidateResult(BaseModel):
     is_valid: bool
     korean_name: Optional[str] = None
     is_notifiable: Optional[bool] = None  # 법정감염병 여부
+    sex_restriction: Optional[str] = None  # 코드에 설정된 성별 제한 ("M"/"F"/None)
+    reason: Optional[str] = None          # "not_found" | "expired" | "gender_mismatch"
     error: Optional[str] = None
 
 

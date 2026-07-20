@@ -74,6 +74,8 @@ async def validate_kcd_codes(
                     is_valid=False,
                     korean_name=item.korean_name,
                     is_notifiable=item.is_notifiable,
+                    sex_restriction=item.sex_restriction,
+                    reason="gender_mismatch",
                     error=f"'{code}'는 {gender_label} 전용 상병코드입니다.",
                 ))
             else:
@@ -82,6 +84,7 @@ async def validate_kcd_codes(
                     is_valid=True,
                     korean_name=item.korean_name,
                     is_notifiable=item.is_notifiable,
+                    sex_restriction=item.sex_restriction,
                 ))
         else:
             # 존재하지 않는 코드 vs 만료 코드 구분
@@ -92,12 +95,15 @@ async def validate_kcd_codes(
 
             if exists:
                 error_msg = f"'{code}'는 유효기간이 만료된 상병코드입니다."
+                reason = "expired"
             else:
                 error_msg = f"'{code}'는 존재하지 않는 상병코드입니다."
+                reason = "not_found"
 
             results.append(KcdValidateResult(
                 code=code,
                 is_valid=False,
+                reason=reason,
                 error=error_msg,
             ))
 

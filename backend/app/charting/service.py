@@ -282,29 +282,40 @@ async def update_medical_history(
     return medical_record
 
 
+async def _validate_kcd_code(db: AsyncSession, kcd_code: str) -> None:
+    """완전코드 목록(KcdUCode) 검증 — 청구 불가능한 상위 분류코드나 존재하지
+    않는 코드가 진료기록에 들어가는 걸 여기서 막는다 (착오청구 예방)."""
+    result = await db.execute(select(KcdUCode).where(KcdUCode.code == kcd_code))
+    kcd = result.scalar_one_or_none()
+    if not kcd:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{kcd_code}'는 완전코드 목록에 없는 상병코드입니다. 청구 가능한 KCD 완전코드를 입력해주세요.",
+        )
+    today = today_kst()
+    if (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{kcd_code}'는 현재 유효기간이 아닌 상병코드입니다.",
+        )
+
+
 async def update_kcd_code(
-    db: AsyncSession, doctor: Doctor, record_id: UUID, kcd_code: str | None
+    db: AsyncSession,
+    doctor: Doctor,
+    record_id: UUID,
+    kcd_code: str | None,
+    secondary_kcd_codes: list[str] | None = None,
 ) -> MedicalRecord:
     medical_record = await get_medical_record(db, doctor, record_id)
 
     if kcd_code:
-        # 완전코드 목록(KcdUCode) 검증 — 청구 불가능한 상위 분류코드나 존재하지
-        # 않는 코드가 진료기록에 들어가는 걸 여기서 막는다 (착오청구 예방).
-        result = await db.execute(select(KcdUCode).where(KcdUCode.code == kcd_code))
-        kcd = result.scalar_one_or_none()
-        if not kcd:
-            raise HTTPException(
-                status_code=400,
-                detail=f"'{kcd_code}'는 완전코드 목록에 없는 상병코드입니다. 청구 가능한 KCD 완전코드를 입력해주세요.",
-            )
-        today = today_kst()
-        if (kcd.effective_date and kcd.effective_date > today) or (kcd.expired_date and kcd.expired_date < today):
-            raise HTTPException(
-                status_code=400,
-                detail=f"'{kcd_code}'는 현재 유효기간이 아닌 상병코드입니다.",
-            )
+        await _validate_kcd_code(db, kcd_code)
+    for code in secondary_kcd_codes or []:
+        await _validate_kcd_code(db, code)
 
     medical_record.kcd_code = kcd_code  # type: ignore
+    medical_record.secondary_kcd_codes = secondary_kcd_codes or None  # type: ignore
     await write_audit(
         db,
         table_name="medical_records",

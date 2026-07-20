@@ -41,6 +41,7 @@ from app.core.models import (
     ClaimLineItem,
     ClaimLineItemAcupoint,
     ClaimResubmissionHistory,
+    ClaimReviewResult,
     ClaimSequence,
     DailyQueue,
     Doctor,
@@ -361,6 +362,8 @@ async def create_claim(
     claim_period_month: int,
     visit_type: str = "외래",  # "외래" 또는 "입원" (VisitType enum과 일치)
     approval_no: str | None = None,
+    billing_agent_code: str | None = None,
+    billing_agent_name: str | None = None,
 ) -> Claim:
     # 환자 조회 및 권한 확인
     r_patient = await db.execute(
@@ -559,6 +562,8 @@ async def create_claim(
         special_case_review_reason=review_reason,
         approval_no=approval_no,
         warn_notices=warn_notices if warn_notices else None,
+        billing_agent_code=billing_agent_code,
+        billing_agent_name=billing_agent_name,
     )
     db.add(claim)
 
@@ -1517,3 +1522,111 @@ async def build_claim_prescription(
         license_type="한의사",
         license_no=doctor.license_number if doctor else "-",
     )
+
+
+def _to_int(value) -> int:
+    s = str(value if value is not None else "").strip().replace(",", "")
+    if not s:
+        return 0
+    try:
+        return int(float(s))
+    except ValueError:
+        return 0
+
+
+def _parse_review_date(value) -> Optional[date]:
+    s = str(value or "").strip().replace("-", "").replace(".", "").replace("/", "")
+    if len(s) >= 8:
+        try:
+            return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+        except ValueError:
+            pass
+    return None
+
+
+def parse_review_result_csv(content: bytes) -> tuple[list[dict], int]:
+    """심사결과 CSV 파싱. 컬럼: 접수번호,심사구분,결과코드,청구금액,인정금액,삭감금액,삭감사유,심사일자
+
+    실제 EDI 수신 포맷이 확정되면 이 함수만 교체하면 된다 (반환 형태는 유지).
+    """
+    import io
+
+    import pandas as pd
+
+    try:
+        df = pd.read_csv(io.BytesIO(content), encoding="utf-8-sig", dtype=str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="CSV 파일을 읽을 수 없습니다.")
+
+    df = df.fillna("")
+    rows: list[dict] = []
+    skipped = 0
+    for row in df.to_dict("records"):
+        receipt_number = str(row.get("접수번호", "")).strip()
+        review_date = _parse_review_date(row.get("심사일자"))
+        if not receipt_number or review_date is None:
+            skipped += 1
+            continue
+        rows.append({
+            "receipt_number": receipt_number,
+            "review_type": str(row.get("심사구분", "")).strip(),
+            "result_code": str(row.get("결과코드", "")).strip(),
+            "original_amount": _to_int(row.get("청구금액")),
+            "approved_amount": _to_int(row.get("인정금액")),
+            "reduced_amount": _to_int(row.get("삭감금액")),
+            "reduce_reason": str(row.get("삭감사유", "")).strip() or None,
+            "review_date": review_date,
+            "raw_content": ",".join(f"{k}:{v}" for k, v in row.items()),
+        })
+    return rows, skipped
+
+
+async def create_review_results_from_csv(
+    db: AsyncSession, hospital_id: UUID, content: bytes
+) -> tuple[int, int]:
+    """CSV를 파싱해 ClaimReviewResult 레코드를 생성한다. 접수번호가 어느 청구의
+    original_receipt_no와 일치하면 claim_id를 채운다 (일치하지 않으면 null)."""
+    rows, skipped = parse_review_result_csv(content)
+    if not rows:
+        return 0, skipped
+
+    receipt_ints: set[int] = set()
+    for r in rows:
+        try:
+            receipt_ints.add(int(r["receipt_number"]))
+        except ValueError:
+            pass
+
+    claim_by_receipt: dict[int, UUID] = {}
+    if receipt_ints:
+        result = await db.execute(
+            select(Claim.original_receipt_no, Claim.id).where(
+                Claim.hospital_id == hospital_id,
+                Claim.original_receipt_no.in_(receipt_ints),
+            )
+        )
+        claim_by_receipt = {receipt_no: claim_id for receipt_no, claim_id in result.all()}
+
+    for r in rows:
+        claim_id = None
+        try:
+            claim_id = claim_by_receipt.get(int(r["receipt_number"]))
+        except ValueError:
+            pass
+        db.add(ClaimReviewResult(
+            id=uuid.uuid4(),
+            hospital_id=hospital_id,
+            claim_id=claim_id,
+            receipt_number=r["receipt_number"],
+            review_type=r["review_type"],
+            result_code=r["result_code"],
+            original_amount=r["original_amount"],
+            approved_amount=r["approved_amount"],
+            reduced_amount=r["reduced_amount"],
+            reduce_reason=r["reduce_reason"],
+            review_date=r["review_date"],
+            raw_content=r["raw_content"],
+        ))
+
+    await db.commit()
+    return len(rows), skipped
