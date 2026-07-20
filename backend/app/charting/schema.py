@@ -42,6 +42,22 @@ class MedicalRecordResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ChangeLogItem(BaseModel):
+    id: UUID
+    patient_id: UUID
+    patient_name: str
+    doctor_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChangeLogListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    items: list[ChangeLogItem]
+
+
 class UpdateStatusRequest(BaseModel):
     status: str  # recording / transcribing / completed / failed
 

@@ -61,19 +61,11 @@ const ASK_SAVE_FIELDS: { key: string; label: string }[] = [
   { key: "acupuncture", label: "침 처방" },
 ];
 
-const QUEUE_STATUS_LABEL: Record<string, string> = {
-  waiting: "대기",
-  in_progress: "진료중",
-  billed: "처치·수납대기",
-  paid: "완료",
-};
-
-const QUEUE_STATUS_CLASS: Record<string, string> = {
-  waiting: "bg-gray-400/15 text-gray-500",
-  in_progress: "bg-blue-500/15 text-blue-500",
-  billed: "bg-amber-500/15 text-amber-600",
-  paid: "bg-green-500/15 text-green-500",
-};
+function getQueueStatusLabel(status: QueueItem["status"]): { label: string; className: string } {
+  if (status === "paid") return { label: "수납완료", className: "text-green-500" };
+  if (status === "done") return { label: "진료완료", className: "text-blue-500" };
+  return { label: "대기", className: "text-[#EF6600]" };
+}
 
 export default function DiagnosisPage() {
   const isExpired = useIsExpired();
@@ -862,6 +854,17 @@ ${historyLine}
       setTimeout(() => setSaved(false), 2500);
       setShowSavedModal(true);
       setTimeout(() => setShowSavedModal(false), 2000);
+      if (
+        selectedQueueItem &&
+        (selectedQueueItem.status === "waiting" || selectedQueueItem.status === "in_progress")
+      ) {
+        updateQueueStatus(selectedQueueItem.id, "done")
+          .then((updated) => {
+            setTodayQueue((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+            setSelectedQueueItem(updated);
+          })
+          .catch(console.error);
+      }
     } catch (e: any) {
       setErrorMessage(
         e.response?.data?.detail || e.message || "저장에 실패했습니다.",
@@ -1307,25 +1310,10 @@ ${historyLine}
                     </div>
                   </div>
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${QUEUE_STATUS_CLASS[item.status]}`}
+                    className={`text-[10px] font-medium flex-shrink-0 ${getQueueStatusLabel(item.status).className}`}
                   >
-                    {QUEUE_STATUS_LABEL[item.status]}
+                    {getQueueStatusLabel(item.status).label}
                   </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateQueueStatus(item.id, "paid")
-                        .then((updated) => {
-                          setTodayQueue((prev) =>
-                            prev.map((q) => (q.id === updated.id ? updated : q)),
-                          );
-                        })
-                        .catch(console.error);
-                    }}
-                    className="text-[10px] text-subtext hover:text-[#EF6600] border border-border rounded px-1.5 py-0.5 flex-shrink-0 transition-all"
-                  >
-                    완료
-                  </button>
                 </div>
               ))}
             </div>
@@ -1340,9 +1328,6 @@ ${historyLine}
         <div className="sm:hidden bg-card border-b border-border px-4 py-2 flex-shrink-0">
           {selectedPatient ? (
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
-                {selectedPatient.name[0]}
-              </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-sm font-medium text-text">{selectedPatient.name}</span>
@@ -1367,9 +1352,6 @@ ${historyLine}
         <div className="hidden sm:flex items-center px-5 py-3 border-b border-border bg-card flex-shrink-0">
           {selectedPatient ? (
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-[#68413E] flex items-center justify-center text-xs font-medium text-white flex-shrink-0">
-                {selectedPatient.name[0]}
-              </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium text-text">{selectedPatient.name}</span>

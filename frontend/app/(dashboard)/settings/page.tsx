@@ -2,14 +2,14 @@
 import AccessTab from '@/components/settings/AccessTab'
 import FaqTab from '@/components/settings/FaqTab'
 import GeneralTab from '@/components/settings/GeneralTab'
-import PurgeTab from '@/components/settings/PurgeTab'
 import StaffTab from '@/components/settings/StaffTab'
-import WorkDaysTab from '@/components/settings/WorkDaysTab'
 import { jwtDecode } from 'jwt-decode'
 import { useEffect, useState } from 'react'
 
+type Tab = 'general' | 'staff' | 'access' | 'faq'
+
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'general' | 'staff' | 'access' | 'workdays' | 'purge' | 'faq' | null>(null)
+  const [tab, setTab] = useState<Tab | null>(null)
 
   useEffect(() => {
     setTab('general')
@@ -39,13 +39,11 @@ export default function SettingsPage() {
               { value: 'general', label: '일반' },
               { value: 'staff', label: '하위 계정' },
               { value: 'access', label: '접근 기록' },
-              { value: 'workdays', label: '진료일수' },
-              { value: 'purge', label: '파기대장' },
               { value: 'faq', label: 'FAQ' },
             ].map((t) => (
               <button
                 key={t.value}
-                onClick={() => setTab(t.value as any)}
+                onClick={() => setTab(t.value as Tab)}
                 className={`flex-1 whitespace-nowrap rounded-xl py-3 text-sm font-medium transition-all ${
                   tab === t.value ? 'bg-card text-text shadow-sm' : 'text-subtext hover:text-text'
                 }`}
@@ -59,8 +57,6 @@ export default function SettingsPage() {
         {tab === 'general' && <GeneralTab />}
         {tab === 'staff' && isOwner && <StaffTab />}
         {tab === 'access' && isOwner && <AccessTab />}
-        {tab === 'workdays' && isOwner && <WorkDaysTab />}
-        {tab === 'purge' && isOwner && <PurgeTab />}
         {tab === 'faq' && <FaqTab />}
       </div>
     </div>
