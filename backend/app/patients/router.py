@@ -470,6 +470,14 @@ async def delete_record(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="진료 이력을 찾을 수 없습니다.",
         )
+    await write_audit(
+        db,
+        table_name="medical_records",
+        record_id=str(record_id),
+        action="DELETE",
+        actor_id=doctor.id,
+        actor_type="doctor",
+    )
     await db.delete(record)
     await db.commit()
 
