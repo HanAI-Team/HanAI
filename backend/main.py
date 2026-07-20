@@ -1,6 +1,11 @@
+import os
+
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
+
+if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
+    os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
 
 from langfuse import get_client
 from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
