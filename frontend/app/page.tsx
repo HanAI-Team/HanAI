@@ -1,77 +1,130 @@
 'use client'
 import LoginForm from '@/components/LoginForm'
 import SplashBars from '@/components/SplashBars'
-import ThemeToggle from '@/components/ThemeToggle'
+import type { CSSProperties } from 'react'
 import { useEffect, useState } from 'react'
+
+const FEATURES = [
+  {
+    icon: '🎙️',
+    title: '음성 녹음 자동 차팅',
+    desc: '진료 중 대화를 녹음하면 자동으로 차트를 정리해줍니다.',
+  },
+  {
+    icon: '🧭',
+    title: '사상체질 분석 참고자료',
+    desc: '환자 데이터를 기반으로 사상체질 분석 참고자료를 제공합니다.',
+  },
+  {
+    icon: '🌿',
+    title: '한약 처방 참고자료',
+    desc: '체질과 증상에 맞는 처방 참고자료를 제공합니다.',
+  },
+  {
+    icon: '🗂️',
+    title: '환자 · 진료기록 관리',
+    desc: '환자 목록과 진료기록을 체계적으로 관리합니다.',
+  },
+]
+
+// 로그인 패널은 마케팅 패널과 무관하게 항상 라이트 톤으로 고정 (사이트 다크모드 토글의 영향을 받지 않음)
+const LIGHT_VARS = {
+  '--color-bg': '#F5F2EE',
+  '--color-card': '#FFFFFF',
+  '--color-fill': '#EDE8E2',
+  '--color-border': '#D4CCC4',
+  '--color-border-strong': '#C8BFB6',
+  '--color-text': '#232323',
+  '--color-subtext': '#8A8480',
+  '--color-muted': '#B0AAA4',
+} as CSSProperties
 
 export default function RootPage() {
   const [barsVisible, setBarsVisible] = useState(false)
   const [textVisible, setTextVisible] = useState(false)
-  const [settled, setSettled] = useState(false)
 
   useEffect(() => {
     const t1 = setTimeout(() => setBarsVisible(true), 50)
-    const t2 = setTimeout(() => setTextVisible(true), 1000)
-    const t3 = setTimeout(() => setSettled(true), 1500)
+    const t2 = setTimeout(() => setTextVisible(true), 500)
     return () => {
       clearTimeout(t1)
       clearTimeout(t2)
-      clearTimeout(t3)
     }
   }, [])
 
   return (
-    <div className="h-screen bg-[#232323] flex flex-col md:flex-row overflow-hidden">
-      {/* 브랜딩/스플래시 영역 (모바일: 위쪽 절반 / 데스크탑: 왼쪽 절반) */}
-      <div
-        className={`flex items-center justify-center relative overflow-hidden transition-all duration-500 ease-in-out ${
-          settled ? 'w-full h-[260px] md:h-full md:w-[calc(100%-420px)]' : 'w-full h-full'
-        }`}
-      >
-        {settled && <ThemeToggle className="absolute top-3 right-3 z-20" />}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_40%_60%,rgba(239,102,0,0.14),transparent_65%)]" />
-        <div className="relative z-10 text-center">
+    <div className="flex flex-col md:flex-row min-h-screen">
+      {/* 마케팅 패널 */}
+      <main className="w-full md:w-[62%] bg-gradient-to-br from-[#2b241f] to-[#15120f] text-white">
+        <section className="px-6 sm:px-10 md:px-14 py-14 md:py-16 border-b border-white/10">
           <SplashBars
             visible={barsVisible}
-            className={`mx-auto mb-3 transition-all duration-500 ease-in-out ${
-              settled ? 'w-12 h-12 md:w-16 md:h-16' : 'w-20 h-20'
-            }`}
+            className="w-20 h-20 mb-4"
           />
           <h1
-            className="text-5xl md:text-6xl tracking-tight bg-gradient-to-b from-[#FF6B00] to-[#FF9500] bg-clip-text text-transparent dark:bg-none dark:text-[#7FFFD4] transition-opacity duration-500"
+            className="text-3xl font-bold tracking-tight mb-2 transition-opacity duration-500"
             style={{ opacity: textVisible ? 1 : 0 }}
           >
             Zinmac
           </h1>
           <p
-            className="text-[#A09892] mt-2 md:mt-3 text-xs md:text-sm tracking-widest transition-opacity duration-500"
+            className="text-sm text-white/55 mb-5 transition-opacity duration-500"
             style={{ opacity: textVisible ? 1 : 0 }}
           >
             AI 한의 진료 보조 시스템
           </p>
-          <div
-            className="w-10 md:w-12 h-0.5 bg-[#EF6600] mx-auto mt-4 md:mt-5 transition-opacity duration-500"
-            style={{ opacity: textVisible ? 1 : 0 }}
-          />
-        </div>
-      </div>
+          <span className="inline-block px-3 py-1.5 rounded-full bg-[#cf6a3c]/[0.18] text-[#f3a67d] text-xs font-bold mb-4">
+            한의사 전용 서비스
+          </span>
+          <h2 className="text-[26px] leading-snug tracking-tight mb-3.5 text-white">
+            진료 기록 정리부터 참고자료까지,
+            <br />
+            진맥이 함께합니다
+          </h2>
+          <p className="text-[15px] text-white/62 max-w-[480px]">
+            진맥(Zinmac)은 한의사를 위한 AI 진료 기록 보조 시스템입니다.
+            진료실에서의 음성을 자동으로 차팅하고, 사상체질 분석과 처방 참고자료까지
+            하나의 서비스에서 확인할 수 있습니다. 최종 진단과 처방은 면허 한의사가 직접 판단합니다.
+          </p>
+        </section>
 
-      {/* 로그인 폼 패널 (아래/오른쪽에서 슬라이드인) */}
-      <div
-        className={`bg-bg overflow-hidden transition-all duration-500 ease-in-out ${
-          settled ? 'w-full h-[calc(100%-260px)] md:h-full md:w-[420px]' : 'w-full h-0 md:w-0 md:h-full'
-        }`}
+        <section className="px-6 sm:px-10 md:px-14 py-14 md:py-16 border-b border-white/10">
+          <h2 className="text-2xl tracking-tight mb-3.5 text-white">주요 기능</h2>
+          <p className="text-[15px] text-white/62 mb-8">진료 효율과 정확도를 높이는 핵심 기능</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {FEATURES.map((f) => (
+              <div key={f.title} className="border border-white/10 rounded-[14px] p-5 bg-white/[0.06]">
+                <div className="w-9 h-9 rounded-[9px] bg-[#cf6a3c]/[0.16] flex items-center justify-center text-[17px] mb-3">
+                  {f.icon}
+                </div>
+                <h3 className="text-[15.5px] text-white mb-1.5">{f.title}</h3>
+                <p className="text-[13px] text-white/55">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="px-6 sm:px-10 md:px-14 py-14 md:py-16">
+          <h2 className="text-2xl tracking-tight mb-3.5 text-white">문의하기</h2>
+          <p className="text-[15px] text-white/62 mb-6">서비스 도입 및 제휴 관련 문의는 아래로 연락해 주세요.</p>
+          <div className="inline-flex gap-3 items-center border border-white/10 rounded-xl px-5 py-3.5 bg-white/[0.06]">
+            <span>✉️</span>
+            <a href="mailto:sst@zinmac.kr" className="text-[#f3a67d]">
+              sst@zinmac.kr
+            </a>
+          </div>
+        </section>
+      </main>
+
+      {/* 로그인 패널 */}
+      <aside
+        className="w-full md:w-[38%] md:min-w-[320px] md:sticky md:top-0 md:h-screen bg-[#f5f2ee] flex items-center justify-center px-6 py-12 md:p-8"
+        style={LIGHT_VARS}
       >
-        <div
-          className={`h-full flex items-start md:items-center justify-center px-7 pt-8 pb-12 md:p-12 transition-transform duration-500 ease-in-out ${
-            settled
-              ? 'translate-y-0 md:translate-x-0'
-              : 'translate-y-full md:translate-y-0 md:translate-x-full'
-          }`}
-        >
+        <div className="w-full max-w-[320px]">
           <LoginForm />
         </div>
-      </div>
+      </aside>
     </div>
   )
 }
