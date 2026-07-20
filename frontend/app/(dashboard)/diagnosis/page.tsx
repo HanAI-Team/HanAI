@@ -179,8 +179,8 @@ export default function DiagnosisPage() {
 
   const filtered = patients.filter((p) => p.name.includes(search));
   const sortedQueue = [...todayQueue].sort((a, b) => {
-    const aDone = a.status === "done" ? 1 : 0;
-    const bDone = b.status === "done" ? 1 : 0;
+    const aDone = a.status === "paid" ? 1 : 0;
+    const bDone = b.status === "paid" ? 1 : 0;
     if (aDone !== bDone) return aDone - bDone;
     return new Date(a.checked_in_at).getTime() - new Date(b.checked_in_at).getTime();
   });
@@ -1341,7 +1341,7 @@ ${historyLine}
             </div>
           ) : (
             <button
-              onClick={() => router.push("/patients")}
+              onClick={() => router.push("/home")}
               className="text-sm text-[#EF6600] font-medium"
             >
               환자를 선택하세요 →

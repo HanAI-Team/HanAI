@@ -34,3 +34,12 @@ export async function confirmPayment(
     body: JSON.stringify({ payment_key: paymentKey, order_id: orderId, amount }),
   });
 }
+
+export async function confirmPaddlePayment(
+  transactionId: string
+): Promise<PaymentConfirmResponse> {
+  return apiCall("/api/payments/paddle/confirm", {
+    method: "POST",
+    body: JSON.stringify({ transaction_id: transactionId }),
+  });
+}

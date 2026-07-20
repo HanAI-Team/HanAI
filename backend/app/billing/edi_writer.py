@@ -127,7 +127,7 @@ class ClaimHeader:
     claim_date: str = ""              # 청구일자 an(8) CCYYMMDD
     claimer: str = ""                 # 청구인 an(20)
     writer: str = ""                  # 작성자성명 an(20)
-    writer_birth: str = "0000000000000"  # 작성자생년월일 an(13) — 형식 미확정, 플레이스홀더
+    writer_birth: str = ""  # 작성자생년월일 an(13): YYYYMMDD(8) + 공백패딩. doctor.birth_date 없으면 공란
     approval_no: str = ""             # 검사승인번호 an(35)
     agency_code: str = ""             # 대행청구단체기호 an(5)
 
@@ -170,7 +170,7 @@ def build_claim_header(h: ClaimHeader) -> str:
         _fmt9(int(h.claim_date), 8),                 # 246-253 청구일자
         _fmtx(h.claimer, 20),                        # 254-273 청구인
         _fmtx(h.writer, 20),                          # 274-293 작성자성명
-        _fmt9(int(h.writer_birth), 13),               # 294-306 작성자생년월일
+        _fmtx(h.writer_birth, 13),                    # 294-306 작성자생년월일 (an — 좌측정렬, 공백패딩)
         _fmtx(h.approval_no, 35),                     # 307-341 검사승인번호
         _fmtx(h.agency_code, 5),                      # 342-346 대행청구단체기호
         _fmtx("", 1750),                              # 347-2096 참조란
@@ -416,6 +416,23 @@ def generate_edi(edi: EDIFile) -> bytes:
     return "".join(lines).encode("euc-kr", errors="replace")
 
 
+def build_medlog_record(doc_title: str) -> bytes:
+    """SAM File 정보파일(MEDLOG.ENC) — 「전자문서작성요령」 별첨1 "라. SAM File
+    정보파일 생성" 기준. 4개 항목(거래처ID/부처ID/문서제목/연결구분)을 항목당
+    1 LINE씩 CRLF로 구분해 적고, 마지막 LINE 뒤에도 CRLF를 붙인다.
+
+    거래처ID(12)·연결구분(12)은 미사용(공백 고정), 부처ID(8)는 'NULL' 고정,
+    문서제목(30)만 SAM File에 대한 간단한 설명으로 채운다.
+    """
+    lines = [
+        _fmtx("", 12),          # 거래처ID — 미사용(과거 KT EDI 사용 업체 전용)
+        _fmtx("NULL", 8),       # 부처ID
+        _fmtx(doc_title, 30),   # 문서제목
+        _fmtx("", 12),          # 연결구분 — 미사용
+    ]
+    return ("\r\n".join(lines) + "\r\n").encode("euc-kr", errors="replace")
+
+
 def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
     """SAM File 생성 디렉토리(/HIRA/DDMD/SAM/IN/)에 들어갈 개별 파일들을
     레코드 종류별로 나눠 생성한다 (한방은 청구서+명세서가 한 파일로
@@ -428,12 +445,22 @@ def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
     K020.4: 특정내역
     H060: 치료재료 및 약제 구입내역통보서 — 현재는 dummy(0KB) 고정, 추후
           실제 구매내역 입력 기능 추가 시 교체 필요 (아래 주석 참고)
+    MEDLOG.ENC: SAM File 정보파일(별첨1 "라." 기준) — 전송하는 SAM File 묶음에
+          대한 메타정보 4항목(거래처ID/부처ID/문서제목/연결구분). 상시점검
+          여부는 헤더의 작성자명이 "상시점검"인지로 판별한다(체크아웃 경로에서
+          이미 이 값으로 test_mode를 표시하고 있어 재사용).
 
     해당 레코드가 없는 파일도 0바이트 더미 파일로 포함한다 (SAM File
     작성 규칙 — 발생하지 않는 SAM File이라도 Dummy file을 생성해야 함).
     """
     def _join(lines: list[str]) -> bytes:
         return "".join(lines).encode("euc-kr", errors="replace")
+
+    is_test_mode = edi.header.writer == "상시점검"
+    doc_title = (
+        "한방 청구SW 상시점검" if is_test_mode
+        else f"{edi.header.claim_no} 한방외래 청구"
+    )
 
     return {
         "H010": _join([build_claim_header(edi.header)]),
@@ -446,4 +473,5 @@ def generate_sam_files(edi: EDIFile) -> dict[str, bytes]:
         # 규칙("발생하지 않는 SAM File이라도 Dummy file을 생성해야 한다")에 따라 항상
         # 0바이트로 생성한다. 구매내역 입력 기능이 생기면 이 자리를 실제 데이터로 교체.
         "H060": b"",
+        "MEDLOG.ENC": build_medlog_record(doc_title),
     }

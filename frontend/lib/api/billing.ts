@@ -21,6 +21,8 @@ export interface ClaimListItem {
   claim_amount: number;
   created_at: string;
   approval_no?: string | null;
+  from_reception: boolean;
+  is_paid: boolean;
 }
 
 export interface ClaimResubmissionRequest {
@@ -213,8 +215,8 @@ export interface ClaimPrescription {
   license_no: string;
 }
 
-export async function getClaimPrescription(claimId: string, testMode = false): Promise<ClaimPrescription> {
-  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/prescription${testMode ? "?test=true" : ""}`, {
+export async function getClaimPrescription(claimId: string): Promise<ClaimPrescription> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/prescription`, {
     headers: getHeaders(),
   });
   if (!res.ok) {
@@ -280,5 +282,109 @@ export async function updateClaimApproval(
   return apiCall(`/api/billing/claims/${claimId}/approval`, {
     method: "PATCH",
     body: JSON.stringify({ approval_no: approvalNo }),
+  });
+}
+
+export interface QuickFeeItem {
+  code: string;
+  name: string;
+  category: string;
+  unit_price: number;
+}
+
+export interface QuickFeeItems {
+  categories: string[];
+  favorites: QuickFeeItem[];
+  by_category: Record<string, QuickFeeItem[]>;
+}
+
+export async function getQuickFeeItems(): Promise<QuickFeeItems> {
+  return apiCall("/api/billing/fee-quick-items");
+}
+
+export interface CheckoutPreviewLineItem {
+  code: string;
+  qty: number;
+  days: number;
+}
+
+export interface CheckoutPreviewResult {
+  total_amount: number;
+  patient_copay: number;
+  claim_amount: number;
+  special_code: string | null;
+}
+
+export interface ClaimPayment {
+  id: string;
+  claim_id: string;
+  patient_name: string;
+  method: "cash" | "card" | "transfer";
+  claim_amount: number;
+  amount: number;
+  paid_at: string;
+  processed_by_name: string;
+}
+
+export async function createClaimPayment(
+  claimId: string,
+  method: "cash" | "card" | "transfer",
+  amount: number
+): Promise<ClaimPayment> {
+  return apiCall(`/api/billing/claims/${claimId}/payments`, {
+    method: "POST",
+    body: JSON.stringify({ method, amount }),
+  });
+}
+
+export interface ClaimPaymentListResult {
+  total: number;
+  page: number;
+  size: number;
+  items: ClaimPayment[];
+}
+
+export interface ClaimPaymentSummary {
+  today_total: number;
+  month_total: number;
+  cash_ratio: number;
+  card_ratio: number;
+}
+
+export async function listClaimPayments(params: {
+  start_date?: string;
+  end_date?: string;
+  method?: string;
+  page?: number;
+  size?: number;
+}): Promise<ClaimPaymentListResult> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set("start_date", params.start_date);
+  if (params.end_date) qs.set("end_date", params.end_date);
+  if (params.method) qs.set("method", params.method);
+  qs.set("page", String(params.page ?? 1));
+  qs.set("size", String(params.size ?? 20));
+  return apiCall(`/api/billing/payments?${qs.toString()}`);
+}
+
+export async function getClaimPaymentSummary(params: {
+  start_date?: string;
+  end_date?: string;
+  method?: string;
+}): Promise<ClaimPaymentSummary> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set("start_date", params.start_date);
+  if (params.end_date) qs.set("end_date", params.end_date);
+  if (params.method) qs.set("method", params.method);
+  return apiCall(`/api/billing/payments/summary?${qs.toString()}`);
+}
+
+export async function previewCheckoutBilling(
+  patientId: string,
+  lineItems: CheckoutPreviewLineItem[]
+): Promise<CheckoutPreviewResult> {
+  return apiCall("/api/billing/checkout-preview", {
+    method: "POST",
+    body: JSON.stringify({ patient_id: patientId, line_items: lineItems }),
   });
 }

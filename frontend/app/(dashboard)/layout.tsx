@@ -219,9 +219,7 @@ export default function DashboardLayout({
       <nav className="sm:hidden border-t border-border bg-card py-2 pb-3">
         <div className="flex justify-around">
           {mobileNavLinks.map((link) => {
-            const isActive =
-              pathname === link.path ||
-              (link.path === "/patients" && pathname === "/diagnosis");
+            const isActive = pathname === link.path;
             return (
               <button
                 key={link.path}
