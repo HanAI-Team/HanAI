@@ -3,20 +3,25 @@ import {
   ClaimListItem,
   ClaimPrescription,
   ClaimStatement,
+  RejectionCodeSearchResult,
   StatementProcedureRow,
   bulkDownloadEdi,
+  claimTypeLabel,
   createClaimPayment,
   downloadSamFiles,
   getClaimPrescription,
   getClaimStatement,
   getClaims,
   resubmitClaim,
+  searchRejectionCodes,
   statusLabel,
   updateClaimApproval,
+  updateClaimBillingAgent,
 } from "@/lib/api/billing";
 import { useIsExpired } from "@/contexts/SubscriptionContext";
 import PaymentHistoryModal from "@/components/billing/PaymentHistoryModal";
 import { useEffect, useState } from "react";
+import ReviewResultsTab from "./ReviewResultsTab";
 
 const STATUS_FILTERS = [
   { key: "", label: "전체" },
@@ -33,6 +38,7 @@ function getCurrentMonth() {
 
 export default function BillingPage() {
   const isExpired = useIsExpired();
+  const [activeTab, setActiveTab] = useState<"submit" | "review">("submit");
   const [claims, setClaims] = useState<ClaimListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(getCurrentMonth());
@@ -40,6 +46,7 @@ export default function BillingPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
   const [resubmitTarget, setResubmitTarget] = useState<ClaimListItem | null>(null);
+  const [billingAgentTarget, setBillingAgentTarget] = useState<ClaimListItem | null>(null);
   const [testMode, setTestMode] = useState(false);
   const [editingApprovalId, setEditingApprovalId] = useState<string | null>(null);
   const [approvalDraft, setApprovalDraft] = useState("");
@@ -441,28 +448,54 @@ export default function BillingPage() {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl text-text">보험 청구</h1>
-          <p className="text-xs text-subtext mt-1">EDI 파일 생성 및 다운로드</p>
+          <p className="text-xs text-subtext mt-1">EDI 파일 생성 및 심사결과 조회</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => setPaymentHistoryOpen(true)}
-            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-subtext hover:text-text hover:border-text transition-all"
-          >
-            수납 내역
-          </button>
-          <button
-            onClick={() => setTestMode((v) => !v)}
-            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
-              testMode
-                ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                : "border-border text-subtext hover:text-text"
-            }`}
-          >
-            {testMode ? "테스트 모드 ON" : "테스트 모드"}
-          </button>
-        </div>
+        {activeTab === "submit" && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setPaymentHistoryOpen(true)}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-subtext hover:text-text hover:border-text transition-all"
+            >
+              수납 내역
+            </button>
+            <button
+              onClick={() => setTestMode((v) => !v)}
+              className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
+                testMode
+                  ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                  : "border-border text-subtext hover:text-text"
+              }`}
+            >
+              {testMode ? "테스트 모드 ON" : "테스트 모드"}
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* 송신/수신 서브탭 */}
+      <div className="flex border-b border-border mb-6">
+        {([
+          { id: "submit" as const, label: "송신 이력" },
+          { id: "review" as const, label: "심사결과" },
+        ]).map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`px-5 py-2.5 text-xs transition-all border-b-2 ${
+              activeTab === id
+                ? "text-[#EF6600] border-[#EF6600]"
+                : "text-subtext border-transparent hover:text-text"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "review" && <ReviewResultsTab />}
+
+      {activeTab === "submit" && (
+      <>
       {/* 테스트 모드 배너 */}
       {testMode && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3">
@@ -547,11 +580,13 @@ export default function BillingPage() {
               <th className="p-3 text-left">환자명</th>
               <th className="p-3 text-left">청구월</th>
               <th className="p-3 text-left">상태</th>
+              <th className="p-3 text-left">청구구분</th>
               <th className="p-3 text-right">급여합계</th>
               <th className="p-3 text-right">본인부담</th>
               <th className="p-3 text-right">청구금액</th>
               <th className="p-3 text-left">검사승인번호</th>
               <th className="p-3 text-center">수납</th>
+              <th className="p-3 text-center">대행청구</th>
               <th className="p-3 text-center">EDI</th>
               <th className="p-3 text-center">영수증</th>
               <th className="p-3 text-center">명세서</th>
@@ -561,13 +596,13 @@ export default function BillingPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={13} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={15} className="p-8 text-center text-subtext text-xs">
                   불러오는 중...
                 </td>
               </tr>
             ) : claims.length === 0 ? (
               <tr>
-                <td colSpan={13} className="p-8 text-center text-subtext text-xs">
+                <td colSpan={15} className="p-8 text-center text-subtext text-xs">
                   청구 내역이 없습니다.
                 </td>
               </tr>
@@ -604,6 +639,17 @@ export default function BillingPage() {
                       }`}
                     >
                       {statusLabel(claim.status)}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs ${
+                        claim.claim_type
+                          ? "bg-blue-500/10 text-blue-500"
+                          : "bg-fill text-subtext"
+                      }`}
+                    >
+                      {claimTypeLabel(claim.claim_type)}
                     </span>
                   </td>
                   <td className="p-3 text-right text-text">
@@ -673,6 +719,19 @@ export default function BillingPage() {
                         </button>
                       </div>
                     )}
+                  </td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => setBillingAgentTarget(claim)}
+                      className={`px-2 py-0.5 rounded-full text-xs transition-colors ${
+                        claim.billing_agent_code
+                          ? "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20"
+                          : "border border-border text-subtext hover:text-text"
+                      }`}
+                      title={claim.billing_agent_name || undefined}
+                    >
+                      {claim.billing_agent_code ? claim.billing_agent_code : "미사용"}
+                    </button>
                   </td>
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-1.5">
@@ -767,6 +826,24 @@ export default function BillingPage() {
       {paymentHistoryOpen && (
         <PaymentHistoryModal onClose={() => setPaymentHistoryOpen(false)} />
       )}
+      {billingAgentTarget && (
+        <BillingAgentModal
+          claim={billingAgentTarget}
+          onClose={() => setBillingAgentTarget(null)}
+          onSaved={(code, name) => {
+            setClaims((prev) =>
+              prev.map((c) =>
+                c.id === billingAgentTarget.id
+                  ? { ...c, billing_agent_code: code, billing_agent_name: name }
+                  : c
+              )
+            );
+            setBillingAgentTarget(null);
+          }}
+        />
+      )}
+      </>
+      )}
     </div>
   );
 }
@@ -784,8 +861,31 @@ function ResubmissionModal({
   const [receiptNo, setReceiptNo] = useState("");
   const [recordSerial, setRecordSerial] = useState("");
   const [reasonCode, setReasonCode] = useState("");
+  const [reasonQuery, setReasonQuery] = useState("");
+  const [reasonResults, setReasonResults] = useState<RejectionCodeSearchResult[]>([]);
+  const [reasonOpen, setReasonOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!reasonQuery.trim()) {
+      setReasonResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      searchRejectionCodes(reasonQuery, "심사불능")
+        .then(setReasonResults)
+        .catch(() => setReasonResults([]));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [reasonQuery]);
+
+  function selectReason(item: RejectionCodeSearchResult) {
+    setReasonCode(item.code);
+    setReasonQuery(`${item.code} ${item.description}`);
+    setReasonOpen(false);
+    setReasonResults([]);
+  }
 
   async function handleSubmit() {
     setError(null);
@@ -855,15 +955,36 @@ function ResubmissionModal({
             />
           </div>
           {claimType === "supplement" && (
-            <div>
-              <label className="block text-xs text-subtext mb-1">심사불능사유코드 (2자리)</label>
+            <div className="relative">
+              <label className="block text-xs text-subtext mb-1">심사불능사유코드</label>
               <input
                 type="text"
-                maxLength={2}
-                value={reasonCode}
-                onChange={(e) => setReasonCode(e.target.value)}
+                value={reasonQuery}
+                onChange={(e) => {
+                  setReasonQuery(e.target.value);
+                  setReasonCode("");
+                  setReasonOpen(true);
+                }}
+                onFocus={() => setReasonOpen(true)}
+                onBlur={() => setTimeout(() => setReasonOpen(false), 150)}
+                placeholder="코드 또는 사유 내용 검색"
                 className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
               />
+              {reasonOpen && reasonResults.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full bg-card border border-border rounded-md max-h-48 overflow-y-auto shadow-lg">
+                  {reasonResults.map((item) => (
+                    <li key={`${item.code}-${item.detail_code}`}>
+                      <button
+                        type="button"
+                        onMouseDown={() => selectReason(item)}
+                        className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-fill transition-colors"
+                      >
+                        <span className="font-medium">{item.code}</span> {item.description}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -882,6 +1003,104 @@ function ResubmissionModal({
             className="flex-1 px-3 py-2 text-xs rounded-md bg-[#EF6600] text-white hover:bg-[#d45a00] disabled:opacity-50 transition-all"
           >
             {submitting ? "처리 중..." : "제출"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BillingAgentModal({
+  claim,
+  onClose,
+  onSaved,
+}: {
+  claim: ClaimListItem;
+  onClose: () => void;
+  onSaved: (code: string | null, name: string | null) => void;
+}) {
+  const [useAgent, setUseAgent] = useState(!!claim.billing_agent_code);
+  const [code, setCode] = useState(claim.billing_agent_code || "");
+  const [name, setName] = useState(claim.billing_agent_name || "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setError(null);
+    const finalCode = useAgent ? code.trim() || null : null;
+    const finalName = useAgent ? name.trim() || null : null;
+    setSubmitting(true);
+    try {
+      const res = await updateClaimBillingAgent(claim.id, finalCode, finalName);
+      onSaved(res.billing_agent_code, res.billing_agent_name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "저장에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-lg p-6 w-[380px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="font-serif text-lg text-text mb-1">대행청구</h2>
+        <p className="text-xs text-subtext mb-4">
+          {claim.patient_name} · {claim.claim_period}
+        </p>
+
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useAgent}
+              onChange={(e) => setUseAgent(e.target.checked)}
+              className="cursor-pointer"
+            />
+            대행청구 사용
+          </label>
+          {useAgent && (
+            <>
+              <div>
+                <label className="block text-xs text-subtext mb-1">대행청구단체 코드</label>
+                <input
+                  type="text"
+                  maxLength={5}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-subtext mb-1">대행청구단체명</label>
+                <input
+                  type="text"
+                  maxLength={100}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
+                />
+              </div>
+            </>
+          )}
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="flex-1 px-3 py-2 text-xs rounded-md border border-border text-subtext hover:text-text transition-all"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 px-3 py-2 text-xs rounded-md bg-[#EF6600] text-white hover:bg-[#d45a00] disabled:opacity-50 transition-all"
+          >
+            {submitting ? "저장 중..." : "저장"}
           </button>
         </div>
       </div>

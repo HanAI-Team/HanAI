@@ -102,6 +102,8 @@ export async function getPatientRecords(patientId: string) {
       chart_structured: string | null;
       raw_transcription: string | null;
       medical_history: string | null;
+      kcd_code: string | null;
+      secondary_kcd_codes: string[] | null;
     }[];
   }>;
 }

@@ -67,10 +67,17 @@ export async function finalizeRecord(
   })
 }
 
-export async function updateKcdCode(recordId: string, kcdCode: string | null) {
+export async function updateKcdCode(
+  recordId: string,
+  kcdCode: string | null,
+  secondaryKcdCodes?: string[]
+) {
   return apiCall(`/api/charting/${recordId}/kcd-code`, {
     method: 'PATCH',
-    body: JSON.stringify({ kcd_code: kcdCode }),
+    body: JSON.stringify({
+      kcd_code: kcdCode,
+      secondary_kcd_codes: secondaryKcdCodes && secondaryKcdCodes.length > 0 ? secondaryKcdCodes : null,
+    }),
   })
 }
 

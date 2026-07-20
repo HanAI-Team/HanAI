@@ -19,6 +19,7 @@ class UpdateMedicalHistoryRequest(BaseModel):
 
 class UpdateKcdCodeRequest(BaseModel):
     kcd_code: Optional[str] = None
+    secondary_kcd_codes: Optional[list[str]] = None
 
 
 class FinalizeRecordRequest(BaseModel):
@@ -36,6 +37,7 @@ class MedicalRecordResponse(BaseModel):
     audio_file_url: Optional[str] = None
     status: str
     kcd_code: Optional[str] = None
+    secondary_kcd_codes: Optional[list[str]] = None
     recorded_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 
