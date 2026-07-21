@@ -5,6 +5,7 @@ import ChangeLogTab from '@/components/settings/ChangeLogTab'
 import DbExportTab from '@/components/settings/DbExportTab'
 import DrugMasterTab from '@/components/settings/DrugMasterTab'
 import FeeMasterTab from '@/components/settings/FeeMasterTab'
+import PurchaseNotificationTab from '@/components/settings/PurchaseNotificationTab'
 import PurgeTab from '@/components/settings/PurgeTab'
 import RejectionCodeTab from '@/components/settings/RejectionCodeTab'
 import WorkDaysTab from '@/components/settings/WorkDaysTab'
@@ -21,6 +22,7 @@ type Tab =
   | 'dbExport'
   | 'workdays'
   | 'purge'
+  | 'purchaseNotification'
 
 export default function ManagePage() {
   const [tab, setTab] = useState<Tab | null>(null)
@@ -79,6 +81,7 @@ export default function ManagePage() {
             { value: 'dbExport', label: 'DB 내역 추출' },
             { value: 'workdays', label: '진료일수' },
             { value: 'purge', label: '파기대장' },
+            { value: 'purchaseNotification', label: '구입내역 신고' },
           ].map((t) => (
             <button
               key={t.value}
@@ -101,6 +104,7 @@ export default function ManagePage() {
         {tab === 'dbExport' && <DbExportTab />}
         {tab === 'workdays' && <WorkDaysTab />}
         {tab === 'purge' && <PurgeTab />}
+        {tab === 'purchaseNotification' && <PurchaseNotificationTab />}
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -58,7 +58,12 @@ from app.billing.schema import (
     FeeUpdate,
     MaterialCreate,
     MaterialItem,
+    MaterialPurchaseRecordCreate,
+    MaterialPurchaseRecordItem,
+    MaterialPurchaseRecordUpdate,
     MaterialUpdate,
+    MissingDeclarationCheckResponse,
+    MissingDeclarationItem,
     NeedsReviewClaimItem,
     NeedsReviewClaimsResponse,
     PrescriptionCheckRequest,
@@ -98,7 +103,7 @@ from app.core.models import (
     Patient,
 )
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Response, UploadFile
-from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, DrugMaster, FeeMaster, MaterialMaster, MedicalRecord, Patient
+from app.core.models import Claim, ClaimLineItem, ClaimRejectionCode, DoctorWorkDays, DrugMaster, FeeMaster, MaterialMaster, MaterialPurchaseRecord, MedicalRecord, Patient
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
@@ -951,6 +956,153 @@ async def delete_material(
         raise HTTPException(status_code=404, detail="치료재료 코드를 찾을 수 없습니다.")
     await db.delete(material)
     await db.commit()
+
+
+# ================================================================
+# 치료재료·원료약 구입내역 / 자체 조제(제제)약 내역 (구입내역통보서)
+# ================================================================
+@router.get("/purchase-records", response_model=list[MaterialPurchaseRecordItem])
+async def list_purchase_records(
+    record_type: str | None = Query(None, description="purchase | compound"),
+    year: int | None = Query(None),
+    month: int | None = Query(None, ge=1, le=12),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(MaterialPurchaseRecord).where(
+        MaterialPurchaseRecord.hospital_id == current_user.hospital_id
+    )
+    if record_type:
+        stmt = stmt.where(MaterialPurchaseRecord.record_type == record_type)
+    if year:
+        stmt = stmt.where(func.extract("year", MaterialPurchaseRecord.transaction_date) == year)
+    if month:
+        stmt = stmt.where(func.extract("month", MaterialPurchaseRecord.transaction_date) == month)
+    stmt = stmt.order_by(MaterialPurchaseRecord.transaction_date.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.post("/purchase-records", response_model=MaterialPurchaseRecordItem, status_code=201)
+async def create_purchase_record(
+    body: MaterialPurchaseRecordCreate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    record = MaterialPurchaseRecord(hospital_id=current_user.hospital_id, **body.model_dump())
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+@router.put("/purchase-records/{record_id}", response_model=MaterialPurchaseRecordItem)
+async def update_purchase_record(
+    record_id: UUID,
+    body: MaterialPurchaseRecordUpdate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(MaterialPurchaseRecord).where(
+            MaterialPurchaseRecord.id == record_id,
+            MaterialPurchaseRecord.hospital_id == current_user.hospital_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="내역을 찾을 수 없습니다.")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(record, field, value)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+@router.delete("/purchase-records/{record_id}", status_code=204)
+async def delete_purchase_record(
+    record_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(MaterialPurchaseRecord).where(
+            MaterialPurchaseRecord.id == record_id,
+            MaterialPurchaseRecord.hospital_id == current_user.hospital_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="내역을 찾을 수 없습니다.")
+    await db.delete(record)
+    await db.commit()
+
+
+@router.post("/purchase-records/{record_id}/report", response_model=MaterialPurchaseRecordItem)
+async def report_purchase_record(
+    record_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """구입내역통보서 송신(신고) 처리 — 신고 완료로 표시."""
+    result = await db.execute(
+        select(MaterialPurchaseRecord).where(
+            MaterialPurchaseRecord.id == record_id,
+            MaterialPurchaseRecord.hospital_id == current_user.hospital_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="내역을 찾을 수 없습니다.")
+    record.reported = True
+    record.reported_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+@router.get("/purchase-records/missing-check", response_model=MissingDeclarationCheckResponse)
+async def check_missing_declarations(
+    year: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """해당 월 청구에 사용된 치료재료(material_master 코드) 중 같은 달에 신고된
+    구입내역이 없는 코드를 점검한다."""
+    billed_stmt = (
+        select(
+            ClaimLineItem.code,
+            ClaimLineItem.name,
+            func.count(ClaimLineItem.id),
+            func.sum(ClaimLineItem.qty),
+        )
+        .join(Claim, Claim.id == ClaimLineItem.claim_id)
+        .join(MaterialMaster, MaterialMaster.code == ClaimLineItem.code)
+        .where(
+            Claim.hospital_id == current_user.hospital_id,
+            Claim.claim_period_year == year,
+            Claim.claim_period_month == month,
+        )
+        .group_by(ClaimLineItem.code, ClaimLineItem.name)
+    )
+    billed_rows = (await db.execute(billed_stmt)).all()
+
+    reported_stmt = select(MaterialPurchaseRecord.item_code).where(
+        MaterialPurchaseRecord.hospital_id == current_user.hospital_id,
+        MaterialPurchaseRecord.reported.is_(True),
+        MaterialPurchaseRecord.item_code.isnot(None),
+        func.extract("year", MaterialPurchaseRecord.transaction_date) == year,
+        func.extract("month", MaterialPurchaseRecord.transaction_date) == month,
+    )
+    reported_codes = {code for code, in (await db.execute(reported_stmt)).all()}
+
+    items = [
+        MissingDeclarationItem(code=code, name=name, claim_count=count, total_qty=total_qty or Decimal("0"))
+        for code, name, count, total_qty in billed_rows
+        if code not in reported_codes
+    ]
+    return MissingDeclarationCheckResponse(year=year, month=month, items=items)
 
 
 def _work_days_to_item(r: DoctorWorkDays) -> DoctorWorkDaysItem:
