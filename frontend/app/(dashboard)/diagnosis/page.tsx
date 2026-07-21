@@ -1407,7 +1407,7 @@ ${historyLine}
       <div className="hidden sm:flex w-[220px] flex-shrink-0 bg-card border-r border-border flex-col">
         {/* 섹션 1: 오늘 접수 */}
         <div className="p-3 border-b border-border">
-          <div
+          <div role="button" tabIndex={0}
             onClick={() => setQueueOpen((prev) => !prev)}
             className="flex items-center gap-2 mb-2 cursor-pointer"
           >
@@ -1432,7 +1432,7 @@ ${historyLine}
           ) : (
             <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto">
               {sortedQueue.map((item) => (
-                <div
+                <div role="button" tabIndex={0}
                   key={item.id}
                   onClick={() => {
                     setSelectedQueueItem(item);
@@ -2637,11 +2637,11 @@ ${historyLine}
 
       {/* 한의학 검색 - 진료 기록 저장 항목 선택 모달 */}
       {askSavePicker !== null && askHistory[askSavePicker]?.result && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setAskSavePicker(null)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[420px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2716,11 +2716,11 @@ ${historyLine}
 
       {/* 저장 확인 모달 */}
       {showSaveModal && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setShowSaveModal(false)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2776,11 +2776,11 @@ ${historyLine}
 
       {/* 저장 완료 모달 */}
       {showSavedModal && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setShowSavedModal(false)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2815,11 +2815,11 @@ ${historyLine}
 
       {/* 에러 모달 */}
       {errorMessage && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setErrorMessage(null)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2841,11 +2841,11 @@ ${historyLine}
 
       {/* 신규 환자 등록 모달 */}
       {showAddModal && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setShowAddModal(false)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >

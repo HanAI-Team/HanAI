@@ -36,3 +36,17 @@ body {
 .font-serif {
   font-family: 'DM Serif Display', serif;
 }
+
+@layer base {
+  button:not(:disabled),
+  [role="button"],
+  a[href],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
