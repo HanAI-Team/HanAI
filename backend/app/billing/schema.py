@@ -189,6 +189,60 @@ class MaterialUpdate(BaseModel):
     expired_date: Optional[date] = None
 
 
+class MaterialPurchaseRecordItem(BaseModel):
+    id: UUID
+    record_type: Literal["purchase", "compound"]
+    item_name: str
+    item_code: Optional[str] = None
+    spec: Optional[str] = None
+    quantity: Decimal
+    unit_price: int
+    amount: int
+    supplier_name: Optional[str] = None
+    transaction_date: date
+    reported: bool
+    reported_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MaterialPurchaseRecordCreate(BaseModel):
+    record_type: Literal["purchase", "compound"]
+    item_name: str
+    item_code: Optional[str] = None
+    spec: Optional[str] = None
+    quantity: Decimal = Decimal("1")
+    unit_price: int = 0
+    amount: int = 0
+    supplier_name: Optional[str] = None
+    transaction_date: date
+
+
+class MaterialPurchaseRecordUpdate(BaseModel):
+    item_name: Optional[str] = None
+    item_code: Optional[str] = None
+    spec: Optional[str] = None
+    quantity: Optional[Decimal] = None
+    unit_price: Optional[int] = None
+    amount: Optional[int] = None
+    supplier_name: Optional[str] = None
+    transaction_date: Optional[date] = None
+
+
+class MissingDeclarationItem(BaseModel):
+    code: str
+    name: str
+    claim_count: int
+    total_qty: Decimal
+
+
+class MissingDeclarationCheckResponse(BaseModel):
+    year: int
+    month: int
+    items: list[MissingDeclarationItem]
+
+
 class DoctorWorkDaysItem(BaseModel):
     id: int
     claim_period_year: int
