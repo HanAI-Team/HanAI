@@ -159,9 +159,6 @@ export default function DiagnosisPage() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showSavedModal, setShowSavedModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [editPatient, setEditPatient] = useState<Patient | null>(null);
-  const [editForm, setEditForm] = useState({ phone: "", memo: "", rrn: "", insurance_type: "", disability_grade: "", medical_aid_grade: "" });
-  const [editLoading, setEditLoading] = useState(false);
   const [feedbackAvailable, setFeedbackAvailable] = useState(false);
   const [feedbackHelpful, setFeedbackHelpful] = useState<boolean | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
@@ -780,27 +777,6 @@ ${blocks.join("\n\n")}
       setErrorMessage(e.message || "저장에 실패했습니다.");
     } finally {
       setAskSaving(false);
-    }
-  }
-
-  async function handleEditSave() {
-    if (!editPatient) return;
-    setEditLoading(true);
-    try {
-      const { rrn, ...rest } = editForm;
-      const payload: Parameters<typeof updatePatient>[1] = { ...rest };
-      if (rrn.trim()) payload.rrn = rrn.trim();
-      if (!rest.disability_grade) payload.disability_grade = null;
-      if (!rest.medical_aid_grade) payload.medical_aid_grade = null;
-      await updatePatient(editPatient.id, payload);
-      setPatients((prev) =>
-        prev.map((p) => (p.id === editPatient.id ? { ...p, ...rest } : p)),
-      );
-      setEditPatient(null);
-    } catch {
-      alert("수정에 실패했습니다.");
-    } finally {
-      setEditLoading(false);
     }
   }
 
@@ -2970,143 +2946,6 @@ ${historyLine}
             >
               확인
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* 환자 정보 수정 모달 */}
-      {editPatient && (
-        <div
-          className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
-          onClick={() => setEditPatient(null)}
-        >
-          <div
-            className="bg-card rounded-xl w-full max-w-[360px] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <div className="text-sm font-medium text-text">
-                {editPatient.name} 정보 수정
-              </div>
-              <button
-                onClick={() => setEditPatient(null)}
-                className="text-subtext hover:text-text"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-5 flex flex-col gap-3">
-              <div>
-                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
-                  보험 종별
-                </label>
-                <select
-                  value={editForm.insurance_type}
-                  onChange={(e) => setEditForm((f) => ({ ...f, insurance_type: e.target.value, medical_aid_grade: "", disability_grade: "" }))}
-                  className="w-full border border-border-strong rounded-md px-3 py-2.5 text-sm outline-none focus:border-[#EF6600] bg-card"
-                >
-                  <option value="">선택 안 함</option>
-                  <option value="health">건강보험</option>
-                  <option value="medical_aid">의료급여</option>
-                  <option value="veterans">보훈</option>
-                  <option value="self">자비</option>
-                </select>
-              </div>
-              {editForm.insurance_type === "medical_aid" && (
-                <div>
-                  <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
-                    의료급여 종
-                  </label>
-                  <select
-                    value={editForm.medical_aid_grade}
-                    onChange={(e) => setEditForm((f) => ({ ...f, medical_aid_grade: e.target.value }))}
-                    className="w-full border border-border-strong rounded-md px-3 py-2.5 text-sm outline-none focus:border-[#EF6600] bg-card"
-                  >
-                    <option value="">선택 안 함</option>
-                    <option value="1">1종</option>
-                    <option value="2">2종</option>
-                  </select>
-                </div>
-              )}
-              {editForm.insurance_type === "medical_aid" && editForm.medical_aid_grade === "2" && (
-                <div>
-                  <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
-                    장애 등급 (의료급여 2종 경감)
-                  </label>
-                  <select
-                    value={editForm.disability_grade}
-                    onChange={(e) => setEditForm((f) => ({ ...f, disability_grade: e.target.value }))}
-                    className="w-full border border-border-strong rounded-md px-3 py-2.5 text-sm outline-none focus:border-[#EF6600] bg-card"
-                  >
-                    <option value="">해당 없음</option>
-                    <option value="1">1급</option>
-                    <option value="2">2급</option>
-                    <option value="3">3급</option>
-                    <option value="4">4급</option>
-                    <option value="5">5급</option>
-                    <option value="6">6급</option>
-                  </select>
-                </div>
-              )}
-              <div>
-                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
-                  전화번호
-                </label>
-                <input
-                  type="text"
-                  value={editForm.phone}
-                  onChange={(e) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      phone: formatPhone(e.target.value),
-                    }))
-                  }
-                  placeholder="010-0000-0000"
-                  className="w-full border border-border-strong rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
-                  주민번호
-                </label>
-                <input
-                  type="text"
-                  value={editForm.rrn}
-                  onChange={(e) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      rrn: formatRrn(e.target.value),
-                    }))
-                  }
-                  placeholder="000000-0000000"
-                  className="w-full border border-border-strong rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600]"
-                />
-                <p className="text-[11px] text-muted mt-1">
-                  비워두면 기존 값이 유지됩니다.
-                </p>
-              </div>
-              <div>
-                <label className="block text-xs text-subtext uppercase tracking-wide mb-1.5">
-                  메모
-                </label>
-                <textarea
-                  value={editForm.memo}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, memo: e.target.value }))
-                  }
-                  placeholder="특이사항 등"
-                  rows={3}
-                  className="w-full border border-border-strong rounded-md px-4 py-2.5 text-sm outline-none focus:border-[#EF6600] resize-none"
-                />
-              </div>
-              <button
-                onClick={handleEditSave}
-                disabled={editLoading}
-                className="w-full bg-[#EF6600] text-white rounded-md py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-50 mt-1"
-              >
-                {editLoading ? "저장 중..." : "저장"}
-              </button>
-            </div>
           </div>
         </div>
       )}
