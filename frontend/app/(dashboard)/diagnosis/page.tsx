@@ -307,12 +307,29 @@ export default function DiagnosisPage() {
     return Array.from(codes);
   }, [records]);
 
+  function persistKcdCodes(codes: KcdSearchResult[]) {
+    if (!currentRecordId) return; // 아직 저장 전인 신규 기록 — "저장" 시 함께 전송됨
+    const [primary, ...secondary] = codes;
+    updateKcdCode(currentRecordId, primary?.code ?? null, secondary.map((c) => c.code)).catch(() => {
+      setErrorMessage("상병코드 저장에 실패했습니다.");
+    });
+  }
+
   function addKcdCode(item: KcdSearchResult) {
-    setKcdCodes((prev) => (prev.some((c) => c.code === item.code) ? prev : [...prev, item]));
+    setKcdCodes((prev) => {
+      if (prev.some((c) => c.code === item.code)) return prev;
+      const next = [...prev, item];
+      persistKcdCodes(next);
+      return next;
+    });
   }
 
   function removeKcdCode(code: string) {
-    setKcdCodes((prev) => prev.filter((c) => c.code !== code));
+    setKcdCodes((prev) => {
+      const next = prev.filter((c) => c.code !== code);
+      persistKcdCodes(next);
+      return next;
+    });
   }
 
   function kcdWarnings(code: string): string[] {
