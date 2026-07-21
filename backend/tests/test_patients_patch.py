@@ -2,9 +2,10 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest_asyncio
+from sqlalchemy import select
 
 from app.auth.service import create_access_token
-from app.core.models import Doctor, Hospital, StaffAccount
+from app.core.models import AuditLog, Doctor, Hospital, StaffAccount
 
 PATIENT_DATA = {
     "name": "김환자",
@@ -85,6 +86,33 @@ async def test_patch_patient_by_staff(client, approved_doctor, staff_account):
     )
     assert resp.status_code == 200
     assert resp.json()["phone"] == "010-0000-0000"
+
+
+async def test_patch_patient_writes_audit_log(client, approved_doctor, db):
+    doctor, headers = approved_doctor
+    create_resp = await client.post(
+        "/api/patients/register", json=PATIENT_DATA, headers=headers
+    )
+    patient_id = create_resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/patients/{patient_id}",
+        json={"memo": "감사로그 테스트"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+    result = await db.execute(
+        select(AuditLog).where(
+            AuditLog.table_name == "patients",
+            AuditLog.record_id == patient_id,
+            AuditLog.action == "UPDATE",
+        )
+    )
+    logs = result.scalars().all()
+    assert len(logs) == 1
+    assert logs[0].actor_id == doctor.id
+    assert "memo" in logs[0].detail
 
 
 async def test_patch_patient_rejects_other_hospital(client, approved_doctor, db):

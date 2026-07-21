@@ -71,11 +71,24 @@ async def update_patient(
 ) -> Patient:
     patient = await get_patient(db, doctor, patient_id)
 
-    for field, value in data.model_dump(exclude_none=True).items():
+    updates = data.model_dump(exclude_none=True)
+    for field, value in updates.items():
         setattr(patient, field, value)
 
     await db.commit()
     await db.refresh(patient)
+
+    await write_audit(
+        db,
+        table_name="patients",
+        record_id=str(patient_id),
+        action="UPDATE",
+        actor_id=doctor.id,
+        actor_type="doctor",
+        detail=f"변경 필드: {', '.join(updates.keys())}",
+    )
+    await db.commit()
+
     return patient
 
 
