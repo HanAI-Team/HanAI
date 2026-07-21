@@ -8,12 +8,15 @@ EDI 생성 시 원본 복호화가 필요하므로 단방향 해시는 사용하
 """
 
 import base64
+import logging
 import os
 
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from sqlalchemy import String
 from sqlalchemy.types import TypeDecorator
+
+logger = logging.getLogger(__name__)
 
 
 def _load_key() -> bytes:
@@ -58,4 +61,10 @@ class EncryptedString(TypeDecorator):
     def process_result_value(self, value, dialect):
         if value is None:
             return None
-        return decrypt(value)
+        try:
+            return decrypt(value)
+        except ValueError as e:
+            # 다른 키로 암호화된(또는 손상된) 값 — 이 한 건 때문에 목록 조회 전체가
+            # 500으로 죽지 않도록 None으로 취급하고 로그만 남긴다.
+            logger.error("[crypto] 복호화 실패, None으로 대체: %s", e)
+            return None
