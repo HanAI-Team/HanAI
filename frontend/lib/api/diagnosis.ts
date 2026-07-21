@@ -88,6 +88,60 @@ export async function askDiagnosis(question: string): Promise<{ answer: string }
   })
 }
 
+export type PrescriptionType = '기준처방' | '가감처방' | '가미제' | '임의처방'
+
+export interface PrescriptionInput {
+  prescription_name: string
+  ingredients?: string
+  dosage?: string
+  notes?: string
+  prescription_type?: PrescriptionType
+  adjustment_type?: string
+  formula_code?: string
+  unit_price?: number
+  daily_dosage_ratio?: number
+  total_dosage_days?: number
+  species_count?: number
+  total_weight_g?: number
+  low_cost_substitute?: boolean
+  low_cost_surcharge?: number
+  dispensing_fee?: number
+  patient_birth_date?: string | null
+}
+
+export interface PrescriptionRecord {
+  id: string
+  medical_record_id: string
+  prescription_name: string | null
+  prescription_type: string | null
+  adjustment_type: string | null
+  formula_code: string | null
+  unit_price: number | null
+  daily_dosage_ratio: number | null
+  total_dosage_days: number | null
+  total_dosage_price: number | null
+  species_count: number | null
+  total_weight_g: number | null
+  low_cost_substitute: boolean | null
+  low_cost_surcharge: number | null
+  dispensing_fee: number | null
+  created_at: string | null
+}
+
+export async function getPrescriptions(recordId: string): Promise<PrescriptionRecord[]> {
+  return apiCall(`/api/charting/${recordId}/prescriptions`)
+}
+
+export async function createPrescription(
+  recordId: string,
+  data: PrescriptionInput,
+): Promise<PrescriptionRecord> {
+  return apiCall(`/api/charting/${recordId}/prescriptions`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
 export async function askDiagnosisStream(
   question: string,
   onChunk: (chunk: string) => void,

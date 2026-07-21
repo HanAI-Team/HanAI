@@ -27,6 +27,8 @@ export async function apiCall(
     let message = '오류가 발생했습니다'
     if (typeof detail === 'string' && detail) {
       message = detail
+    } else if (Array.isArray(detail) && detail.length > 0) {
+      message = detail.map((e: any) => e.detail || e.message || e.rule).filter(Boolean).join('\n')
     } else if (detail && typeof detail === 'object') {
       if (Array.isArray(detail.errors) && detail.errors.length > 0) {
         message = detail.errors.map((e: any) => e.message).filter(Boolean).join('\n')
