@@ -24,7 +24,7 @@ export const plans: MembershipPlan[] = [
     annualTotalPrice: 389000,
     features: [
       "STT 오토차팅",
-      "AI 진단 보조",
+      "AI 진료 기록 보조",
       "환자 기록 저장/조회",
       "HIRA 청구 파일 생성 (월 50건)",
       "직원 계정 1개",
