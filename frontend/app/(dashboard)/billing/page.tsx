@@ -8,7 +8,9 @@ import {
   bulkDownloadEdi,
   claimTypeLabel,
   createClaimPayment,
+  deleteLineItem,
   downloadSamFiles,
+  getClaimLineItems,
   getClaimPrescription,
   getClaimStatement,
   getClaims,
@@ -18,9 +20,10 @@ import {
   updateClaimApproval,
   updateClaimBillingAgent,
 } from "@/lib/api/billing";
+import type { ClaimSummary } from "@/types/billing";
 import { useIsExpired } from "@/contexts/SubscriptionContext";
 import PaymentHistoryModal from "@/components/billing/PaymentHistoryModal";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import ReviewResultsTab from "./ReviewResultsTab";
 
 const STATUS_FILTERS = [
@@ -53,6 +56,51 @@ export default function BillingPage() {
   const [paymentMethodDraft, setPaymentMethodDraft] = useState<Record<string, "cash" | "card" | "transfer">>({});
   const [payingId, setPayingId] = useState<string | null>(null);
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
+  const [expandedClaimId, setExpandedClaimId] = useState<string | null>(null);
+  const [lineItemsCache, setLineItemsCache] = useState<Record<string, ClaimSummary>>({});
+  const [expandLoading, setExpandLoading] = useState<string | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+
+  async function toggleExpand(claimId: string) {
+    if (expandedClaimId === claimId) {
+      setExpandedClaimId(null);
+      return;
+    }
+    setExpandedClaimId(claimId);
+    if (!lineItemsCache[claimId]) {
+      setExpandLoading(claimId);
+      try {
+        const detail = await getClaimLineItems(claimId);
+        setLineItemsCache((prev) => ({ ...prev, [claimId]: detail }));
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "청구 항목을 불러오지 못했습니다.");
+      } finally {
+        setExpandLoading(null);
+      }
+    }
+  }
+
+  async function handleDeleteLineItem(claimId: string, lineItemId: string) {
+    setDeletingItemId(lineItemId);
+    try {
+      const result = await deleteLineItem(lineItemId);
+      if ("deletedClaim" in result) {
+        setExpandedClaimId(null);
+        setLineItemsCache((prev) => {
+          const next = { ...prev };
+          delete next[claimId];
+          return next;
+        });
+      } else {
+        setLineItemsCache((prev) => ({ ...prev, [claimId]: result }));
+      }
+      reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "항목 삭제에 실패했습니다.");
+    } finally {
+      setDeletingItemId(null);
+    }
+  }
 
   async function handleCompletePayment(claim: ClaimListItem) {
     const method = paymentMethodDraft[claim.id] || "cash";
@@ -610,8 +658,8 @@ export default function BillingPage() {
               claims.map((claim) => {
                 const locked = claim.from_reception && !claim.is_paid;
                 return (
+                <Fragment key={claim.id}>
                 <tr
-                  key={claim.id}
                   className={`border-t border-border hover:bg-fill transition-colors ${
                     selected.has(claim.id) ? "bg-fill" : ""
                   }`}
@@ -624,7 +672,15 @@ export default function BillingPage() {
                       className="cursor-pointer"
                     />
                   </td>
-                  <td className="p-3 text-text font-medium">{claim.patient_name}</td>
+                  <td
+                    className="p-3 text-text font-medium cursor-pointer select-none"
+                    onClick={() => toggleExpand(claim.id)}
+                  >
+                    <span className="text-subtext mr-1">
+                      {expandedClaimId === claim.id ? "▾" : "▸"}
+                    </span>
+                    {claim.patient_name}
+                  </td>
                   <td className="p-3 text-subtext">{claim.claim_period}</td>
                   <td className="p-3">
                     <span
@@ -805,6 +861,47 @@ export default function BillingPage() {
                     )}
                   </td>
                 </tr>
+                {expandedClaimId === claim.id && (
+                  <tr className="border-t border-border bg-fill">
+                    <td colSpan={15} className="p-4">
+                      {expandLoading === claim.id ? (
+                        <div className="text-xs text-subtext py-2">불러오는 중...</div>
+                      ) : !lineItemsCache[claim.id] ? (
+                        <div className="text-xs text-subtext py-2">항목을 불러오지 못했습니다.</div>
+                      ) : lineItemsCache[claim.id].lineItems.length === 0 ? (
+                        <div className="text-xs text-subtext py-2">청구 항목이 없습니다.</div>
+                      ) : (
+                        <ul className="divide-y divide-border">
+                          {lineItemsCache[claim.id].lineItems.map((li) => (
+                            <li
+                              key={li.id}
+                              className="flex items-center justify-between py-2 text-xs"
+                            >
+                              <span className="text-text">
+                                {li.name}{" "}
+                                <span className="text-subtext">
+                                  {li.amount.toLocaleString()}원
+                                </span>
+                              </span>
+                              {claim.status === "draft" ? (
+                                <button
+                                  onClick={() => handleDeleteLineItem(claim.id, li.id)}
+                                  disabled={deletingItemId === li.id}
+                                  className="text-red-500 hover:underline disabled:opacity-40"
+                                >
+                                  {deletingItemId === li.id ? "삭제 중..." : "삭제"}
+                                </button>
+                              ) : (
+                                <span className="text-muted">작성중 상태만 삭제 가능</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
                 );
               })
             )}

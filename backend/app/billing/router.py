@@ -1583,6 +1583,126 @@ async def add_line_items(
     )
 
 
+@router.get("/claims/{claim_id}/line-items", response_model=ClaimSummaryResponse)
+async def get_claim_line_items(
+    claim_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await db.get(Claim, claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+
+    items_result = await db.execute(
+        select(ClaimLineItem)
+        .where(ClaimLineItem.claim_id == claim.id)
+        .options(selectinload(ClaimLineItem.acupoints))
+        .order_by(ClaimLineItem.created_at)
+    )
+    all_items = items_result.scalars().all()
+
+    return ClaimSummaryResponse(
+        id=str(claim.id),
+        patient_id=str(claim.patient_id),
+        billing_month=f"{claim.claim_period_year}-{claim.claim_period_month:02d}",
+        status=claim.status,
+        total_amount=claim.total_amount,
+        line_items=[_line_item_to_response(i) for i in all_items],
+    )
+
+
+@router.delete("/line-items/{line_item_id}")
+async def delete_line_item(
+    line_item_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """청구 항목(ClaimLineItem) 1건 삭제 후 소속 청구서(Claim) 금액 재계산.
+
+    작성중(draft) 상태 청구서만 대상 — 제출된 청구서는 항목을 건드리면 안 됨.
+    마지막 항목을 지우면 빈 draft 청구서 자체도 같이 정리한다.
+    """
+    line_item = await db.get(ClaimLineItem, line_item_id)
+    if not line_item:
+        raise HTTPException(status_code=404, detail="청구 항목을 찾을 수 없습니다.")
+
+    claim = await db.get(Claim, line_item.claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구 항목을 찾을 수 없습니다.")
+    if claim.status != "draft":
+        raise HTTPException(status_code=400, detail="작성중(draft) 상태의 청구서만 항목을 삭제할 수 있습니다.")
+
+    medical_record_id = line_item.medical_record_id
+    await db.delete(line_item)
+    await db.flush()
+
+    remaining = (
+        await db.execute(select(ClaimLineItem).where(ClaimLineItem.claim_id == claim.id))
+    ).scalars().all()
+
+    if not remaining:
+        record = await db.get(MedicalRecord, medical_record_id)
+        if record and record.claim_id == claim.id:
+            record.claim_id = None
+        await db.delete(claim)
+        await db.commit()
+        return {"deleted_claim": True}
+
+    claim.total_amount = sum(i.amount or 0 for i in remaining)
+    claim.non_benefit_total = sum(i.amount or 0 for i in remaining if i.is_non_benefit)
+
+    patient = await db.get(Patient, claim.patient_id)
+    if patient:
+        ins = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
+        aid_grade = None
+        if patient.medical_aid_grade == "1":
+            aid_grade = MedicalAidGrade.GRADE_1
+        elif patient.medical_aid_grade == "2":
+            aid_grade = MedicalAidGrade.GRADE_2
+        special_case = await resolve_active_special_code(db, patient.id)
+
+        chuna_total = sum(
+            i.amount or 0 for i in remaining if not i.is_non_benefit and i.code in CHUNA_50_CODES
+        )
+        chuna_80_total = sum(
+            i.amount or 0 for i in remaining if not i.is_non_benefit and i.code in CHUNA_80_CODES
+        )
+
+        billing_result = calculate_billing(BillingInput(
+            insurance_type=ins,
+            visit_type=VisitType.OUTPATIENT,
+            benefit_total=claim.total_amount - claim.non_benefit_total,
+            medical_aid_grade=aid_grade,
+            has_disability=bool(patient.disability_grade),
+            birth_date=patient.birth_date,
+            special_code=special_case.special_code,
+            chuna_total=chuna_total,
+            chuna_80_total=chuna_80_total,
+        ))
+        claim.patient_copay = billing_result.copayment
+        claim.claim_amount = billing_result.claim_amount
+        claim.disability_medical_aid = billing_result.disability_medical_cost
+
+    await db.commit()
+    await db.refresh(claim)
+
+    items_result = await db.execute(
+        select(ClaimLineItem)
+        .where(ClaimLineItem.claim_id == claim.id)
+        .options(selectinload(ClaimLineItem.acupoints))
+    )
+    all_items = items_result.scalars().all()
+
+    return ClaimSummaryResponse(
+        id=str(claim.id),
+        patient_id=str(claim.patient_id),
+        billing_month=f"{claim.claim_period_year}-{claim.claim_period_month:02d}",
+        status=claim.status,
+        total_amount=claim.total_amount,
+        line_items=[_line_item_to_response(i) for i in all_items],
+    )
+
+
 @router.patch("/claims/{claim_id}/approval")
 async def update_claim_approval(
     claim_id: UUID,

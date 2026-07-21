@@ -312,6 +312,23 @@ export async function updateClaimSupportFund(
   return mapClaimSummary(raw);
 }
 
+export async function getClaimLineItems(claimId: string): Promise<ClaimSummary> {
+  const raw = await apiCall(`/api/billing/claims/${claimId}/line-items`, {
+    method: "GET",
+  });
+  return mapClaimSummary(raw);
+}
+
+export async function deleteLineItem(
+  lineItemId: string,
+): Promise<ClaimSummary | { deletedClaim: true }> {
+  const raw = await apiCall(`/api/billing/line-items/${lineItemId}`, {
+    method: "DELETE",
+  });
+  if (raw?.deleted_claim) return { deletedClaim: true };
+  return mapClaimSummary(raw);
+}
+
 export async function updateClaimApproval(
   claimId: string,
   approvalNo: string | null,
