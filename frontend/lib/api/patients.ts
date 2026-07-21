@@ -151,6 +151,23 @@ export async function downloadPatientsCsv(reason: string): Promise<void> {
   URL.revokeObjectURL(objectUrl);
 }
 
+export async function downloadPurgeLogsCsv(reason: string): Promise<void> {
+  const token = localStorage.getItem("token");
+  const url = `${BASE_URL}/api/patients/purge-logs/csv?${new URLSearchParams({ reason })}`;
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("파기대장 CSV 다운로드 실패");
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = "purge_logs.csv";
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export async function downloadRecordsCsv(reason: string): Promise<void> {
   const token = localStorage.getItem("token");
   const url = `${BASE_URL}/api/patients/export/records/csv?${new URLSearchParams({ reason })}`;

@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+load_dotenv(override=True) 
 
 if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
     os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
@@ -22,8 +22,6 @@ from app.acupuncture.router import router as acupuncture_router
 from app.auth.router import router as auth_router
 from app.billing.router import router as billing_router
 from app.charting.router import router as charting_router
-from app.payments.router import router as payments_router
-
 from app.core.cleanup import run_cleanup_loop
 from app.core.config import settings
 from app.core.discord import notify_discord
@@ -35,6 +33,7 @@ from app.kcd.router import router as kcd_router
 from app.manage.router import router as manage_router
 from app.masters.router import router as masters_router
 from app.patients.router import router as patients_router
+from app.payments.router import router as payments_router
 from app.queue.router import router as queue_router
 from app.staff.router import router as staff_router
 from app.subscription.router import router as subscription_router

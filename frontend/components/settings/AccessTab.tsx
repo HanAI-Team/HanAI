@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { getLoginLogs, getAccountHistories, LoginLog, AccountHistory } from '@/lib/api/auth'
+import { formatDateTime } from '@/lib/formatDateTime'
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   doctor: '의사',
@@ -11,12 +12,6 @@ const ACTION_LABEL: Record<string, string> = {
   created: '생성',
   deactivated: '비활성화',
   role_changed: '권한 변경',
-}
-
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default function AccessTab() {
@@ -99,7 +94,7 @@ export default function AccessTab() {
                         </span>
                       </td>
                       <td className="py-3 pr-4 font-mono text-subtext">{log.ip_address ?? '-'}</td>
-                      <td className="py-3 text-subtext whitespace-nowrap">{formatDate(log.attempted_at)}</td>
+                      <td className="py-3 text-subtext whitespace-nowrap">{formatDateTime(log.attempted_at)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -116,7 +111,8 @@ export default function AccessTab() {
                   <tr className="border-b border-border">
                     <th className="text-left pb-3 pr-4">계정유형</th>
                     <th className="text-left pb-3 pr-4">작업</th>
-                    <th className="text-left pb-3">시간</th>
+                    <th className="text-left pb-3 pr-4">시작일</th>
+                    <th className="text-left pb-3">종료일</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -124,7 +120,8 @@ export default function AccessTab() {
                     <tr key={h.id} className="border-b border-border last:border-0">
                       <td className="py-3 pr-4">{ACCOUNT_TYPE_LABEL[h.account_type] ?? h.account_type}</td>
                       <td className="py-3 pr-4">{ACTION_LABEL[h.action] ?? h.action}</td>
-                      <td className="py-3 text-subtext">{formatDate(h.started_at)}</td>
+                      <td className="py-3 pr-4 text-subtext whitespace-nowrap">{formatDateTime(h.started_at)}</td>
+                      <td className="py-3 text-subtext whitespace-nowrap">{formatDateTime(h.ended_at)}</td>
                     </tr>
                   ))}
                 </tbody>

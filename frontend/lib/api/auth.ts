@@ -1,4 +1,5 @@
 import { apiCall } from './client'
+import { parseErrorDetail } from '../errorMessage'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -17,6 +18,7 @@ export type AccountHistory = {
   account_type: string
   action: string
   started_at: string
+  ended_at: string | null
 }
 
 export async function getLoginLogs(): Promise<LoginLog[]> {
@@ -101,8 +103,7 @@ export async function register(data: {
   })
   if (!res.ok) {
     const err = await res.json()
-    const detail = err.detail
-    throw new Error(typeof detail === 'string' ? detail : '회원가입 실패')
+    throw new Error(parseErrorDetail(err.detail) || '회원가입 실패')
   }
   return res.json()
 }
