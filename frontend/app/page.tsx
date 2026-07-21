@@ -1,6 +1,7 @@
 'use client'
 import LoginForm from '@/components/LoginForm'
 import SplashBars from '@/components/SplashBars'
+import { plans } from '@/lib/payments/plans'
 import type { CSSProperties } from 'react'
 import { useEffect, useState } from 'react'
 
@@ -99,6 +100,49 @@ export default function RootPage() {
                 </div>
                 <h3 className="text-[15.5px] text-white mb-1.5">{f.title}</h3>
                 <p className="text-[13px] text-white/55">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="px-6 sm:px-10 md:px-14 py-14 md:py-16 border-b border-white/10">
+          <h2 className="text-2xl tracking-tight mb-3.5 text-white">가격</h2>
+          <p className="text-[15px] text-white/62 mb-8">
+            지금 가입하면 베타 특가가 2년간 고정됩니다. 언제든지 플랜을 변경할 수 있습니다.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {plans.map((plan) => (
+              <div
+                key={plan.tier}
+                className={`border rounded-[14px] p-5 bg-white/[0.06] ${
+                  plan.popular ? 'border-[#cf6a3c]/60' : 'border-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <h3 className="text-[15.5px] text-white font-semibold">{plan.title}</h3>
+                  {plan.popular && (
+                    <span className="px-2 py-0.5 rounded-full bg-[#cf6a3c]/[0.18] text-[#f3a67d] text-[10px] font-bold">
+                      인기
+                    </span>
+                  )}
+                </div>
+                <p className="text-[13px] text-white/55 mb-4">{plan.description}</p>
+                <div className="text-2xl font-bold text-white mb-0.5">
+                  {plan.monthlyPrice.toLocaleString('ko-KR')}원
+                  <span className="text-[13px] font-normal text-white/50">/월</span>
+                </div>
+                <p className="text-[12px] text-white/40 mb-4">
+                  연간 결제 시 월 {plan.annualMonthlyPrice.toLocaleString('ko-KR')}원 (연{' '}
+                  {plan.annualTotalPrice.toLocaleString('ko-KR')}원)
+                </p>
+                <ul className="space-y-1.5">
+                  {plan.features.map((f) => (
+                    <li key={f} className="text-[12.5px] text-white/55 flex items-start gap-1.5">
+                      <span className="text-[#f3a67d]">✓</span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>

@@ -9,7 +9,7 @@ const FAQ_LIST = [
   },
   {
     question: "STT 오토차팅은 어떤 플랜에서 사용할 수 있나요?",
-    answer: "Basic, Premium 모두 STT 오토차팅과 AI 진단 보조 기능을 사용할 수 있습니다."
+    answer: "Basic, Premium 모두 STT 오토차팅과 AI 진료 기록 보조 기능을 사용할 수 있습니다."
   },
   {
     question: "HIRA 청구 파일 생성은 어떤 플랜에서 가능한가요?",
