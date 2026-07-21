@@ -91,7 +91,7 @@ function PatientResultCard({
   const selected = variant === "summary";
   const age = calcAge(patient.birth_date);
   return (
-    <div
+    <div role="button" tabIndex={0}
       onClick={onClick}
       className={`bg-fill border rounded-lg p-3 mb-2 transition-colors ${onClick ? "cursor-pointer" : ""} ${
         selected ? "border-[#EF6600] bg-[#EF6600]/5" : "border-border hover:border-[#EF6600]"
@@ -439,7 +439,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div
+      <div role="button" tabIndex={0}
         className={`fixed inset-0 bg-black/30 z-40 transition-opacity duration-300 ${
           panelOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}

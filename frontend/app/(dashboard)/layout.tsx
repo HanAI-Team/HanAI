@@ -65,7 +65,7 @@ export default function DashboardLayout({
     <div className="flex flex-col min-h-screen">
       {/* PC 네비바 */}
       <nav className="hidden sm:flex h-[52px] bg-[#232323] dark:bg-card dark:border-b dark:border-border items-center px-6 flex-shrink-0">
-        <div className="flex items-center  mr-9 cursor-pointer "  onClick={()=>router.push("/home")}>
+        <div role="button" tabIndex={0} className="flex items-center  mr-9 cursor-pointer "  onClick={()=>router.push("/home")}>
             <Image
             src="/images/logo-light.png"
             alt="Zinmac"
@@ -99,7 +99,7 @@ export default function DashboardLayout({
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <div className="cursor-pointer" onClick={()=>router.push("/membership")}>
+          <div role="button" tabIndex={0} className="cursor-pointer" onClick={()=>router.push("/membership")}>
             <UserInfoForNav />
           </div>
           <ThemeToggle />
@@ -130,7 +130,7 @@ export default function DashboardLayout({
 
       {/* 드로어 오버레이 */}
       {drawerOpen && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/50 z-[100] sm:hidden"
           onClick={() => setDrawerOpen(false)}
         />
