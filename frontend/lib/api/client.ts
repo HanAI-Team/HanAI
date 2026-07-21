@@ -23,7 +23,18 @@ export async function apiCall(
 
   if (!res.ok) {
     const error = await res.json()
-    throw new Error(error.detail || '오류가 발생했습니다')
+    const detail = error.detail
+    let message = '오류가 발생했습니다'
+    if (typeof detail === 'string' && detail) {
+      message = detail
+    } else if (detail && typeof detail === 'object') {
+      if (Array.isArray(detail.errors) && detail.errors.length > 0) {
+        message = detail.errors.map((e: any) => e.message).filter(Boolean).join('\n')
+      } else if (detail.message) {
+        message = detail.message
+      }
+    }
+    throw new Error(message)
   }
 
   return res.json()

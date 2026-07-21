@@ -197,8 +197,8 @@ export function BillableItemPicker({ medicalRecordId, visitType = "외래", onCo
       const claim = await submitLineItems(medicalRecordId, payload, visitType);
       setConfirmedClaim(claim);
       onConfirmed?.(claim);
-    } catch {
-      setError("청구 처리에 실패했습니다. 다시 시도해주세요");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "청구 처리에 실패했습니다. 다시 시도해주세요");
     } finally {
       setSubmitting(false);
     }
