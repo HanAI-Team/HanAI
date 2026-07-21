@@ -648,6 +648,29 @@ class MaterialMaster(Base):
     expired_date = Column(Date, nullable=True)
 
 
+class MaterialPurchaseRecord(Base):
+    """치료재료·원료약 구입내역 / 요양기관 자체 조제(제제)약 내역 (구입내역통보서 대응).
+
+    record_type: "purchase"(외부 구입) | "compound"(자체 조제·제제)
+    """
+    __tablename__ = "material_purchase_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    record_type = Column(String(20), nullable=False)
+    item_name = Column(String(200), nullable=False)
+    item_code = Column(String(20), nullable=True)   # material_master.code 참조 (있으면)
+    spec = Column(String(100), nullable=True)
+    quantity = Column(Numeric(10, 2), nullable=False, server_default="1")
+    unit_price = Column(Integer, nullable=False, server_default="0")
+    amount = Column(Integer, nullable=False, server_default="0")
+    supplier_name = Column(String(100), nullable=True)  # 구입인 경우 거래처
+    transaction_date = Column(Date, nullable=False)
+    reported = Column(Boolean, nullable=False, server_default="false")
+    reported_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 # ================================================================
 # 보안 / 로그
 # ================================================================

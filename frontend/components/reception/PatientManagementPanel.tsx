@@ -36,7 +36,16 @@ export default function PatientManagementPanel() {
   const [addLoading, setAddLoading] = useState(false);
 
   const [editTarget, setEditTarget] = useState<Patient | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", birth_date: "", gender: "", phone: "", rrn: "" });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    birth_date: "",
+    gender: "",
+    phone: "",
+    rrn: "",
+    insurance_type: "",
+    medical_aid_grade: "",
+    disability_grade: "",
+  });
   const [editLoading, setEditLoading] = useState(false);
 
   const [anonymizeTarget, setAnonymizeTarget] = useState<Patient | null>(null);
@@ -172,6 +181,9 @@ export default function PatientManagementPanel() {
       gender: p.gender || "",
       phone: p.phone || "",
       rrn: "",
+      insurance_type: p.insurance_type || "",
+      medical_aid_grade: p.medical_aid_grade || "",
+      disability_grade: p.disability_grade || "",
     });
   }
 
@@ -639,6 +651,69 @@ export default function PatientManagementPanel() {
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
+              <div>
+                <label className="text-xs text-subtext mb-1 block">
+                  보험 종별
+                </label>
+                <select
+                  value={editForm.insurance_type}
+                  onChange={(e) =>
+                    setEditForm((p) => ({
+                      ...p,
+                      insurance_type: e.target.value,
+                      medical_aid_grade: "",
+                      disability_grade: "",
+                    }))
+                  }
+                  className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                >
+                  <option value="">선택 안 함</option>
+                  <option value="health">건강보험</option>
+                  <option value="medical_aid">의료급여</option>
+                  <option value="veterans">보훈</option>
+                  <option value="self">자비</option>
+                </select>
+              </div>
+              {editForm.insurance_type === "medical_aid" && (
+                <div>
+                  <label className="text-xs text-subtext mb-1 block">
+                    의료급여 종
+                  </label>
+                  <select
+                    value={editForm.medical_aid_grade}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, medical_aid_grade: e.target.value }))
+                    }
+                    className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                  >
+                    <option value="">선택 안 함</option>
+                    <option value="1">1종</option>
+                    <option value="2">2종</option>
+                  </select>
+                </div>
+              )}
+              {editForm.insurance_type === "medical_aid" && editForm.medical_aid_grade === "2" && (
+                <div>
+                  <label className="text-xs text-subtext mb-1 block">
+                    장애 등급 (의료급여 2종 경감)
+                  </label>
+                  <select
+                    value={editForm.disability_grade}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, disability_grade: e.target.value }))
+                    }
+                    className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                  >
+                    <option value="">해당 없음</option>
+                    <option value="1">1급</option>
+                    <option value="2">2급</option>
+                    <option value="3">3급</option>
+                    <option value="4">4급</option>
+                    <option value="5">5급</option>
+                    <option value="6">6급</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-xs text-subtext mb-1 block">
                   주민번호

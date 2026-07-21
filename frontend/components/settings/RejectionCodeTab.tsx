@@ -10,7 +10,7 @@ import {
 import Pagination from './Pagination'
 
 const PAGE_SIZE = 20
-const CATEGORIES = ['반송', '심사불능', '수탁기관통보']
+const CATEGORIES = ['접수', '반송', '심사불능', '수탁기관통보']
 
 const emptyForm = { category: CATEGORIES[0], code: '', detail_code: '', description: '' }
 
