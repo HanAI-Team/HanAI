@@ -2,6 +2,7 @@
 import { AcupointViewer, parseAcupointCodes } from "@/components/AcupointViewer";
 import BetaFeedbackBanner from "@/components/BetaFeedbackBanner";
 import { BillableItemPicker } from "@/components/billing/BillableItemPicker";
+import PrescriptionInput from "@/components/charting/PrescriptionInput";
 import {
   askDiagnosisStream,
   ChartingEvent,
@@ -2522,12 +2523,18 @@ ${historyLine}
                   </div>
                 </div>
                 {currentRecordId ? (
-                  <BillableItemPicker
-                    medicalRecordId={currentRecordId}
-                    onConfirmed={(claim) =>
-                      setRecordClaimIds((prev) => ({ ...prev, [currentRecordId]: claim.id }))
-                    }
-                  />
+                  <>
+                    <PrescriptionInput
+                      medicalRecordId={currentRecordId}
+                      patientBirthDate={selectedPatient?.birth_date}
+                    />
+                    <BillableItemPicker
+                      medicalRecordId={currentRecordId}
+                      onConfirmed={(claim) =>
+                        setRecordClaimIds((prev) => ({ ...prev, [currentRecordId]: claim.id }))
+                      }
+                    />
+                  </>
                 ) : (
                   <div className="text-sm text-muted text-center py-8">
                     먼저 진료 기록을 저장해주세요
