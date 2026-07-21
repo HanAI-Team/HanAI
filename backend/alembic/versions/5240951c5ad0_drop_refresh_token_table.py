@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_table('refresh_token')
+    op.execute("DROP TABLE IF EXISTS refresh_token")
 
 
 def downgrade() -> None:
