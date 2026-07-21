@@ -14,7 +14,7 @@ from app.core.models import (
 from fastapi import HTTPException, status
 from jose import jwt
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -143,6 +143,7 @@ async def deactivate_doctor(db: AsyncSession, doctor_id: UUID) -> Doctor:
         )
 
     doctor.is_active = False  # type: ignore
+    await record_account_history(db, "doctor", UUID(str(doctor.id)), "deactivated")
     await db.commit()
     await db.refresh(doctor)
     return doctor
@@ -219,6 +220,17 @@ async def record_account_history(
         actor_id : UUID | None = None,
         detail:str | None = None
 )->None:
+    if action == "deactivated":
+        await db.execute(
+            update(AccountHistory)
+            .where(
+                AccountHistory.account_id == account_id,
+                AccountHistory.account_type == account_type,
+                AccountHistory.ended_at.is_(None),
+            )
+            .values(ended_at=func.now())
+        )
+
     account_history = AccountHistory(
         account_type = account_type,
         account_id  = account_id,
