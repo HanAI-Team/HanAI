@@ -88,6 +88,7 @@ from app.billing.service import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
+from app.core.timezone import today_kst
 from app.core.models import (
     Claim,
     ClaimLineItem,
@@ -731,7 +732,14 @@ async def update_drug(
     drug = result.scalar_one_or_none()
     if not drug:
         raise HTTPException(status_code=404, detail="제품코드를 찾을 수 없습니다.")
-    for field, value in body.model_dump(exclude_none=True).items():
+    update_fields = body.model_dump(exclude_none=True)
+    if (
+        "unit_price" in update_fields
+        and update_fields["unit_price"] != drug.unit_price
+        and "effective_date" not in update_fields
+    ):
+        update_fields["effective_date"] = today_kst()
+    for field, value in update_fields.items():
         setattr(drug, field, value)
     await db.commit()
     await db.refresh(drug)
@@ -846,7 +854,17 @@ async def update_fee(
     fee = result.scalar_one_or_none()
     if not fee:
         raise HTTPException(status_code=404, detail="수가 코드를 찾을 수 없습니다.")
-    for field, value in body.model_dump(exclude_none=True).items():
+    update_fields = body.model_dump(exclude_none=True)
+    # 단가가 실제로 바뀌는데 effective_date를 같이 안 넘겼으면 오늘 날짜로 자동 기록
+    # (EDI 레코드3 "변경일" 필드가 이 값을 근거로 산정됨 — 안 그러면 언제 바뀐 건지
+    # 알 방법이 없어짐)
+    if (
+        "unit_price" in update_fields
+        and update_fields["unit_price"] != fee.unit_price
+        and "effective_date" not in update_fields
+    ):
+        update_fields["effective_date"] = today_kst()
+    for field, value in update_fields.items():
         setattr(fee, field, value)
     await db.commit()
     await db.refresh(fee)
