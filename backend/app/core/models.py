@@ -540,6 +540,7 @@ class AuditLog(Base):
     actor_type = Column(String(20), nullable=True)
     changed_at = Column(String(14), nullable=False)
     detail = Column(Text, nullable=True)
+    ip_address = Column(String(45), nullable=True)  # 개인정보 접속기록 요건 — 접속자 IP주소
 
 
 class DataDownloadLog(Base):

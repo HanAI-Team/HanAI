@@ -17,6 +17,7 @@ export interface AuditLogItem {
   actor_type: string | null;
   changed_at: string;
   detail: string | null;
+  ip_address: string | null;
 }
 
 export interface AuditLogFilters {
