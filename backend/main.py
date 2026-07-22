@@ -22,6 +22,7 @@ from app.acupuncture.router import router as acupuncture_router
 from app.auth.router import router as auth_router
 from app.billing.router import router as billing_router
 from app.charting.router import router as charting_router
+from app.core.audit import set_request_ip
 from app.core.cleanup import run_cleanup_loop
 from app.core.config import settings
 from app.core.discord import notify_discord
@@ -99,6 +100,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
+@app.middleware("http")
+async def audit_ip_middleware(request: Request, call_next):
+    """개인정보 접속기록(열람/수정/삭제 등)에 접속자 IP주소를 남기기 위해
+    요청 단위로 IP를 컨텍스트에 저장한다. write_audit() 호출부마다
+    request를 일일이 넘기지 않아도 되도록 함."""
+    ip = request.client.host if request.client else None
+    set_request_ip(ip)
+    return await call_next(request)
 
 
 @app.middleware("http")

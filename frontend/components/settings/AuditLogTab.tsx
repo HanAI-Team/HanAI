@@ -88,7 +88,8 @@ export default function AuditLogTab() {
                   <th className="text-left pb-3 pr-4">테이블명</th>
                   <th className="text-left pb-3 pr-4">레코드ID</th>
                   <th className="text-left pb-3 pr-4">액션</th>
-                  <th className="text-left pb-3">변경일시</th>
+                  <th className="text-left pb-3 pr-4">변경일시</th>
+                  <th className="text-left pb-3">접속 IP</th>
                 </tr>
               </thead>
               <tbody>
@@ -101,7 +102,8 @@ export default function AuditLogTab() {
                         {log.action}
                       </span>
                     </td>
-                    <td className="py-3 text-subtext whitespace-nowrap">{formatDateTime(log.changed_at)}</td>
+                    <td className="py-3 pr-4 text-subtext whitespace-nowrap">{formatDateTime(log.changed_at)}</td>
+                    <td className="py-3 font-mono text-subtext whitespace-nowrap">{log.ip_address || '-'}</td>
                   </tr>
                 ))}
               </tbody>
