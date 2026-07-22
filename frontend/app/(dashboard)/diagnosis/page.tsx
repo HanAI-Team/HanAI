@@ -311,9 +311,10 @@ export default function DiagnosisPage() {
   function persistKcdCodes(codes: KcdSearchResult[]) {
     if (!currentRecordId) return; // 아직 저장 전인 신규 기록 — "저장" 시 함께 전송됨
     const [primary, ...secondary] = codes;
-    updateKcdCode(currentRecordId, primary?.code ?? null, secondary.map((c) => c.code)).catch(() => {
-      setErrorMessage("상병코드 저장에 실패했습니다.");
-    });
+    // 완전코드가 아닌 코드를 탐색하는 중에는 저장이 거부되는 게 정상 동작이고,
+    // 그 사유는 이미 인라인 경고(kcdWarnings)로 보여주고 있으므로 별도
+    // 팝업으로 방해하지 않는다. (조용히 무시 — 완전코드를 선택하면 재시도됨)
+    updateKcdCode(currentRecordId, primary?.code ?? null, secondary.map((c) => c.code)).catch(() => {});
   }
 
   function addKcdCode(item: KcdSearchResult) {
