@@ -1060,6 +1060,31 @@ async def _build_claim_edi_file(
 
     special_case = await resolve_active_special_code(db, claim.patient_id)
 
+    # 레코드3 "변경일" 산정: 당월요양개시일(이 청구서에 속한 명세서 중 최초 진료일)
+    # 이후에 단가가 바뀐 항목이 있으면, 그 항목이 쓰인 명세서 중 변경일 이후에
+    # 진료한 건에 변경일(=단가 적용 시작일)을 기재한다. FeeMaster.effective_date를
+    # "이 단가가 적용되기 시작한 날짜"로 보고 판단한다 (update_fee가 단가 변경 시
+    # effective_date를 자동 갱신함).
+    claim_onset_date = min(
+        (r.recorded_at.date() for r in medical_records if r.recorded_at), default=None
+    )
+    fee_codes = {li.code for li in all_line_items if li.code}
+    fee_codes |= {p.fee_master_code for p in procedures if p.fee_master_code}
+    fee_effective_dates: dict[str, date] = {}
+    if fee_codes and claim_onset_date:
+        r_fees = await db.execute(
+            select(FeeMaster.code, FeeMaster.effective_date).where(FeeMaster.code.in_(fee_codes))
+        )
+        fee_effective_dates = {
+            code: eff for code, eff in r_fees.all() if eff and eff > claim_onset_date
+        }
+
+    def _resolve_change_date(code: str, service_date) -> str:
+        eff = fee_effective_dates.get(code)
+        if eff and service_date and service_date >= eff:
+            return eff.strftime("%Y%m%d")
+        return ""
+
     for i, record in enumerate(medical_records):
         serial = i + 1
         rec_key = RecordKey(claim_no=claim_no, record_serial=serial)
@@ -1220,6 +1245,9 @@ async def _build_claim_edi_file(
                     qty=Decimal(str(li.qty or 1)),
                     days=li.days or 1,
                     amount=li.amount or 0,
+                    change_date=_resolve_change_date(
+                        li.code, record.recorded_at.date() if record.recorded_at else None
+                    ),
                     license_kind="3",
                     license_no=doctor.license_number if doctor else "",
                 )))
@@ -1257,6 +1285,10 @@ async def _build_claim_edi_file(
                     qty=Decimal(str(proc.qty or 1)),
                     days=proc.days or 1,
                     amount=proc.amount or 0,
+                    change_date=_resolve_change_date(
+                        proc.fee_master_code or "",
+                        record.recorded_at.date() if record.recorded_at else None,
+                    ),
                     license_kind="3",
                     license_no=doctor.license_number if doctor else "",
                 )))
