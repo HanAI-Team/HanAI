@@ -1,4 +1,6 @@
-export const MembershipBadge = ({ tier }: { tier: string }) => {
+export const MembershipBadge = ({ tier }: { tier?: string | null }) => {
+  if (!tier) return null;
+
   const isPremium = tier.toLowerCase() === "premium";
 
   return (
