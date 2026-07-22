@@ -883,7 +883,7 @@ export default function BillingPage() {
                                   {li.amount.toLocaleString()}원
                                 </span>
                               </span>
-                              {claim.status === "draft" ? (
+                              {claim.status === "draft" || claim.status === "rejected" ? (
                                 <button
                                   onClick={() => handleDeleteLineItem(claim.id, li.id)}
                                   disabled={deletingItemId === li.id}
@@ -892,7 +892,7 @@ export default function BillingPage() {
                                   {deletingItemId === li.id ? "삭제 중..." : "삭제"}
                                 </button>
                               ) : (
-                                <span className="text-muted">작성중 상태만 삭제 가능</span>
+                                <span className="text-muted">작성중/반려 상태만 삭제 가능</span>
                               )}
                             </li>
                           ))}
