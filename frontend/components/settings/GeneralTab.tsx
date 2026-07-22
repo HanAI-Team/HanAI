@@ -1,6 +1,7 @@
 'use client'
 import { updateMyProfile } from '@/lib/api/auth'
 import { updateHospital } from '@/lib/api/hospitals'
+import { parseErrorDetail } from '@/lib/errorMessage'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -53,7 +54,7 @@ export default function GeneralTab() {
       return
     }
     if (pwForm.new_password.length < 8) {
-      setPwError('비밀번호는 8자 이상이어야 합니다.')
+      setPwError('비밀번호는 영대문자/영소문자/숫자/특수문자 중 3종류 이상 조합 시 8자리 이상, 2종류 이상 조합 시 10자리 이상이어야 합니다.')
       return
     }
     setPwLoading(true)
@@ -70,7 +71,10 @@ export default function GeneralTab() {
           new_password: pwForm.new_password,
         }),
       })
-      if (!res.ok) throw new Error('비밀번호 변경 실패')
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(parseErrorDetail(err?.detail) || '비밀번호 변경 실패')
+      }
       setPwSuccess(true)
       setPwForm({ current_password: '', new_password: '', confirm: '' })
       if (showForceBanner) {

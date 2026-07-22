@@ -88,6 +88,7 @@ from app.billing.service import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
+from app.core.timezone import today_kst
 from app.core.models import (
     Claim,
     ClaimLineItem,
@@ -731,7 +732,12 @@ async def update_drug(
     drug = result.scalar_one_or_none()
     if not drug:
         raise HTTPException(status_code=404, detail="제품코드를 찾을 수 없습니다.")
-    for field, value in body.model_dump(exclude_none=True).items():
+    update_fields = body.model_dump(exclude_none=True)
+    if "unit_price" in update_fields and update_fields["unit_price"] != drug.unit_price:
+        submitted_effective = update_fields.get("effective_date")
+        if submitted_effective is None or submitted_effective == drug.effective_date:
+            update_fields["effective_date"] = today_kst()
+    for field, value in update_fields.items():
         setattr(drug, field, value)
     await db.commit()
     await db.refresh(drug)
@@ -846,7 +852,18 @@ async def update_fee(
     fee = result.scalar_one_or_none()
     if not fee:
         raise HTTPException(status_code=404, detail="수가 코드를 찾을 수 없습니다.")
-    for field, value in body.model_dump(exclude_none=True).items():
+    update_fields = body.model_dump(exclude_none=True)
+    # 단가가 실제로 바뀌는데 effective_date가 (생략됐거나, 기존 값 그대로 다시
+    # 제출돼서) 실질적으로 안 바뀌었으면 오늘 날짜로 자동 기록 — 프론트 수정
+    # 폼이 effective_date 필드를 매번 기존 값으로 채워서 같이 보내기 때문에
+    # "필드가 없으면"만으로는 감지가 안 됨. EDI 레코드3 "변경일" 필드가 이
+    # 값을 근거로 산정되므로, 관리자가 effective_date를 명시적으로 다른 값
+    # 으로 바꾼 게 아니라면 자동 갱신해야 함.
+    if "unit_price" in update_fields and update_fields["unit_price"] != fee.unit_price:
+        submitted_effective = update_fields.get("effective_date")
+        if submitted_effective is None or submitted_effective == fee.effective_date:
+            update_fields["effective_date"] = today_kst()
+    for field, value in update_fields.items():
         setattr(fee, field, value)
     await db.commit()
     await db.refresh(fee)
@@ -1470,6 +1487,29 @@ async def add_line_items(
         db.add(claim)
         await db.flush()
 
+    # 단독침술(분구침술 등) 동시 시술 점검 — FeeMaster.is_standalone=True인
+    # 코드는 같은 진료기록 내 다른 침술 항목과 동시 청구 불가.
+    new_codes = [get_catalog_item(line.item_id).code for line in payload.items]
+    if new_codes:
+        r_existing_codes = await db.execute(
+            select(ClaimLineItem.code).where(ClaimLineItem.medical_record_id == record_id)
+        )
+        existing_codes = {row[0] for row in r_existing_codes.all() if row[0]}
+        all_codes = existing_codes | set(new_codes)
+        if len(all_codes) > 1:
+            r_standalone = await db.execute(
+                select(FeeMaster.code, FeeMaster.name).where(
+                    FeeMaster.code.in_(all_codes), FeeMaster.is_standalone.is_(True)
+                )
+            )
+            standalone_hits = r_standalone.all()
+            if standalone_hits:
+                names = ", ".join(f"{name}({code})" for code, name in standalone_hits)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"단독침술({names})은 다른 침술 항목과 동시에 청구할 수 없습니다.",
+                )
+
     added_amount = 0
     added_non_benefit = 0
     codes_in_this_request: set[str] = set()
@@ -1577,6 +1617,132 @@ async def add_line_items(
         id=str(claim.id),
         patient_id=str(claim.patient_id),
         billing_month=f"{year}-{month:02d}",
+        status=claim.status,
+        total_amount=claim.total_amount,
+        line_items=[_line_item_to_response(i) for i in all_items],
+    )
+
+
+@router.get("/claims/{claim_id}/line-items", response_model=ClaimSummaryResponse)
+async def get_claim_line_items(
+    claim_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await db.get(Claim, claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+
+    items_result = await db.execute(
+        select(ClaimLineItem)
+        .where(ClaimLineItem.claim_id == claim.id)
+        .options(selectinload(ClaimLineItem.acupoints))
+        .order_by(ClaimLineItem.created_at)
+    )
+    all_items = items_result.scalars().all()
+
+    return ClaimSummaryResponse(
+        id=str(claim.id),
+        patient_id=str(claim.patient_id),
+        billing_month=f"{claim.claim_period_year}-{claim.claim_period_month:02d}",
+        status=claim.status,
+        total_amount=claim.total_amount,
+        line_items=[_line_item_to_response(i) for i in all_items],
+    )
+
+
+@router.delete("/line-items/{line_item_id}")
+async def delete_line_item(
+    line_item_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """청구 항목(ClaimLineItem) 1건 삭제 후 소속 청구서(Claim) 금액 재계산.
+
+    작성중(draft) 또는 반려(rejected) 상태 청구서만 대상.
+    반려 건은 "보완청구" 제도 취지상 원본을 고쳐서 재제출하는 게 정상 흐름이라
+    허용한다. 승인(approved)된 청구서는 심평원이 이미 받아들인 내용이라 여기서
+    건드리면 안 되고, 정정청구/취소재청구 같은 별도 절차가 필요하다 — 대상 아님.
+    마지막 항목을 지우면 빈 draft/rejected 청구서 자체도 같이 정리한다.
+    """
+    line_item = await db.get(ClaimLineItem, line_item_id)
+    if not line_item:
+        raise HTTPException(status_code=404, detail="청구 항목을 찾을 수 없습니다.")
+
+    claim = await db.get(Claim, line_item.claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구 항목을 찾을 수 없습니다.")
+    if claim.status not in ("draft", "rejected"):
+        raise HTTPException(
+            status_code=400,
+            detail="작성중(draft) 또는 반려(rejected) 상태의 청구서만 항목을 삭제할 수 있습니다.",
+        )
+
+    medical_record_id = line_item.medical_record_id
+    await db.delete(line_item)
+    await db.flush()
+
+    remaining = (
+        await db.execute(select(ClaimLineItem).where(ClaimLineItem.claim_id == claim.id))
+    ).scalars().all()
+
+    if not remaining:
+        record = await db.get(MedicalRecord, medical_record_id)
+        if record and record.claim_id == claim.id:
+            record.claim_id = None
+        await db.delete(claim)
+        await db.commit()
+        return {"deleted_claim": True}
+
+    claim.total_amount = sum(i.amount or 0 for i in remaining)
+    claim.non_benefit_total = sum(i.amount or 0 for i in remaining if i.is_non_benefit)
+
+    patient = await db.get(Patient, claim.patient_id)
+    if patient:
+        ins = _INSURANCE_MAP.get(patient.insurance_type or "health", InsuranceType.HEALTH)
+        aid_grade = None
+        if patient.medical_aid_grade == "1":
+            aid_grade = MedicalAidGrade.GRADE_1
+        elif patient.medical_aid_grade == "2":
+            aid_grade = MedicalAidGrade.GRADE_2
+        special_case = await resolve_active_special_code(db, patient.id)
+
+        chuna_total = sum(
+            i.amount or 0 for i in remaining if not i.is_non_benefit and i.code in CHUNA_50_CODES
+        )
+        chuna_80_total = sum(
+            i.amount or 0 for i in remaining if not i.is_non_benefit and i.code in CHUNA_80_CODES
+        )
+
+        billing_result = calculate_billing(BillingInput(
+            insurance_type=ins,
+            visit_type=VisitType.OUTPATIENT,
+            benefit_total=claim.total_amount - claim.non_benefit_total,
+            medical_aid_grade=aid_grade,
+            has_disability=bool(patient.disability_grade),
+            birth_date=patient.birth_date,
+            special_code=special_case.special_code,
+            chuna_total=chuna_total,
+            chuna_80_total=chuna_80_total,
+        ))
+        claim.patient_copay = billing_result.copayment
+        claim.claim_amount = billing_result.claim_amount
+        claim.disability_medical_aid = billing_result.disability_medical_cost
+
+    await db.commit()
+    await db.refresh(claim)
+
+    items_result = await db.execute(
+        select(ClaimLineItem)
+        .where(ClaimLineItem.claim_id == claim.id)
+        .options(selectinload(ClaimLineItem.acupoints))
+    )
+    all_items = items_result.scalars().all()
+
+    return ClaimSummaryResponse(
+        id=str(claim.id),
+        patient_id=str(claim.patient_id),
+        billing_month=f"{claim.claim_period_year}-{claim.claim_period_month:02d}",
         status=claim.status,
         total_amount=claim.total_amount,
         line_items=[_line_item_to_response(i) for i in all_items],

@@ -35,17 +35,18 @@ def validate_prescription_limits(
     violations=[]
     ratio = Decimal(str(get_max_allowed_ratio(birth_date))) if birth_date else Decimal("1.0")
 
-    if prescription_type == "가감처방":
+    if prescription_type in ("가감처방", "가미제"):
         max_species = 5
         max_weight_g = Decimal("10.0") * ratio
+        rule_prefix = "가감처방" if prescription_type == "가감처방" else "가미제"
         if species_count > max_species:
             violations.append({
-                "rule": "가감처방 종수 초과",
+                "rule": f"{rule_prefix} 종수 초과",
                 "detail": f"가미 약재는 {max_species}종 이하여야 합니다. (현재 {species_count}종)"
             })
         if total_weight_g > max_weight_g:
             violations.append({
-                "rule": "가감처방 용량 초과",
+                "rule": f"{rule_prefix} 용량 초과",
                 "detail": f"가미 약재 총 용량이 {max_weight_g}g을 초과합니다. (현재 {total_weight_g}g)"
             })
 

@@ -11,7 +11,7 @@ type User = {
   license_number: string;
   name: string;
   role: "owner" | "staff";
-  tier: "basic" | "premium";
+  tier?: "basic" | "standard" | "premium" | null;
 };
 
 export const UserInfoForNav = () => {

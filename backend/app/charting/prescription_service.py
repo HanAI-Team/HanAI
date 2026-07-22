@@ -21,7 +21,7 @@ async def add_prescription(
     # 권한 체크 (내 병원 진료인지)
     await get_medical_record(db, doctor, record_id)
 
-    # 금액 자동 계산
+    # 금액 자동 계산 (총투약일수 반영된 전체 처방 금액 — 실제 청구/표시용)
     total_dosage_price = 0
     if data.unit_price and data.total_dosage_days:
         total_dosage_price = calculate_prescription_price(
@@ -31,13 +31,24 @@ async def add_prescription(
             birth_date=data.patient_birth_date,
         )
 
-    # 한도 검증
-    if data.prescription_type in ("가감처방", "임의처방"):
+    # 한도 검증 — 가미제/임의처방 인정기준(종수·중량·투약비)은 모두 "1일" 기준이므로,
+    # 총투약일수가 곱해진 total_dosage_price가 아니라 1일치 금액으로 비교해야 한다.
+    # (총액으로 비교하면 1일당 금액은 정상인데 여러 날 처방했다는 이유만으로
+    #  부당하게 한도 초과로 걸리게 됨)
+    if data.prescription_type in ("가감처방", "가미제", "임의처방"):
+        daily_price = 0
+        if data.unit_price:
+            daily_price = calculate_prescription_price(
+                unit_price=data.unit_price,
+                daily_dosage_ratio=data.daily_dosage_ratio,
+                total_dosage_days=1,
+                birth_date=data.patient_birth_date,
+            )
         violations = validate_prescription_limits(
             prescription_type=data.prescription_type,
             species_count=data.species_count or 0,
             total_weight_g=Decimal(str(data.total_weight_g or 0)),
-            total_dosage_price=total_dosage_price,
+            total_dosage_price=daily_price,
             birth_date=data.patient_birth_date,
         )
         if violations:

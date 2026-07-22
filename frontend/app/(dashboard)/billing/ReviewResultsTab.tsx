@@ -280,8 +280,8 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div
+    <div role="button" tabIndex={0} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div role="button" tabIndex={0}
         className="bg-card border border-border rounded-lg p-6 w-[380px]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -320,8 +320,8 @@ function UploadModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
 
 function DetailModal({ item, onClose }: { item: ClaimReviewResult; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div
+    <div role="button" tabIndex={0} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div role="button" tabIndex={0}
         className="bg-card border border-border rounded-lg p-6 w-[480px] max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >

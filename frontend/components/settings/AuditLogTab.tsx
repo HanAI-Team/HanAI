@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { getAuditLogs, AuditLogItem } from '@/lib/api/auditLogs'
+import { formatDateTime } from '@/lib/formatDateTime'
 
 const ACTION_CLASS: Record<string, string> = {
   CREATE: 'bg-green-500/15 text-green-600',
@@ -9,11 +10,6 @@ const ACTION_CLASS: Record<string, string> = {
   DELETE: 'bg-red-500/15 text-red-500',
   ANONYMIZE: 'bg-red-500/15 text-red-500',
   READ: 'bg-muted/20 text-muted',
-}
-
-function formatChangedAt(s: string) {
-  if (!s || s.length !== 14) return s
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}`
 }
 
 function toCompactDate(dateInput: string) {
@@ -105,7 +101,7 @@ export default function AuditLogTab() {
                         {log.action}
                       </span>
                     </td>
-                    <td className="py-3 text-subtext whitespace-nowrap">{formatChangedAt(log.changed_at)}</td>
+                    <td className="py-3 text-subtext whitespace-nowrap">{formatDateTime(log.changed_at)}</td>
                   </tr>
                 ))}
               </tbody>

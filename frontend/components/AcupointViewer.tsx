@@ -244,7 +244,7 @@ export function AcupointViewer({
               className="absolute"
               style={{ left: `${(p.x / viewBoxW) * 100}%`, top: `${(p.y / viewBoxH) * 100}%` }}
             >
-              <div
+              <div role="button" tabIndex={0}
                 className={`relative -translate-x-1/2 -translate-y-1/2 p-1.5 -m-1.5 ${readOnly ? "" : "cursor-pointer"}`}
                 onMouseEnter={() => setHovered(p.code)}
                 onMouseLeave={() => setHovered((h) => (h === p.code ? null : h))}

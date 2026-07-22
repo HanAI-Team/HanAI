@@ -8,7 +8,9 @@ import {
   bulkDownloadEdi,
   claimTypeLabel,
   createClaimPayment,
+  deleteLineItem,
   downloadSamFiles,
+  getClaimLineItems,
   getClaimPrescription,
   getClaimStatement,
   getClaims,
@@ -18,9 +20,10 @@ import {
   updateClaimApproval,
   updateClaimBillingAgent,
 } from "@/lib/api/billing";
+import type { ClaimSummary } from "@/types/billing";
 import { useIsExpired } from "@/contexts/SubscriptionContext";
 import PaymentHistoryModal from "@/components/billing/PaymentHistoryModal";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import ReviewResultsTab from "./ReviewResultsTab";
 
 const STATUS_FILTERS = [
@@ -53,6 +56,51 @@ export default function BillingPage() {
   const [paymentMethodDraft, setPaymentMethodDraft] = useState<Record<string, "cash" | "card" | "transfer">>({});
   const [payingId, setPayingId] = useState<string | null>(null);
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
+  const [expandedClaimId, setExpandedClaimId] = useState<string | null>(null);
+  const [lineItemsCache, setLineItemsCache] = useState<Record<string, ClaimSummary>>({});
+  const [expandLoading, setExpandLoading] = useState<string | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+
+  async function toggleExpand(claimId: string) {
+    if (expandedClaimId === claimId) {
+      setExpandedClaimId(null);
+      return;
+    }
+    setExpandedClaimId(claimId);
+    if (!lineItemsCache[claimId]) {
+      setExpandLoading(claimId);
+      try {
+        const detail = await getClaimLineItems(claimId);
+        setLineItemsCache((prev) => ({ ...prev, [claimId]: detail }));
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "청구 항목을 불러오지 못했습니다.");
+      } finally {
+        setExpandLoading(null);
+      }
+    }
+  }
+
+  async function handleDeleteLineItem(claimId: string, lineItemId: string) {
+    setDeletingItemId(lineItemId);
+    try {
+      const result = await deleteLineItem(lineItemId);
+      if ("deletedClaim" in result) {
+        setExpandedClaimId(null);
+        setLineItemsCache((prev) => {
+          const next = { ...prev };
+          delete next[claimId];
+          return next;
+        });
+      } else {
+        setLineItemsCache((prev) => ({ ...prev, [claimId]: result }));
+      }
+      reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "항목 삭제에 실패했습니다.");
+    } finally {
+      setDeletingItemId(null);
+    }
+  }
 
   async function handleCompletePayment(claim: ClaimListItem) {
     const method = paymentMethodDraft[claim.id] || "cash";
@@ -566,7 +614,8 @@ export default function BillingPage() {
 
       {/* 테이블 */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[1450px] text-sm">
           <thead className="border-b border-border">
             <tr className="text-xs text-subtext">
               <th className="p-3 w-8">
@@ -610,8 +659,8 @@ export default function BillingPage() {
               claims.map((claim) => {
                 const locked = claim.from_reception && !claim.is_paid;
                 return (
+                <Fragment key={claim.id}>
                 <tr
-                  key={claim.id}
                   className={`border-t border-border hover:bg-fill transition-colors ${
                     selected.has(claim.id) ? "bg-fill" : ""
                   }`}
@@ -624,7 +673,15 @@ export default function BillingPage() {
                       className="cursor-pointer"
                     />
                   </td>
-                  <td className="p-3 text-text font-medium">{claim.patient_name}</td>
+                  <td
+                    className="p-3 text-text font-medium cursor-pointer select-none"
+                    onClick={() => toggleExpand(claim.id)}
+                  >
+                    <span className="text-subtext mr-1">
+                      {expandedClaimId === claim.id ? "▾" : "▸"}
+                    </span>
+                    {claim.patient_name}
+                  </td>
                   <td className="p-3 text-subtext">{claim.claim_period}</td>
                   <td className="p-3">
                     <span
@@ -713,7 +770,7 @@ export default function BillingPage() {
                         <button
                           onClick={() => handleCompletePayment(claim)}
                           disabled={payingId === claim.id}
-                          className="px-2 py-1 text-xs rounded-md bg-[#EF6600] text-white hover:opacity-90 disabled:opacity-50 transition-all"
+                          className="px-2 py-1 text-xs rounded-md bg-[#EF6600] text-white hover:opacity-90 disabled:opacity-50 transition-all whitespace-nowrap"
                         >
                           {payingId === claim.id ? "처리 중..." : "수납완료처리"}
                         </button>
@@ -723,7 +780,7 @@ export default function BillingPage() {
                   <td className="p-3 text-center">
                     <button
                       onClick={() => setBillingAgentTarget(claim)}
-                      className={`px-2 py-0.5 rounded-full text-xs transition-colors ${
+                      className={`px-2 py-0.5 rounded-full text-xs transition-colors whitespace-nowrap ${
                         claim.billing_agent_code
                           ? "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20"
                           : "border border-border text-subtext hover:text-text"
@@ -744,7 +801,7 @@ export default function BillingPage() {
                           handleDownload(claim.id);
                         }}
                         disabled={downloading === claim.id || locked}
-                        className={`px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all ${
+                        className={`px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all whitespace-nowrap ${
                           isExpired || locked ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                       >
@@ -759,7 +816,7 @@ export default function BillingPage() {
                             }
                             setResubmitTarget(claim);
                           }}
-                          className={`px-3 py-1 text-xs rounded-md border border-[#EF6600] text-[#EF6600] hover:bg-[#EF6600] hover:text-white transition-all ${
+                          className={`px-3 py-1 text-xs rounded-md border border-[#EF6600] text-[#EF6600] hover:bg-[#EF6600] hover:text-white transition-all whitespace-nowrap ${
                             isExpired ? "opacity-50 cursor-not-allowed" : ""
                           }`}
                         >
@@ -770,11 +827,11 @@ export default function BillingPage() {
                   </td>
                   <td className="p-3 text-center">
                     {locked ? (
-                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                      <span className="text-xs text-muted whitespace-nowrap">수납 후 이용 가능</span>
                     ) : (
                       <button
                         onClick={() => handleReceiptPrint(claim)}
-                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all whitespace-nowrap"
                       >
                         출력
                       </button>
@@ -782,11 +839,11 @@ export default function BillingPage() {
                   </td>
                   <td className="p-3 text-center">
                     {locked ? (
-                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                      <span className="text-xs text-muted whitespace-nowrap">수납 후 이용 가능</span>
                     ) : (
                       <button
                         onClick={() => handleStatementPrint(claim)}
-                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all whitespace-nowrap"
                       >
                         출력
                       </button>
@@ -794,22 +851,64 @@ export default function BillingPage() {
                   </td>
                   <td className="p-3 text-center">
                     {locked ? (
-                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                      <span className="text-xs text-muted whitespace-nowrap">수납 후 이용 가능</span>
                     ) : (
                       <button
                         onClick={() => handlePrescriptionPrint(claim)}
-                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all whitespace-nowrap"
                       >
                         출력
                       </button>
                     )}
                   </td>
                 </tr>
+                {expandedClaimId === claim.id && (
+                  <tr className="border-t border-border bg-fill">
+                    <td colSpan={15} className="p-4">
+                      {expandLoading === claim.id ? (
+                        <div className="text-xs text-subtext py-2">불러오는 중...</div>
+                      ) : !lineItemsCache[claim.id] ? (
+                        <div className="text-xs text-subtext py-2">항목을 불러오지 못했습니다.</div>
+                      ) : lineItemsCache[claim.id].lineItems.length === 0 ? (
+                        <div className="text-xs text-subtext py-2">청구 항목이 없습니다.</div>
+                      ) : (
+                        <ul className="divide-y divide-border">
+                          {lineItemsCache[claim.id].lineItems.map((li) => (
+                            <li
+                              key={li.id}
+                              className="flex items-center justify-between py-2 text-xs"
+                            >
+                              <span className="text-text">
+                                {li.name}{" "}
+                                <span className="text-subtext">
+                                  {li.amount.toLocaleString()}원
+                                </span>
+                              </span>
+                              {claim.status === "draft" || claim.status === "rejected" ? (
+                                <button
+                                  onClick={() => handleDeleteLineItem(claim.id, li.id)}
+                                  disabled={deletingItemId === li.id}
+                                  className="text-red-500 hover:underline disabled:opacity-40"
+                                >
+                                  {deletingItemId === li.id ? "삭제 중..." : "삭제"}
+                                </button>
+                              ) : (
+                                <span className="text-muted">작성중/반려 상태만 삭제 가능</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
                 );
               })
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {resubmitTarget && (
@@ -914,8 +1013,8 @@ function ResubmissionModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div
+    <div role="button" tabIndex={0} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div role="button" tabIndex={0}
         className="bg-card border border-border rounded-lg p-6 w-[380px]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -1041,8 +1140,8 @@ function BillingAgentModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div
+    <div role="button" tabIndex={0} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div role="button" tabIndex={0}
         className="bg-card border border-border rounded-lg p-6 w-[380px]"
         onClick={(e) => e.stopPropagation()}
       >

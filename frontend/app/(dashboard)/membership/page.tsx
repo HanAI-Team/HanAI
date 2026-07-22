@@ -119,7 +119,7 @@ const MembershipPage = () => {
               const isCurrent = me?.tier === plan.tier && !isSubscriptionExpired;
 
               return (
-                <div
+                <div role="button" tabIndex={0}
                   key={plan.tier}
                   onClick={() => {
                     setAgreed({ [plan.tier]: true });

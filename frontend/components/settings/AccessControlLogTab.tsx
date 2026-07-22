@@ -1,16 +1,12 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { getAccessControlLogs, AccessControlLog } from '@/lib/api/auth'
+import { formatDateTime } from '@/lib/formatDateTime'
 
 const ACTION_CLASS: Record<string, string> = {
   부여: 'bg-green-500/15 text-green-600',
   변경: 'bg-[#EF6600]/15 text-[#EF6600]',
   말소: 'bg-red-500/15 text-red-500',
-}
-
-function formatActedAt(s: string) {
-  if (!s || s.length !== 14) return s
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}`
 }
 
 export default function AccessControlLogTab() {
@@ -60,7 +56,7 @@ export default function AccessControlLogTab() {
                     {log.reason && <span className="text-subtext ml-2">{log.reason}</span>}
                   </td>
                   <td className="py-3 pr-4 text-subtext">{log.acted_by_name ?? (log.acted_by ? log.acted_by.slice(0, 8) : '-')}</td>
-                  <td className="py-3 text-subtext whitespace-nowrap">{formatActedAt(log.acted_at)}</td>
+                  <td className="py-3 text-subtext whitespace-nowrap">{formatDateTime(log.acted_at)}</td>
                 </tr>
               ))}
             </tbody>

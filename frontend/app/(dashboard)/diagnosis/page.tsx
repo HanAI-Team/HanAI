@@ -2,6 +2,7 @@
 import { AcupointViewer, parseAcupointCodes } from "@/components/AcupointViewer";
 import BetaFeedbackBanner from "@/components/BetaFeedbackBanner";
 import { BillableItemPicker } from "@/components/billing/BillableItemPicker";
+import PrescriptionInput from "@/components/charting/PrescriptionInput";
 import {
   askDiagnosisStream,
   ChartingEvent,
@@ -307,12 +308,30 @@ export default function DiagnosisPage() {
     return Array.from(codes);
   }, [records]);
 
+  function persistKcdCodes(codes: KcdSearchResult[]) {
+    if (!currentRecordId) return; // 아직 저장 전인 신규 기록 — "저장" 시 함께 전송됨
+    const [primary, ...secondary] = codes;
+    // 완전코드가 아닌 코드를 탐색하는 중에는 저장이 거부되는 게 정상 동작이고,
+    // 그 사유는 이미 인라인 경고(kcdWarnings)로 보여주고 있으므로 별도
+    // 팝업으로 방해하지 않는다. (조용히 무시 — 완전코드를 선택하면 재시도됨)
+    updateKcdCode(currentRecordId, primary?.code ?? null, secondary.map((c) => c.code)).catch(() => {});
+  }
+
   function addKcdCode(item: KcdSearchResult) {
-    setKcdCodes((prev) => (prev.some((c) => c.code === item.code) ? prev : [...prev, item]));
+    setKcdCodes((prev) => {
+      if (prev.some((c) => c.code === item.code)) return prev;
+      const next = [...prev, item];
+      persistKcdCodes(next);
+      return next;
+    });
   }
 
   function removeKcdCode(code: string) {
-    setKcdCodes((prev) => prev.filter((c) => c.code !== code));
+    setKcdCodes((prev) => {
+      const next = prev.filter((c) => c.code !== code);
+      persistKcdCodes(next);
+      return next;
+    });
   }
 
   function kcdWarnings(code: string): string[] {
@@ -1390,7 +1409,7 @@ ${historyLine}
       <div className="hidden sm:flex w-[220px] flex-shrink-0 bg-card border-r border-border flex-col">
         {/* 섹션 1: 오늘 접수 */}
         <div className="p-3 border-b border-border">
-          <div
+          <div role="button" tabIndex={0}
             onClick={() => setQueueOpen((prev) => !prev)}
             className="flex items-center gap-2 mb-2 cursor-pointer"
           >
@@ -1415,7 +1434,7 @@ ${historyLine}
           ) : (
             <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto">
               {sortedQueue.map((item) => (
-                <div
+                <div role="button" tabIndex={0}
                   key={item.id}
                   onClick={() => {
                     setSelectedQueueItem(item);
@@ -2505,12 +2524,18 @@ ${historyLine}
                   </div>
                 </div>
                 {currentRecordId ? (
-                  <BillableItemPicker
-                    medicalRecordId={currentRecordId}
-                    onConfirmed={(claim) =>
-                      setRecordClaimIds((prev) => ({ ...prev, [currentRecordId]: claim.id }))
-                    }
-                  />
+                  <>
+                    <PrescriptionInput
+                      medicalRecordId={currentRecordId}
+                      patientBirthDate={selectedPatient?.birth_date}
+                    />
+                    <BillableItemPicker
+                      medicalRecordId={currentRecordId}
+                      onConfirmed={(claim) =>
+                        setRecordClaimIds((prev) => ({ ...prev, [currentRecordId]: claim.id }))
+                      }
+                    />
+                  </>
                 ) : (
                   <div className="text-sm text-muted text-center py-8">
                     먼저 진료 기록을 저장해주세요
@@ -2620,11 +2645,11 @@ ${historyLine}
 
       {/* 한의학 검색 - 진료 기록 저장 항목 선택 모달 */}
       {askSavePicker !== null && askHistory[askSavePicker]?.result && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setAskSavePicker(null)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[420px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2699,11 +2724,11 @@ ${historyLine}
 
       {/* 저장 확인 모달 */}
       {showSaveModal && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setShowSaveModal(false)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2759,11 +2784,11 @@ ${historyLine}
 
       {/* 저장 완료 모달 */}
       {showSavedModal && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setShowSavedModal(false)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2798,11 +2823,11 @@ ${historyLine}
 
       {/* 에러 모달 */}
       {errorMessage && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setErrorMessage(null)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
@@ -2824,11 +2849,11 @@ ${historyLine}
 
       {/* 신규 환자 등록 모달 */}
       {showAddModal && (
-        <div
+        <div role="button" tabIndex={0}
           className="fixed inset-0 bg-[#232323]/60 z-50 flex items-center justify-center p-4"
           onClick={() => setShowAddModal(false)}
         >
-          <div
+          <div role="button" tabIndex={0}
             className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
