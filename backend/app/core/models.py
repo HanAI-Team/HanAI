@@ -354,6 +354,10 @@ class ClaimLineItem(Base):
     hyeolmyeong_names = Column(JSON, nullable=True)  # DEPRECATED — 레거시 조회 전용, 신규 저장 금지
     is_non_benefit = Column(Boolean, nullable=False, default=False)
 
+    # 줄단위 진료의사 — 비어있으면 Claim.doctor_id(청구 대표 의사)를 그대로 쓴다.
+    # 실제 시행한 의사가 청구 대표 의사와 다른 경우(예: 대진의)에만 지정한다.
+    performed_by_doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     claim = relationship("Claim", back_populates="line_items")

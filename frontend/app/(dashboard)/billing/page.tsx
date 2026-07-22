@@ -14,11 +14,14 @@ import {
   getClaimPrescription,
   getClaimStatement,
   getClaims,
+  getHospitalDoctors,
   resubmitClaim,
   searchRejectionCodes,
   statusLabel,
   updateClaimApproval,
   updateClaimBillingAgent,
+  updateLineItemDoctor,
+  type HospitalDoctor,
 } from "@/lib/api/billing";
 import type { ClaimSummary } from "@/types/billing";
 import { useIsExpired } from "@/contexts/SubscriptionContext";
@@ -60,6 +63,40 @@ export default function BillingPage() {
   const [lineItemsCache, setLineItemsCache] = useState<Record<string, ClaimSummary>>({});
   const [expandLoading, setExpandLoading] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [hospitalDoctors, setHospitalDoctors] = useState<HospitalDoctor[]>([]);
+  const [updatingDoctorItemId, setUpdatingDoctorItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getHospitalDoctors().then(setHospitalDoctors).catch(() => setHospitalDoctors([]));
+  }, []);
+
+  async function handleChangeLineItemDoctor(
+    claimId: string,
+    lineItemId: string,
+    doctorId: string | null,
+  ) {
+    setUpdatingDoctorItemId(lineItemId);
+    try {
+      await updateLineItemDoctor(lineItemId, doctorId);
+      setLineItemsCache((prev) => {
+        const claim = prev[claimId];
+        if (!claim) return prev;
+        return {
+          ...prev,
+          [claimId]: {
+            ...claim,
+            lineItems: claim.lineItems.map((li) =>
+              li.id === lineItemId ? { ...li, performedByDoctorId: doctorId } : li
+            ),
+          },
+        };
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "담당의사 변경에 실패했습니다.");
+    } finally {
+      setUpdatingDoctorItemId(null);
+    }
+  }
 
   async function toggleExpand(claimId: string) {
     if (expandedClaimId === claimId) {
@@ -872,10 +909,12 @@ export default function BillingPage() {
                         <div className="text-xs text-subtext py-2">청구 항목이 없습니다.</div>
                       ) : (
                         <ul className="divide-y divide-border">
-                          {lineItemsCache[claim.id].lineItems.map((li) => (
+                          {lineItemsCache[claim.id].lineItems.map((li) => {
+                            const editable = claim.status === "draft" || claim.status === "rejected";
+                            return (
                             <li
                               key={li.id}
-                              className="flex items-center justify-between py-2 text-xs"
+                              className="flex items-center justify-between gap-3 py-2 text-xs"
                             >
                               <span className="text-text">
                                 {li.name}{" "}
@@ -883,19 +922,43 @@ export default function BillingPage() {
                                   {li.amount.toLocaleString()}원
                                 </span>
                               </span>
-                              {claim.status === "draft" || claim.status === "rejected" ? (
-                                <button
-                                  onClick={() => handleDeleteLineItem(claim.id, li.id)}
-                                  disabled={deletingItemId === li.id}
-                                  className="text-red-500 hover:underline disabled:opacity-40"
-                                >
-                                  {deletingItemId === li.id ? "삭제 중..." : "삭제"}
-                                </button>
-                              ) : (
-                                <span className="text-muted">작성중/반려 상태만 삭제 가능</span>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {editable ? (
+                                  <select
+                                    value={li.performedByDoctorId ?? ""}
+                                    onChange={(e) =>
+                                      handleChangeLineItemDoctor(
+                                        claim.id,
+                                        li.id,
+                                        e.target.value || null
+                                      )
+                                    }
+                                    disabled={updatingDoctorItemId === li.id}
+                                    className="bg-fill border border-border rounded-md px-1.5 py-1 text-xs text-text outline-none disabled:opacity-40"
+                                  >
+                                    <option value="">담당의사(기본)</option>
+                                    {hospitalDoctors.map((d) => (
+                                      <option key={d.id} value={d.id}>
+                                        {d.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
+                                {editable ? (
+                                  <button
+                                    onClick={() => handleDeleteLineItem(claim.id, li.id)}
+                                    disabled={deletingItemId === li.id}
+                                    className="text-red-500 hover:underline disabled:opacity-40"
+                                  >
+                                    {deletingItemId === li.id ? "삭제 중..." : "삭제"}
+                                  </button>
+                                ) : (
+                                  <span className="text-muted">작성중/반려 상태만 삭제 가능</span>
+                                )}
+                              </div>
                             </li>
-                          ))}
+                            );
+                          })}
                         </ul>
                       )}
                     </td>

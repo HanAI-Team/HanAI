@@ -277,6 +277,7 @@ function mapClaimSummary(raw: any): ClaimSummary {
       amount: li.amount,
       acupoints: (li.acupoints ?? []).map((a: any) => ({ code: a.code, koreanName: a.korean_name })),
       isNonBenefit: li.is_non_benefit ?? false,
+      performedByDoctorId: li.performed_by_doctor_id ?? null,
     })),
   };
 }
@@ -327,6 +328,33 @@ export async function deleteLineItem(
   });
   if (raw?.deleted_claim) return { deletedClaim: true };
   return mapClaimSummary(raw);
+}
+
+export interface HospitalDoctor {
+  id: string;
+  name: string;
+  licenseKind: string | null;
+  licenseNumber: string | null;
+}
+
+export async function getHospitalDoctors(): Promise<HospitalDoctor[]> {
+  const raw = await apiCall("/api/billing/doctors", { method: "GET" });
+  return (raw ?? []).map((d: any) => ({
+    id: d.id,
+    name: d.name,
+    licenseKind: d.license_kind,
+    licenseNumber: d.license_number,
+  }));
+}
+
+export async function updateLineItemDoctor(
+  lineItemId: string,
+  performedByDoctorId: string | null,
+): Promise<void> {
+  await apiCall(`/api/billing/line-items/${lineItemId}/doctor`, {
+    method: "PATCH",
+    body: JSON.stringify({ performed_by_doctor_id: performedByDoctorId }),
+  });
 }
 
 export async function updateClaimApproval(

@@ -15,6 +15,7 @@ export interface ClaimLineItem {
   amount: number;
   acupoints?: { code: string; koreanName: string }[];
   isNonBenefit?: boolean;
+  performedByDoctorId?: string | null;
 }
 
 export interface ClaimSummary {
