@@ -1,7 +1,7 @@
 """보관기간 초과 로그 / 의료 데이터 자동 삭제.
 
 보관기간 기준:
-- login_logs: 1년 (개인정보보호법)
+- login_logs: 2년 (개인정보보호법)
 - audit_logs: 5년 (의료법)
 - account_histories: 5년 (의료법)
 - access_control_logs: 3년 (HIRA 청구SW 기능검사 보안 기준)
