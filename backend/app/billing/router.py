@@ -1487,6 +1487,29 @@ async def add_line_items(
         db.add(claim)
         await db.flush()
 
+    # 단독침술(분구침술 등) 동시 시술 점검 — FeeMaster.is_standalone=True인
+    # 코드는 같은 진료기록 내 다른 침술 항목과 동시 청구 불가.
+    new_codes = [get_catalog_item(line.item_id).code for line in payload.items]
+    if new_codes:
+        r_existing_codes = await db.execute(
+            select(ClaimLineItem.code).where(ClaimLineItem.medical_record_id == record_id)
+        )
+        existing_codes = {row[0] for row in r_existing_codes.all() if row[0]}
+        all_codes = existing_codes | set(new_codes)
+        if len(all_codes) > 1:
+            r_standalone = await db.execute(
+                select(FeeMaster.code, FeeMaster.name).where(
+                    FeeMaster.code.in_(all_codes), FeeMaster.is_standalone.is_(True)
+                )
+            )
+            standalone_hits = r_standalone.all()
+            if standalone_hits:
+                names = ", ".join(f"{name}({code})" for code, name in standalone_hits)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"단독침술({names})은 다른 침술 항목과 동시에 청구할 수 없습니다.",
+                )
+
     added_amount = 0
     added_non_benefit = 0
     codes_in_this_request: set[str] = set()
@@ -1636,8 +1659,11 @@ async def delete_line_item(
 ):
     """청구 항목(ClaimLineItem) 1건 삭제 후 소속 청구서(Claim) 금액 재계산.
 
-    작성중(draft) 상태 청구서만 대상 — 제출된 청구서는 항목을 건드리면 안 됨.
-    마지막 항목을 지우면 빈 draft 청구서 자체도 같이 정리한다.
+    작성중(draft) 또는 반려(rejected) 상태 청구서만 대상.
+    반려 건은 "보완청구" 제도 취지상 원본을 고쳐서 재제출하는 게 정상 흐름이라
+    허용한다. 승인(approved)된 청구서는 심평원이 이미 받아들인 내용이라 여기서
+    건드리면 안 되고, 정정청구/취소재청구 같은 별도 절차가 필요하다 — 대상 아님.
+    마지막 항목을 지우면 빈 draft/rejected 청구서 자체도 같이 정리한다.
     """
     line_item = await db.get(ClaimLineItem, line_item_id)
     if not line_item:
@@ -1646,8 +1672,11 @@ async def delete_line_item(
     claim = await db.get(Claim, line_item.claim_id)
     if not claim or claim.hospital_id != current_user.hospital_id:
         raise HTTPException(status_code=404, detail="청구 항목을 찾을 수 없습니다.")
-    if claim.status != "draft":
-        raise HTTPException(status_code=400, detail="작성중(draft) 상태의 청구서만 항목을 삭제할 수 있습니다.")
+    if claim.status not in ("draft", "rejected"):
+        raise HTTPException(
+            status_code=400,
+            detail="작성중(draft) 또는 반려(rejected) 상태의 청구서만 항목을 삭제할 수 있습니다.",
+        )
 
     medical_record_id = line_item.medical_record_id
     await db.delete(line_item)
