@@ -35,7 +35,7 @@ async def add_prescription(
     # 총투약일수가 곱해진 total_dosage_price가 아니라 1일치 금액으로 비교해야 한다.
     # (총액으로 비교하면 1일당 금액은 정상인데 여러 날 처방했다는 이유만으로
     #  부당하게 한도 초과로 걸리게 됨)
-    if data.prescription_type in ("가감처방", "임의처방"):
+    if data.prescription_type in ("가감처방", "가미제", "임의처방"):
         daily_price = 0
         if data.unit_price:
             daily_price = calculate_prescription_price(
