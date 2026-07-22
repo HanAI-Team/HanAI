@@ -651,7 +651,8 @@ export default function BillingPage() {
 
       {/* 테이블 */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[1450px] text-sm">
           <thead className="border-b border-border">
             <tr className="text-xs text-subtext">
               <th className="p-3 w-8">
@@ -806,7 +807,7 @@ export default function BillingPage() {
                         <button
                           onClick={() => handleCompletePayment(claim)}
                           disabled={payingId === claim.id}
-                          className="px-2 py-1 text-xs rounded-md bg-[#EF6600] text-white hover:opacity-90 disabled:opacity-50 transition-all"
+                          className="px-2 py-1 text-xs rounded-md bg-[#EF6600] text-white hover:opacity-90 disabled:opacity-50 transition-all whitespace-nowrap"
                         >
                           {payingId === claim.id ? "처리 중..." : "수납완료처리"}
                         </button>
@@ -816,7 +817,7 @@ export default function BillingPage() {
                   <td className="p-3 text-center">
                     <button
                       onClick={() => setBillingAgentTarget(claim)}
-                      className={`px-2 py-0.5 rounded-full text-xs transition-colors ${
+                      className={`px-2 py-0.5 rounded-full text-xs transition-colors whitespace-nowrap ${
                         claim.billing_agent_code
                           ? "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20"
                           : "border border-border text-subtext hover:text-text"
@@ -837,7 +838,7 @@ export default function BillingPage() {
                           handleDownload(claim.id);
                         }}
                         disabled={downloading === claim.id || locked}
-                        className={`px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all ${
+                        className={`px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text disabled:opacity-50 transition-all whitespace-nowrap ${
                           isExpired || locked ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                       >
@@ -852,7 +853,7 @@ export default function BillingPage() {
                             }
                             setResubmitTarget(claim);
                           }}
-                          className={`px-3 py-1 text-xs rounded-md border border-[#EF6600] text-[#EF6600] hover:bg-[#EF6600] hover:text-white transition-all ${
+                          className={`px-3 py-1 text-xs rounded-md border border-[#EF6600] text-[#EF6600] hover:bg-[#EF6600] hover:text-white transition-all whitespace-nowrap ${
                             isExpired ? "opacity-50 cursor-not-allowed" : ""
                           }`}
                         >
@@ -863,11 +864,11 @@ export default function BillingPage() {
                   </td>
                   <td className="p-3 text-center">
                     {locked ? (
-                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                      <span className="text-xs text-muted whitespace-nowrap">수납 후 이용 가능</span>
                     ) : (
                       <button
                         onClick={() => handleReceiptPrint(claim)}
-                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all whitespace-nowrap"
                       >
                         출력
                       </button>
@@ -875,11 +876,11 @@ export default function BillingPage() {
                   </td>
                   <td className="p-3 text-center">
                     {locked ? (
-                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                      <span className="text-xs text-muted whitespace-nowrap">수납 후 이용 가능</span>
                     ) : (
                       <button
                         onClick={() => handleStatementPrint(claim)}
-                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all whitespace-nowrap"
                       >
                         출력
                       </button>
@@ -887,11 +888,11 @@ export default function BillingPage() {
                   </td>
                   <td className="p-3 text-center">
                     {locked ? (
-                      <span className="text-xs text-muted">수납 후 이용 가능</span>
+                      <span className="text-xs text-muted whitespace-nowrap">수납 후 이용 가능</span>
                     ) : (
                       <button
                         onClick={() => handlePrescriptionPrint(claim)}
-                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all"
+                        className="px-3 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-all whitespace-nowrap"
                       >
                         출력
                       </button>
@@ -970,6 +971,7 @@ export default function BillingPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {resubmitTarget && (

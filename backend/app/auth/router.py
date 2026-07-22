@@ -463,10 +463,18 @@ async def get_me(
         else None
     )
 
-    if isinstance(user, Doctor):
-        subscription_result = await db.execute(select(Subscription).where(Subscription.hospital_id == hospital.id ))
-        subscription = subscription_result.scalar_one_or_none()
+    subscription_result = await db.execute(
+        select(Subscription).where(Subscription.hospital_id == user.hospital_id)
+    )
+    subscription = subscription_result.scalar_one_or_none()
+    tier = subscription.tier if subscription else "basic"
+    expired_at = subscription.expired_at if subscription else None
+    is_expired = (
+        subscription.expired_at is None or
+        subscription.expired_at < datetime.now(timezone.utc)
+    ) if subscription else True
 
+    if isinstance(user, Doctor):
         return {
             "id": user.id,
             "name": user.name,
@@ -478,12 +486,9 @@ async def get_me(
             "agency_code": agency_code,
             "approval_no": approval_no,
             "birth_date": user.birth_date,
-            "tier" :  subscription.tier,
-            "expired_at" : subscription.expired_at,
-            "is_expired": (
-                subscription.expired_at is None or 
-                subscription.expired_at < datetime.now(timezone.utc)
-            ) if subscription else True,
+            "tier": tier,
+            "expired_at": expired_at,
+            "is_expired": is_expired,
             "chuna_training_certified": user.chuna_training_certified,
             "chuna_training_banner_seen": user.chuna_training_banner_seen,
             "last_login_ip": last_login_ip,
@@ -500,6 +505,9 @@ async def get_me(
         "institution_code": institution_code,
         "agency_code": agency_code,
         "approval_no": approval_no,
+        "tier": tier,
+        "expired_at": expired_at,
+        "is_expired": is_expired,
         "last_login_ip": last_login_ip,
         "last_login_at": last_login_at,
     }
