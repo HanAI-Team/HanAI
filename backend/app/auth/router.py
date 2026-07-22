@@ -446,6 +446,7 @@ async def get_me(
     hospital = hospital_result.scalar_one_or_none()
     institution_code = hospital.institution_code if hospital else None
     agency_code = hospital.agency_code if hospital else None
+    approval_no = hospital.approval_no if hospital else None
 
     last_login_result = await db.execute(
         select(LoginLog)
@@ -475,6 +476,7 @@ async def get_me(
             "hospital_name": hospital.name if hospital else None,
             "institution_code": institution_code,
             "agency_code": agency_code,
+            "approval_no": approval_no,
             "birth_date": user.birth_date,
             "tier" :  subscription.tier,
             "expired_at" : subscription.expired_at,
@@ -497,6 +499,7 @@ async def get_me(
         "hospital_name": hospital.name if hospital else None,
         "institution_code": institution_code,
         "agency_code": agency_code,
+        "approval_no": approval_no,
         "last_login_ip": last_login_ip,
         "last_login_at": last_login_at,
     }

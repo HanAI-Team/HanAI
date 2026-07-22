@@ -146,3 +146,24 @@ async def test_요양기관기호_생략하면_기존값_유지(client, approved
     )
     assert resp.status_code == 200
     assert resp.json()["institution_code"] == "12345678"
+
+
+# ── 소프트웨어 승인번호 저장 후 새로고침 시 사라지는 버그 재현 (2026-07-22) ──
+# PATCH /api/hospitals/{id}로 저장은 되지만(HospitalResponse에 approval_no
+# 포함), 새로고침 시 프론트가 호출하는 GET /api/auth/me 응답에는
+# approval_no가 아예 빠져있어 화면에서 값이 사라진 것처럼 보였다.
+
+async def test_소프트웨어_승인번호_저장후_me_조회에도_반영(client, approved_doctor):
+    doctor, headers = approved_doctor
+
+    patch_resp = await client.patch(
+        f"/api/hospitals/{doctor.hospital_id}",
+        json={"approval_no": "TEST-2026-0001"},
+        headers=headers,
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["approval_no"] == "TEST-2026-0001"
+
+    me_resp = await client.get("/api/auth/me", headers=headers)
+    assert me_resp.status_code == 200
+    assert me_resp.json()["approval_no"] == "TEST-2026-0001"
