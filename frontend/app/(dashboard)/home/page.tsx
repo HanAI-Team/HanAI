@@ -529,6 +529,8 @@ export default function HomePage() {
                     type="date"
                     value={newPatientForm.birth_date}
                     onChange={(e) => setNewPatientForm((p) => ({ ...p, birth_date: e.target.value }))}
+                    min="1900-01-01"
+                    max={new Date().toISOString().slice(0, 10)}
                     className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                   />
                 </div>
