@@ -14,6 +14,7 @@ from app.patients.schema import (
     DataPurgeLogResponse,
     PatientCreate,
     PatientListResponse,
+    PatientRecordListResponse,
     PatientResponse,
     PatientUpdate,
     RecentRecordSummary,
@@ -26,6 +27,15 @@ from sqlalchemy import insert as sa_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["patients"])
+
+
+def _mask_rrn(rrn: str | None) -> str | None:
+    """목록처럼 여러 명이 한 화면에 노출되는 곳에는 주민번호 원문 대신
+    앞 6자리(생년월일)+성별코드 1자리만 보여주고 나머지는 마스킹한다."""
+    digits = "".join(ch for ch in (rrn or "") if ch.isdigit())
+    if len(digits) < 7:
+        return None
+    return f"{digits[:6]}-{digits[6]}******"
 
 
 @router.get("/stats")
@@ -98,11 +108,16 @@ async def get_patients(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="등록된 회원이 없습니다."
         )
+    items = []
+    for p in patients:
+        item = PatientResponse.model_validate(p)
+        item.rrn_masked = _mask_rrn(p.rrn)
+        items.append(item)
     return PatientListResponse(
         total=total,
         page=page,
         size=size,
-        items=[PatientResponse.model_validate(p) for p in patients],
+        items=items,
     )
 
 
@@ -498,6 +513,23 @@ async def get_patient_records(
         "records": [RecentRecordSummary.model_validate(r) for r in records],
     }
 
+
+@router.get("/{patient_id}/records/all", response_model=PatientRecordListResponse)
+async def get_patient_records_all(
+    patient_id: UUID,
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
+):
+    """환자 페이지에서 전체 진료 기록을 페이지 단위로 조회 (최근 5건 제한 없음)."""
+    _, total, records = await service.get_patient_records_paginated(db, doctor, patient_id, page, size)
+    return PatientRecordListResponse(
+        total=total,
+        page=page,
+        size=size,
+        items=[RecentRecordSummary.model_validate(r) for r in records],
+    )
 
 
 @router.get("/export/csv")

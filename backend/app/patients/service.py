@@ -111,6 +111,34 @@ async def get_patient_with_records(
     return patient, records
 
 
+async def get_patient_records_paginated(
+    db: AsyncSession, doctor: Doctor, patient_id: UUID, page: int, size: int
+) -> tuple[Patient, int, list[MedicalRecord]]:
+    """환자 페이지에서 전체 진료 기록을 페이지 단위로 조회 (최근 5건 제한 없음)."""
+    patient = await get_patient(db, doctor, patient_id)
+
+    base_where = (
+        MedicalRecord.patient_id == patient_id,
+        MedicalRecord.recorded_at.isnot(None),
+    )
+
+    count_result = await db.execute(
+        select(func.count()).select_from(MedicalRecord).where(*base_where)
+    )
+    total = count_result.scalar() or 0
+
+    result = await db.execute(
+        select(MedicalRecord)
+        .where(*base_where)
+        .order_by(MedicalRecord.recorded_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    records = list(result.scalars().all())
+
+    return patient, total, records
+
+
 async def anonymize_patient  (
     db: AsyncSession,
     doctor: Doctor,
