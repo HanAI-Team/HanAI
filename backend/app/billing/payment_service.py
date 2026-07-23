@@ -50,6 +50,7 @@ async def list_payments(
     method: str | None,
     page: int,
     size: int,
+    patient_id: UUID | None = None,
 ) -> tuple[int, list[tuple[ClaimPayment, Claim, Patient]]]:
     stmt = (
         select(ClaimPayment, Claim, Patient)
@@ -57,6 +58,8 @@ async def list_payments(
         .join(Patient, Claim.patient_id == Patient.id)
         .where(ClaimPayment.hospital_id == hospital_id)
     )
+    if patient_id:
+        stmt = stmt.where(Claim.patient_id == patient_id)
     stmt = _apply_filters(stmt, start_date, end_date, method)
 
     count_stmt = select(func.count()).select_from(stmt.subquery())

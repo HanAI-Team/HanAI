@@ -15,8 +15,10 @@ export interface AuditLogItem {
   action: string;
   actor_id: string | null;
   actor_type: string | null;
+  actor_name: string | null;
   changed_at: string;
   detail: string | null;
+  ip_address: string | null;
 }
 
 export interface AuditLogFilters {

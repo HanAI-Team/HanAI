@@ -5,11 +5,13 @@ export interface Patient {
   gender: string
   phone?: string
   birth_date?: string
+  address?: string
   memo?: string
   created_at: string
   insurance_type?: string
   disability_grade?: string
   medical_aid_grade?: string
+  rrn_masked?: string
 }
 
 export interface DiagnosisResult {
@@ -50,6 +52,7 @@ export interface Hospital {
   institution_code?: string
   agency_code?: string
   approval_no?: string
+  session_timeout_minutes?: number | null
 }
 
 export interface DoctorWorkDays {
@@ -70,6 +73,7 @@ export interface Me {
   institution_code?: string | null
   agency_code?: string | null
   approval_no?: string | null
+  session_timeout_minutes?: number | null
   license_number?: string
   username?: string
   email?: string

@@ -33,6 +33,10 @@ class Hospital(Base):
     institution_code = Column(String(8), nullable=True)  # 심평원 요양기관기호
     agency_code = Column(String(5), nullable=True)  # 대행청구단체기호 (EDI 레코드1 pos342-346)
     approval_no = Column(String(35), nullable=True)  # 소프트웨어 승인번호
+    # 로그인 세션 idle 타임아웃(분). 5~30 허용, 값 없으면 30분으로 동작.
+    # 상한이 30분인 이유: JWT_EXPIRE_MINUTES가 30분이라, 그보다 크게 두면 idle 타이머가
+    # 돌기 전에 JWT가 먼저 만료돼 401이 난다.
+    session_timeout_minutes = Column(Integer, nullable=True, default=30, server_default="30")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     doctors = relationship("Doctor", back_populates="hospital")
@@ -160,6 +164,7 @@ class Patient(Base):
     birth_date = Column(Date)
     gender = Column(String)
     phone = Column(String)
+    address = Column(String, nullable=True)
     memo = Column(Text)
     insurance_type = Column(String, default="health")
     medical_aid_grade = Column(String(1), nullable=True)   # 의료급여 1종="1", 2종="2", 나머지 None
@@ -354,6 +359,10 @@ class ClaimLineItem(Base):
     hyeolmyeong_names = Column(JSON, nullable=True)  # DEPRECATED — 레거시 조회 전용, 신규 저장 금지
     is_non_benefit = Column(Boolean, nullable=False, default=False)
 
+    # 줄단위 진료의사 — 비어있으면 Claim.doctor_id(청구 대표 의사)를 그대로 쓴다.
+    # 실제 시행한 의사가 청구 대표 의사와 다른 경우(예: 대진의)에만 지정한다.
+    performed_by_doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     claim = relationship("Claim", back_populates="line_items")
@@ -536,6 +545,7 @@ class AuditLog(Base):
     actor_type = Column(String(20), nullable=True)
     changed_at = Column(String(14), nullable=False)
     detail = Column(Text, nullable=True)
+    ip_address = Column(String(45), nullable=True)  # 개인정보 접속기록 요건 — 접속자 IP주소
 
 
 class DataDownloadLog(Base):

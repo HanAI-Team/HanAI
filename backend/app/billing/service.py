@@ -925,6 +925,20 @@ async def _build_claim_edi_file(
     r7 = await db.execute(select(Hospital).where(Hospital.id == hospital_id))
     hospital = r7.scalar_one_or_none()
 
+    # 줄단위 진료의사(대진의 등, ClaimLineItem.performed_by_doctor_id) — 지정 안 돼
+    # 있으면 청구 대표 의사(doctor)를 그대로 쓴다.
+    performer_ids = {li.performed_by_doctor_id for li in all_line_items if li.performed_by_doctor_id}
+    performers_by_id: dict = {}
+    if performer_ids:
+        r_performers = await db.execute(select(Doctor).where(Doctor.id.in_(performer_ids)))
+        performers_by_id = {d.id: d for d in r_performers.scalars().all()}
+
+    def _resolve_license(li: "ClaimLineItem") -> tuple[str, str]:
+        performer = performers_by_id.get(li.performed_by_doctor_id) if li.performed_by_doctor_id else None
+        if performer:
+            return (performer.license_kind or "3", performer.license_number or "")
+        return ("3", doctor.license_number if doctor else "")
+
     # 2. ClaimHeader 조립
     inst_code = resolve_institution_code(hospital)
 
@@ -1248,8 +1262,8 @@ async def _build_claim_edi_file(
                     change_date=_resolve_change_date(
                         li.code, record.recorded_at.date() if record.recorded_at else None
                     ),
-                    license_kind="3",
-                    license_no=doctor.license_number if doctor else "",
+                    license_kind=_resolve_license(li)[0],
+                    license_no=_resolve_license(li)[1],
                 )))
                 # JS010: 진료일시 (줄 단위 — 발생단위구분='2' 줄번호단위)
                 if record.recorded_at:

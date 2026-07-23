@@ -14,6 +14,7 @@ class HospitalUpdate(BaseModel):
     institution_code: Optional[str] = None
     agency_code: Optional[str] = None
     approval_no: Optional[str] = None
+    session_timeout_minutes: Optional[int] = None
 
     @field_validator("institution_code")
     @classmethod
@@ -41,6 +42,7 @@ class HospitalResponse(BaseModel):
     institution_code: Optional[str] = None
     agency_code: Optional[str] = None
     approval_no: Optional[str] = None
+    session_timeout_minutes: Optional[int] = None
 
 
 class StaffingCreate(BaseModel):

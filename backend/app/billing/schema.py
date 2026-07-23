@@ -352,9 +352,21 @@ class ClaimLineItemResponse(BaseModel):
     amount: int
     acupoints: list[AcupointRef] = Field(default_factory=list)
     is_non_benefit: bool = False
+    performed_by_doctor_id: str | None = None
 
     class Config:
         from_attributes = True
+
+
+class HospitalDoctorItem(BaseModel):
+    id: str
+    name: str
+    license_kind: str | None = None
+    license_number: str | None = None
+
+
+class LineItemDoctorUpdate(BaseModel):
+    performed_by_doctor_id: str | None = None
 
 
 class ClaimSummaryResponse(BaseModel):

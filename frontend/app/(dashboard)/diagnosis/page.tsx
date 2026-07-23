@@ -26,7 +26,6 @@ import { getTodayQueue, QueueItem, updateQueueStatus } from "@/lib/api/queue";
 import { useIsExpired } from "@/contexts/SubscriptionContext";
 import { DiagnosisResult, Patient } from "@/types";
 import {
-  Check,
   ChevronDown,
   ChevronUp,
   CircleCheck,
@@ -68,7 +67,8 @@ const ASK_SAVE_FIELDS: { key: string; label: string }[] = [
 function getQueueStatusLabel(status: QueueItem["status"]): { label: string; className: string } {
   if (status === "paid") return { label: "수납완료", className: "text-green-500" };
   if (status === "done") return { label: "진료완료", className: "text-blue-500" };
-  return { label: "대기", className: "text-[#EF6600]" };
+  if (status === "in_progress") return { label: "진료중", className: "text-[#EF6600]" };
+  return { label: "대기", className: "text-muted" };
 }
 
 export default function DiagnosisPage() {
@@ -90,7 +90,6 @@ export default function DiagnosisPage() {
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingResult2, setLoadingResult2] = useState(false);
-  const [historyCopied, setHistoryCopied] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [newPatient, setNewPatient] = useState({
@@ -124,6 +123,12 @@ export default function DiagnosisPage() {
   const [kcdDropdownOpen, setKcdDropdownOpen] = useState(false);
   const [kcdValidation, setKcdValidation] = useState<Record<string, KcdValidateResult>>({});
   const [showPastKcd, setShowPastKcd] = useState(false);
+  const [recommendedKcd, setRecommendedKcd] = useState<KcdSearchResult[]>([]);
+  const [startConfirm, setStartConfirm] = useState<{ item: QueueItem; patient: Patient } | null>(null);
+  const [startConfirmRecords, setStartConfirmRecords] = useState<
+    Awaited<ReturnType<typeof getPatientRecords>>["records"]
+  >([]);
+  const [startConfirmLoading, setStartConfirmLoading] = useState(false);
   const [saveSelection, setSaveSelection] = useState<
     "both" | "result1" | "result2"
   >("both");
@@ -362,6 +367,52 @@ export default function DiagnosisPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [kcdQuery]);
+
+  useEffect(() => {
+    // AI 진단명은 "슬관절통(膝關節痛)"처럼 한자 병기가 붙거나 "손목 염좌/건초염/
+    // 활액낭염"처럼 복합 진단을 "/", ","로 이어붙이는 경우가 많아, 원문 그대로는
+    // KCD 검색이 거의 매칭되지 않는다. 한자 병기를 떼어내고 구분자·공백 단위로
+    // 쪼갠 개별 단어들을 각각 검색해 합친다 (직접 검색창에 입력하는 것과 동일한
+    // 검색 로직 재사용). 한의학적 진단과 양방 대응 문구를 모두 후보로 쓴다.
+    const terms = new Set<string>();
+    for (const text of [
+      result?.diagnosis,
+      result?.western_diagnosis,
+      result?.claudeBased?.diagnosis,
+      result?.claudeBased?.western_diagnosis,
+    ]) {
+      if (!text || text === "-") continue;
+      const cleaned = text.replace(/[（(][^)）]*[)）]/g, " ");
+      for (const segment of cleaned.split(/[\/,、·]/)) {
+        const trimmed = segment.trim();
+        if (!trimmed) continue;
+        terms.add(trimmed);
+        for (const word of trimmed.split(/\s+/)) {
+          if (word.length >= 2) terms.add(word);
+        }
+      }
+    }
+    const termList = Array.from(terms).slice(0, 12);
+    if (termList.length === 0) {
+      setRecommendedKcd([]);
+      return;
+    }
+    Promise.all(termList.map((t) => searchKcd(t).catch(() => [] as KcdSearchResult[])))
+      .then((results) => {
+        const merged: KcdSearchResult[] = [];
+        const seen = new Set<string>();
+        for (const list of results) {
+          for (const item of list) {
+            if (!seen.has(item.code)) {
+              seen.add(item.code);
+              merged.push(item);
+            }
+          }
+        }
+        setRecommendedKcd(merged.slice(0, 6));
+      })
+      .catch(() => setRecommendedKcd([]));
+  }, [result]);
 
   useEffect(() => {
     if (!isOverviewTab || !selectedPatient) return;
@@ -1282,6 +1333,47 @@ ${historyLine}
     return "-";
   }
 
+  function applyPatient(patient: Patient) {
+    setSelectedPatient(patient);
+    setResult(null);
+    setRecordsLastFetchedFor(null);
+    setSavedSymptomText(undefined);
+    setActiveTab("record");
+    setMemo(patient.memo || "");
+    setRecordMedicalHistory({ hasHistory: false, text: "" });
+  }
+
+  function startTreatment(item: QueueItem, patient: Patient) {
+    applyPatient(patient);
+    setSelectedQueueItem(item);
+    updateQueueStatus(item.id, "in_progress")
+      .then((updated) => {
+        setTodayQueue((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+        setSelectedQueueItem(updated);
+      })
+      .catch(console.error);
+  }
+
+  function openStartConfirm(item: QueueItem) {
+    setStartConfirmLoading(true);
+    setStartConfirmRecords([]);
+    const proceed = (patient: Patient) => {
+      setStartConfirm({ item, patient });
+      getPatientRecords(patient.id)
+        .then((data) => setStartConfirmRecords(data.records.slice(0, 3)))
+        .catch(() => setStartConfirmRecords([]))
+        .finally(() => setStartConfirmLoading(false));
+    };
+    const existing = patients.find((p) => p.id === item.patient_id);
+    if (existing) {
+      proceed(existing);
+    } else {
+      getPatient(item.patient_id)
+        .then(proceed)
+        .catch(() => setStartConfirmLoading(false));
+    }
+  }
+
   function buildResultCards(r: DiagnosisResult | undefined | null): {
     label: string;
     Icon: LucideIcon;
@@ -1437,17 +1529,12 @@ ${historyLine}
                 <div role="button" tabIndex={0}
                   key={item.id}
                   onClick={() => {
+                    if (item.status === "waiting") {
+                      openStartConfirm(item);
+                      return;
+                    }
                     setSelectedQueueItem(item);
                     const patient = patients.find((p) => p.id === item.patient_id);
-                    const applyPatient = (patient: Patient) => {
-                      setSelectedPatient(patient);
-                      setResult(null);
-                      setRecordsLastFetchedFor(null);
-                      setSavedSymptomText(undefined);
-                      setActiveTab("record");
-                      setMemo(patient.memo || "");
-                      setRecordMedicalHistory({ hasHistory: false, text: "" });
-                    };
                     if (patient) {
                       applyPatient(patient);
                     } else {
@@ -2208,39 +2295,6 @@ ${historyLine}
                                 )}
                               </button>
                               <button
-                                onClick={() => {
-                                  if (!r.chart_structured) return;
-                                  navigator.clipboard.writeText(r.chart_structured);
-                                  setHistoryCopied(r.id);
-                                  setTimeout(() => setHistoryCopied(null), 2000);
-                                }}
-                                className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
-                                title="복사"
-                              >
-                                {historyCopied === r.id ? (
-                                  <Check className="w-3.5 h-3.5 text-green-500" />
-                                ) : (
-                                  <Clipboard className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setCurrentRecordId(r.id);
-                                  setActiveTab("billing");
-                                }}
-                                className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
-                                title="청구"
-                              >
-                                <ReceiptText className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleReceiptPrint(recordClaimIds[r.id])}
-                                className="px-3 border-l border-border text-muted hover:text-[#EF6600] hover:bg-orange-50 transition-colors"
-                                title="영수증 출력"
-                              >
-                                <Receipt className="w-3.5 h-3.5" />
-                              </button>
-                              <button
                                 onClick={() => handleDeleteRecord(r.id)}
                                 className="px-3 border-l border-border text-muted hover:text-red-500 hover:bg-red-50 transition-colors"
                                 title="삭제"
@@ -2391,6 +2445,26 @@ ${historyLine}
                       <History className="w-3 h-3" /> 과거 상병
                     </button>
                   </div>
+
+                  {recommendedKcd.filter((item) => !kcdCodes.some((c) => c.code === item.code)).length > 0 && (
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                      <span className="flex items-center gap-1 text-[11px] text-subtext">
+                        <Sparkles className="w-3 h-3 text-[#EF6600]" /> AI 추천
+                      </span>
+                      {recommendedKcd
+                        .filter((item) => !kcdCodes.some((c) => c.code === item.code))
+                        .map((item) => (
+                          <button
+                            key={item.code}
+                            type="button"
+                            onClick={() => addKcdCode(item)}
+                            className="rounded-full border border-[#EF6600]/40 bg-[#EF6600]/5 px-2.5 py-1 text-[11px] text-[#EF6600] hover:bg-[#EF6600]/10 transition-colors"
+                          >
+                            {item.code} {item.korean_name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
 
                   {kcdCodes.length > 0 && (
                     <div className="flex flex-col gap-1.5 mb-2">
@@ -2816,6 +2890,66 @@ ${historyLine}
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 진료 시작 확인 모달 */}
+      {startConfirm && (
+        <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl w-full max-w-md shadow-xl max-h-[85vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-border flex-shrink-0">
+              <div className="text-sm font-medium text-text">진료하시겠습니까?</div>
+            </div>
+            <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto">
+              <div>
+                <div className="text-xs text-subtext mb-1">인적사항</div>
+                <div className="text-sm text-text">
+                  {startConfirm.patient.name} · {patientGenderAge(startConfirm.patient)} ·{" "}
+                  {insuranceLabel(startConfirm.patient.insurance_type)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-subtext mb-1">오늘 증상</div>
+                <div className="text-sm text-text">{startConfirm.item.symptom || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-subtext mb-1">전 진료 이력</div>
+                {startConfirmLoading ? (
+                  <div className="text-xs text-muted">불러오는 중...</div>
+                ) : startConfirmRecords.length === 0 ? (
+                  <div className="text-xs text-muted">이전 진료 이력이 없습니다</div>
+                ) : (
+                  <ul className="flex flex-col gap-1.5">
+                    {startConfirmRecords.map((r) => (
+                      <li key={r.id} className="text-xs text-text">
+                        <span className="text-subtext">
+                          {r.recorded_at ? r.recorded_at.slice(0, 10) : "-"}
+                        </span>{" "}
+                        · {(r.chart_structured || "").slice(0, 60).trim() || "내용 없음"}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            <div className="flex border-t border-border flex-shrink-0">
+              <button
+                onClick={() => setStartConfirm(null)}
+                className="flex-1 py-3 text-sm text-subtext hover:bg-fill transition-colors"
+              >
+                아니오
+              </button>
+              <button
+                onClick={() => {
+                  startTreatment(startConfirm.item, startConfirm.patient);
+                  setStartConfirm(null);
+                }}
+                className="flex-1 py-3 text-sm text-white bg-[#EF6600] hover:opacity-90 transition-opacity"
+              >
+                예, 진료 시작
+              </button>
             </div>
           </div>
         </div>

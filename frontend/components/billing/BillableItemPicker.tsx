@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   type AcupuncturePointSearchResult,
   getBillableCatalog,
@@ -106,6 +107,7 @@ function AcupointPicker({
 }
 
 export function BillableItemPicker({ medicalRecordId, visitType = "외래", onConfirmed }: BillableItemPickerProps) {
+  const router = useRouter();
   const [catalog, setCatalog] = useState<BillableItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("진찰료");
   const [selected, setSelected] = useState<Map<string, SelectedEntry>>(new Map());
@@ -197,6 +199,7 @@ export function BillableItemPicker({ medicalRecordId, visitType = "외래", onCo
       const claim = await submitLineItems(medicalRecordId, payload, visitType);
       setConfirmedClaim(claim);
       onConfirmed?.(claim);
+      router.push("/billing");
     } catch (e) {
       setError(e instanceof Error ? e.message : "청구 처리에 실패했습니다. 다시 시도해주세요");
     } finally {

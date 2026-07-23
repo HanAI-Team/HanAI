@@ -11,6 +11,7 @@ class PatientCreate(BaseModel):
     birth_date: Optional[date] = None
     gender: Optional[str] = None
     phone: Optional[str] = None
+    address: Optional[str] = None
     memo: Optional[str] = None
 
     @field_validator("birth_date")
@@ -26,6 +27,7 @@ class PatientUpdate(BaseModel):
     birth_date: Optional[date] = None
     gender: Optional[str] = None
     phone: Optional[str] = None
+    address: Optional[str] = None
     memo: Optional[str] = None
     insurance_type: Optional[str] = None
     rrn: Optional[str] = None
@@ -41,11 +43,13 @@ class PatientResponse(BaseModel):
     birth_date: Optional[date] = None
     gender: Optional[str] = None
     phone: Optional[str] = None
+    address: Optional[str] = None
     memo: Optional[str] = None
     created_at: datetime
     insurance_type: Optional[str] = None
     disability_grade: Optional[str] = None
     medical_aid_grade: Optional[str] = None
+    rrn_masked: Optional[str] = None
 
 
 class PatientListResponse(BaseModel):
@@ -69,6 +73,13 @@ class RecentRecordSummary(BaseModel):
 
 class PatientDetailResponse(PatientResponse):
     recent_records: list[RecentRecordSummary]
+
+
+class PatientRecordListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    items: list[RecentRecordSummary]
 
 
 class DataPurgeLogResponse(BaseModel):

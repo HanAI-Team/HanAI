@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
-from app.core.models import Claim, DailyQueue
+from app.core.models import Claim, ClaimPayment, DailyQueue
 from app.core.timezone import KST, today_kst
 from fastapi import HTTPException
 from sqlalchemy import case, func, select
@@ -189,7 +189,8 @@ async def pay_queue(
     db: AsyncSession,
     queue_id: UUID,
     payment_method: str,
-    hospital_id: UUID
+    hospital_id: UUID,
+    processed_by_name: str,
 ) -> DailyQueue:
     if payment_method not in VALID_PAYMENT_METHODS:
         raise HTTPException(status_code=400, detail="유효하지 않은 결제수단입니다.")
@@ -204,6 +205,18 @@ async def pay_queue(
     target_queue = result.scalar_one_or_none()
     if not target_queue:
         raise HTTPException(status_code=404, detail="접수 내역을 찾을 수 없습니다.")
+
+    # 수납 내역(ClaimPayment)에도 함께 기록해야 청구 페이지의 "수납 내역"과
+    # 환자별 이력에서 동일하게 조회된다 (/billing 페이지의 수납완료 처리와 동일한 방식).
+    claim = await get_queue_billing(db, queue_id, hospital_id)
+    db.add(ClaimPayment(
+        hospital_id=hospital_id,
+        claim_id=claim.id,
+        method=payment_method,
+        amount=claim.claim_amount,
+        processed_by_name=processed_by_name,
+    ))
+
     target_queue.payment_method = payment_method
     target_queue.paid_at = datetime.now(timezone.utc)
     target_queue.status = "paid"

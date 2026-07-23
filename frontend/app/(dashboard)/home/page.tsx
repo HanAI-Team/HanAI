@@ -40,6 +40,7 @@ function formatMoney(n: number): string {
 function getStatusLabel(status: QueueItem["status"]): { label: string; className: string } {
   if (status === "paid") return { label: "수납완료", className: "bg-green-500/15 text-green-600" };
   if (status === "done") return { label: "진료완료", className: "bg-blue-500/15 text-blue-600" };
+  if (status === "in_progress") return { label: "진료중", className: "bg-[#EF6600]/15 text-[#EF6600]" };
   return { label: "대기중", className: "bg-muted/20 text-muted" };
 }
 
@@ -53,6 +54,13 @@ function formatRrn(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 13);
   if (digits.length <= 6) return digits;
   return `${digits.slice(0, 6)}-${digits.slice(6)}`;
+}
+
+function formatPhone(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 }
 
 function calcAge(birthDate?: string | null): number | null {
@@ -114,7 +122,7 @@ function PatientResultCard({
   );
 }
 
-const EMPTY_NEW_PATIENT = { name: "", birth_date: "", gender: "", phone: "", rrn: "" };
+const EMPTY_NEW_PATIENT = { name: "", birth_date: "", gender: "", phone: "", rrn: "", address: "" };
 
 export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()));
@@ -135,6 +143,8 @@ export default function HomePage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [selectedPatientVisit, setSelectedPatientVisit] = useState<string | null | undefined>(undefined);
   const [newPatientForm, setNewPatientForm] = useState(EMPTY_NEW_PATIENT);
+  const [eligibilityChecking, setEligibilityChecking] = useState(false);
+  const [eligibilityChecked, setEligibilityChecked] = useState(false);
   const [symptom, setSymptom] = useState("");
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
@@ -231,6 +241,8 @@ export default function HomePage() {
     setSelectedPatientVisit(undefined);
     setNewPatientForm(EMPTY_NEW_PATIENT);
     setSymptom("");
+    setEligibilityChecking(false);
+    setEligibilityChecked(false);
     setPanelOpen(true);
   };
 
@@ -238,6 +250,8 @@ export default function HomePage() {
 
   const startNewPatient = () => {
     setNewPatientForm({ ...EMPTY_NEW_PATIENT, name: search });
+    setEligibilityChecking(false);
+    setEligibilityChecked(false);
     setPanelMode("new");
   };
 
@@ -245,6 +259,16 @@ export default function HomePage() {
     setPanelMode("search");
     setSelectedPatient(null);
     setSelectedPatientVisit(undefined);
+    setEligibilityChecking(false);
+    setEligibilityChecked(false);
+  };
+
+  const handleEligibilityCheck = () => {
+    setEligibilityChecking(true);
+    setTimeout(() => {
+      setEligibilityChecking(false);
+      setEligibilityChecked(true);
+    }, 600);
   };
 
   const handleSelectPatient = (p: Patient) => {
@@ -529,6 +553,8 @@ export default function HomePage() {
                     type="date"
                     value={newPatientForm.birth_date}
                     onChange={(e) => setNewPatientForm((p) => ({ ...p, birth_date: e.target.value }))}
+                    min="1900-01-01"
+                    max={new Date().toISOString().slice(0, 10)}
                     className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                   />
                 </div>
@@ -557,17 +583,41 @@ export default function HomePage() {
                   <label className="text-xs text-subtext mb-1 block">전화번호</label>
                   <input
                     value={newPatientForm.phone}
-                    onChange={(e) => setNewPatientForm((p) => ({ ...p, phone: e.target.value }))}
+                    onChange={(e) => setNewPatientForm((p) => ({ ...p, phone: formatPhone(e.target.value) }))}
                     placeholder="010-0000-0000"
                     className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs text-subtext mb-1 block">주민번호</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-subtext">주민번호</label>
+                    <button
+                      type="button"
+                      onClick={handleEligibilityCheck}
+                      disabled={!newPatientForm.name.trim() || eligibilityChecking}
+                      className="text-xs text-[#EF6600] hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed transition-opacity"
+                    >
+                      {eligibilityChecking ? "조회 중..." : "건강보험 자격조회"}
+                    </button>
+                  </div>
                   <input
                     value={newPatientForm.rrn}
                     onChange={(e) => setNewPatientForm((p) => ({ ...p, rrn: formatRrn(e.target.value) }))}
                     placeholder="000000-0000000"
+                    className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                  />
+                  {eligibilityChecked && (
+                    <div className="mt-1.5 rounded-md border border-dashed border-border bg-fill px-3 py-2 text-xs text-subtext leading-relaxed">
+                      연동 준비 중입니다 — EDI 규격서 확보 후 실제 자격조회 결과가 표시됩니다.
+                    </div>
+                  )}
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-subtext mb-1 block">주소</label>
+                  <input
+                    value={newPatientForm.address}
+                    onChange={(e) => setNewPatientForm((p) => ({ ...p, address: e.target.value }))}
+                    placeholder="주소를 입력하세요"
                     className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                   />
                 </div>
@@ -577,11 +627,11 @@ export default function HomePage() {
 
           {panelMode !== "search" && (
             <div>
-              <label className="text-xs text-subtext mb-1 block">증상</label>
+              <label className="text-xs text-subtext mb-1 block">메모</label>
               <textarea
                 value={symptom}
                 onChange={(e) => setSymptom(e.target.value)}
-                placeholder="증상을 입력하세요"
+                placeholder="메모를 입력하세요"
                 rows={4}
                 className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors resize-none"
               />

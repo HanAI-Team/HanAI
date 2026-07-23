@@ -13,6 +13,8 @@ import {
 } from "@/lib/api/patients";
 import { Patient } from "@/types";
 import { Search, Plus, X } from "lucide-react";
+import PatientHistoryModal from "./PatientHistoryModal";
+import InsuranceEligibilityModal from "./InsuranceEligibilityModal";
 
 const PAGE_SIZE = 20;
 
@@ -50,6 +52,9 @@ export default function PatientManagementPanel() {
 
   const [anonymizeTarget, setAnonymizeTarget] = useState<Patient | null>(null);
   const [anonymizeLoading, setAnonymizeLoading] = useState(false);
+
+  const [historyTarget, setHistoryTarget] = useState<Patient | null>(null);
+  const [eligibilityTarget, setEligibilityTarget] = useState<Patient | null>(null);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
@@ -151,6 +156,13 @@ export default function PatientManagementPanel() {
     const digits = value.replace(/\D/g, "").slice(0, 13);
     if (digits.length <= 6) return digits;
     return `${digits.slice(0, 6)}-${digits.slice(6)}`;
+  }
+
+  function formatPhone(value: string): string {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
   }
 
   async function handleAddPatient(e: React.FormEvent) {
@@ -295,6 +307,7 @@ export default function PatientManagementPanel() {
                   <th className="p-3 text-left">생년월일(나이)</th>
                   <th className="p-3 text-left">성별</th>
                   <th className="p-3 text-left">연락처</th>
+                  <th className="p-3 text-left">주민등록번호</th>
                   <th className="p-3 text-left">등록일</th>
                   <th className="p-3 text-center">액션</th>
                 </tr>
@@ -316,14 +329,23 @@ export default function PatientManagementPanel() {
                       </td>
                       <td className="p-3 text-subtext">{genderLabel(patient.gender)}</td>
                       <td className="p-3 text-subtext">{patient.phone || "-"}</td>
+                      <td className="p-3 text-subtext font-mono">{patient.rrn_masked || "-"}</td>
                       <td className="p-3 text-subtext">{patient.created_at?.slice(0, 10) || "-"}</td>
                       <td className="p-3">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
-                            onClick={() => router.push(`/diagnosis?patientId=${patient.id}`)}
-                            className="px-2.5 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors"
+                            onClick={() => setEligibilityTarget(patient)}
+                            disabled={anonymized}
+                            className="px-2.5 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            진료 시작
+                            자격조회
+                          </button>
+                          <button
+                            onClick={() => setHistoryTarget(patient)}
+                            disabled={anonymized}
+                            className="px-2.5 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            이력
                           </button>
                           <button
                             onClick={() => openEditModal(patient)}
@@ -427,6 +449,8 @@ export default function PatientManagementPanel() {
                   onChange={(e) =>
                     setNewPatient((p) => ({ ...p, birth_date: e.target.value }))
                   }
+                  min="1900-01-01"
+                  max={new Date().toISOString().slice(0, 10)}
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
@@ -465,7 +489,7 @@ export default function PatientManagementPanel() {
                 <input
                   value={newPatient.phone}
                   onChange={(e) =>
-                    setNewPatient((p) => ({ ...p, phone: e.target.value }))
+                    setNewPatient((p) => ({ ...p, phone: formatPhone(e.target.value) }))
                   }
                   placeholder="010-0000-0000"
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
@@ -607,6 +631,8 @@ export default function PatientManagementPanel() {
                   onChange={(e) =>
                     setEditForm((p) => ({ ...p, birth_date: e.target.value }))
                   }
+                  min="1900-01-01"
+                  max={new Date().toISOString().slice(0, 10)}
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />
               </div>
@@ -645,7 +671,7 @@ export default function PatientManagementPanel() {
                 <input
                   value={editForm.phone}
                   onChange={(e) =>
-                    setEditForm((p) => ({ ...p, phone: e.target.value }))
+                    setEditForm((p) => ({ ...p, phone: formatPhone(e.target.value) }))
                   }
                   placeholder="010-0000-0000"
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
@@ -737,6 +763,14 @@ export default function PatientManagementPanel() {
             </form>
           </div>
         </div>
+      )}
+
+      {historyTarget && (
+        <PatientHistoryModal patient={historyTarget} onClose={() => setHistoryTarget(null)} />
+      )}
+
+      {eligibilityTarget && (
+        <InsuranceEligibilityModal patient={eligibilityTarget} onClose={() => setEligibilityTarget(null)} />
       )}
 
       {/* 익명화 확인 모달 */}

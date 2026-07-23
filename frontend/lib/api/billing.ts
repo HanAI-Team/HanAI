@@ -277,6 +277,7 @@ function mapClaimSummary(raw: any): ClaimSummary {
       amount: li.amount,
       acupoints: (li.acupoints ?? []).map((a: any) => ({ code: a.code, koreanName: a.korean_name })),
       isNonBenefit: li.is_non_benefit ?? false,
+      performedByDoctorId: li.performed_by_doctor_id ?? null,
     })),
   };
 }
@@ -327,6 +328,33 @@ export async function deleteLineItem(
   });
   if (raw?.deleted_claim) return { deletedClaim: true };
   return mapClaimSummary(raw);
+}
+
+export interface HospitalDoctor {
+  id: string;
+  name: string;
+  licenseKind: string | null;
+  licenseNumber: string | null;
+}
+
+export async function getHospitalDoctors(): Promise<HospitalDoctor[]> {
+  const raw = await apiCall("/api/billing/doctors", { method: "GET" });
+  return (raw ?? []).map((d: any) => ({
+    id: d.id,
+    name: d.name,
+    licenseKind: d.license_kind,
+    licenseNumber: d.license_number,
+  }));
+}
+
+export async function updateLineItemDoctor(
+  lineItemId: string,
+  performedByDoctorId: string | null,
+): Promise<void> {
+  await apiCall(`/api/billing/line-items/${lineItemId}/doctor`, {
+    method: "PATCH",
+    body: JSON.stringify({ performed_by_doctor_id: performedByDoctorId }),
+  });
 }
 
 export async function updateClaimApproval(
@@ -409,6 +437,7 @@ export async function listClaimPayments(params: {
   start_date?: string;
   end_date?: string;
   method?: string;
+  patient_id?: string;
   page?: number;
   size?: number;
 }): Promise<ClaimPaymentListResult> {
@@ -416,6 +445,7 @@ export async function listClaimPayments(params: {
   if (params.start_date) qs.set("start_date", params.start_date);
   if (params.end_date) qs.set("end_date", params.end_date);
   if (params.method) qs.set("method", params.method);
+  if (params.patient_id) qs.set("patient_id", params.patient_id);
   qs.set("page", String(params.page ?? 1));
   qs.set("size", String(params.size ?? 20));
   return apiCall(`/api/billing/payments?${qs.toString()}`);

@@ -56,6 +56,8 @@ from app.billing.schema import (
     FeeCreate,
     FeeItem,
     FeeUpdate,
+    HospitalDoctorItem,
+    LineItemDoctorUpdate,
     MaterialCreate,
     MaterialItem,
     MaterialPurchaseRecordCreate,
@@ -97,6 +99,7 @@ from app.core.models import (
     ClaimRejectionCode,
     ClaimReviewResult,
     DailyQueue,
+    Doctor,
     DoctorWorkDays,
     DrugMaster,
     FeeMaster,
@@ -1340,14 +1343,15 @@ async def list_claim_payments(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     method: str | None = Query(None, description="cash / card / transfer"),
+    patient_id: UUID | None = Query(None, description="특정 환자로 필터링"),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """수납 내역 모달 — 필터(날짜범위/수납방법) + 페이지네이션."""
+    """수납 내역 모달 — 필터(날짜범위/수납방법/환자) + 페이지네이션."""
     total, rows = await payment_service.list_payments(
-        db, current_user.hospital_id, start_date, end_date, method, page, size
+        db, current_user.hospital_id, start_date, end_date, method, page, size, patient_id
     )
     return ClaimPaymentListResponse(
         total=total,
@@ -1442,6 +1446,7 @@ def _line_item_to_response(item: ClaimLineItem) -> ClaimLineItemResponse:
             for a in sorted(item.acupoints, key=lambda a: a.display_order)
         ],
         is_non_benefit=item.is_non_benefit,
+        performed_by_doctor_id=str(item.performed_by_doctor_id) if item.performed_by_doctor_id else None,
     )
 
 
@@ -1747,6 +1752,62 @@ async def delete_line_item(
         total_amount=claim.total_amount,
         line_items=[_line_item_to_response(i) for i in all_items],
     )
+
+
+@router.get("/doctors", response_model=list[HospitalDoctorItem])
+async def list_hospital_doctors(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """청구 항목의 줄단위 진료의사 선택용 — 우리 병원 소속 의사 목록."""
+    result = await db.execute(
+        select(Doctor)
+        .where(Doctor.hospital_id == current_user.hospital_id, Doctor.is_approved.is_(True))
+        .order_by(Doctor.name)
+    )
+    doctors = result.scalars().all()
+    return [
+        HospitalDoctorItem(
+            id=str(d.id), name=d.name, license_kind=d.license_kind, license_number=d.license_number
+        )
+        for d in doctors
+    ]
+
+
+@router.patch("/line-items/{line_item_id}/doctor", response_model=ClaimLineItemResponse)
+async def update_line_item_doctor(
+    line_item_id: UUID,
+    body: LineItemDoctorUpdate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """진료실에서 줄단위로 발생한 진료의사 정보를 변경(대진의 등 실제 시행자가
+    청구 대표 의사와 다른 경우). None이면 청구 대표 의사(Claim.doctor_id)를
+    그대로 쓰는 기본값으로 되돌아간다. draft/rejected 청구서만 대상."""
+    line_item = await db.get(ClaimLineItem, line_item_id)
+    if not line_item:
+        raise HTTPException(status_code=404, detail="청구 항목을 찾을 수 없습니다.")
+
+    claim = await db.get(Claim, line_item.claim_id)
+    if not claim or claim.hospital_id != current_user.hospital_id:
+        raise HTTPException(status_code=404, detail="청구 항목을 찾을 수 없습니다.")
+    if claim.status not in ("draft", "rejected"):
+        raise HTTPException(
+            status_code=400,
+            detail="작성중(draft) 또는 반려(rejected) 상태의 청구서만 수정할 수 있습니다.",
+        )
+
+    if body.performed_by_doctor_id:
+        doctor = await db.get(Doctor, UUID(body.performed_by_doctor_id))
+        if not doctor or doctor.hospital_id != current_user.hospital_id:
+            raise HTTPException(status_code=404, detail="의사를 찾을 수 없습니다.")
+        line_item.performed_by_doctor_id = doctor.id
+    else:
+        line_item.performed_by_doctor_id = None
+
+    await db.commit()
+    await db.refresh(line_item, attribute_names=["acupoints"])
+    return _line_item_to_response(line_item)
 
 
 @router.patch("/claims/{claim_id}/approval")

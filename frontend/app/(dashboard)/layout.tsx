@@ -21,20 +21,29 @@ export default function DashboardLayout({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
-  const { showWarning, extendSession } = useIdleTimeout();
+  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState<number | null>(null);
+  const { showWarning, extendSession, effectiveMinutes } = useIdleTimeout(sessionTimeoutMinutes);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) router.push("/login");
   }, []);
 
-  useEffect(() => {
+  const fetchMe = () => {
     getMe().then((data: Me | undefined) => {
       if (data) {
         setIsExpired(!!data.is_expired);
         setIsOwner(data.role === "owner");
+        setSessionTimeoutMinutes(data.session_timeout_minutes ?? null);
       }
     });
+  };
+
+  useEffect(() => {
+    fetchMe();
+    // 설정 화면에서 세션 타임아웃 값을 저장하면 재로그인 없이 반영되도록 재조회
+    window.addEventListener("hanai:session-timeout-updated", fetchMe);
+    return () => window.removeEventListener("hanai:session-timeout-updated", fetchMe);
   }, []);
 
   const handleIdleLogout = () => {
@@ -43,7 +52,7 @@ export default function DashboardLayout({
   };
 
   const navLinks = [
-    { label: "홈", path: "/home" },
+    { label: "접수", path: "/home" },
     { label: "환자", path: "/patients" },
     { label: "진료", path: "/diagnosis" },
     { label: "청구", path: "/billing" },
@@ -53,7 +62,7 @@ export default function DashboardLayout({
   ];
 
   const mobileNavLinks = [
-    { label: "홈", path: "/home" },
+    { label: "접수", path: "/home" },
     { label: "환자", path: "/patients" },
     { label: "진료", path: "/diagnosis" },
     { label: "멤버쉽", path: "/membership" },
@@ -187,7 +196,7 @@ export default function DashboardLayout({
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-card rounded-xl w-full max-w-[400px] overflow-hidden p-6">
             <p className="text-sm font-medium text-text mb-2">
-              30분간 활동이 없어 자동 로그아웃됩니다.
+              {effectiveMinutes}분간 활동이 없어 자동 로그아웃됩니다.
             </p>
             <p className="text-xs text-subtext mb-5">
               세션이 곧 만료됩니다. 계속 사용하시겠습니까?

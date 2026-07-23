@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react'
 import { getAuditLogs, AuditLogItem } from '@/lib/api/auditLogs'
 import { formatDateTime } from '@/lib/formatDateTime'
 
+const ACTOR_TYPE_LABEL: Record<string, string> = {
+  doctor: '의사',
+  staff: '직원',
+}
+
 const ACTION_CLASS: Record<string, string> = {
   CREATE: 'bg-green-500/15 text-green-600',
   INSERT: 'bg-green-500/15 text-green-600',
@@ -85,15 +90,23 @@ export default function AuditLogTab() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="text-left pb-3 pr-4">취급자</th>
                   <th className="text-left pb-3 pr-4">테이블명</th>
                   <th className="text-left pb-3 pr-4">레코드ID</th>
                   <th className="text-left pb-3 pr-4">액션</th>
-                  <th className="text-left pb-3">변경일시</th>
+                  <th className="text-left pb-3 pr-4">변경일시</th>
+                  <th className="text-left pb-3">접속 IP</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map((log) => (
                   <tr key={log.id} className="border-b border-border last:border-0">
+                    <td className="py-3 pr-4 whitespace-nowrap">
+                      {log.actor_name ?? '-'}
+                      {log.actor_name && log.actor_type && (
+                        <span className="text-muted ml-1">({ACTOR_TYPE_LABEL[log.actor_type] ?? log.actor_type})</span>
+                      )}
+                    </td>
                     <td className="py-3 pr-4 font-mono">{log.table_name}</td>
                     <td className="py-3 pr-4 font-mono text-subtext truncate max-w-[180px]">{log.record_id}</td>
                     <td className="py-3 pr-4">
@@ -101,7 +114,8 @@ export default function AuditLogTab() {
                         {log.action}
                       </span>
                     </td>
-                    <td className="py-3 text-subtext whitespace-nowrap">{formatDateTime(log.changed_at)}</td>
+                    <td className="py-3 pr-4 text-subtext whitespace-nowrap">{formatDateTime(log.changed_at)}</td>
+                    <td className="py-3 font-mono text-subtext whitespace-nowrap">{log.ip_address || '-'}</td>
                   </tr>
                 ))}
               </tbody>
