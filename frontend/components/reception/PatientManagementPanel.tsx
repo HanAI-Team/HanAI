@@ -14,7 +14,6 @@ import {
 import { Patient } from "@/types";
 import { Search, Plus, X } from "lucide-react";
 import PatientHistoryModal from "./PatientHistoryModal";
-import InsuranceEligibilityModal from "./InsuranceEligibilityModal";
 
 const PAGE_SIZE = 20;
 
@@ -54,7 +53,6 @@ export default function PatientManagementPanel() {
   const [anonymizeLoading, setAnonymizeLoading] = useState(false);
 
   const [historyTarget, setHistoryTarget] = useState<Patient | null>(null);
-  const [eligibilityTarget, setEligibilityTarget] = useState<Patient | null>(null);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null);
@@ -333,13 +331,6 @@ export default function PatientManagementPanel() {
                       <td className="p-3 text-subtext">{patient.created_at?.slice(0, 10) || "-"}</td>
                       <td className="p-3">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => setEligibilityTarget(patient)}
-                            disabled={anonymized}
-                            className="px-2.5 py-1 text-xs rounded-md border border-border text-subtext hover:text-text hover:border-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            자격조회
-                          </button>
                           <button
                             onClick={() => setHistoryTarget(patient)}
                             disabled={anonymized}
@@ -767,10 +758,6 @@ export default function PatientManagementPanel() {
 
       {historyTarget && (
         <PatientHistoryModal patient={historyTarget} onClose={() => setHistoryTarget(null)} />
-      )}
-
-      {eligibilityTarget && (
-        <InsuranceEligibilityModal patient={eligibilityTarget} onClose={() => setEligibilityTarget(null)} />
       )}
 
       {/* 익명화 확인 모달 */}

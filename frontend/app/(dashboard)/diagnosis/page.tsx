@@ -54,7 +54,6 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const ASK_SAVE_FIELDS: { key: string; label: string }[] = [
@@ -73,7 +72,6 @@ function getQueueStatusLabel(status: QueueItem["status"]): { label: string; clas
 
 export default function DiagnosisPage() {
   const isExpired = useIsExpired();
-  const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [patientPage, setPatientPage] = useState(1);
@@ -180,6 +178,7 @@ export default function DiagnosisPage() {
   const [selectedQueueItem, setSelectedQueueItem] = useState<QueueItem | null>(null);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueOpen, setQueueOpen] = useState(true);
+  const [mobileQueueOpen, setMobileQueueOpen] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const secondsRef = useRef(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
@@ -1500,10 +1499,10 @@ ${historyLine}
       {/* 왼쪽 환자 패널 */}
       <div className="hidden sm:flex w-[220px] flex-shrink-0 bg-card border-r border-border flex-col">
         {/* 섹션 1: 오늘 접수 */}
-        <div className="p-3 border-b border-border">
+        <div className="p-3 border-b border-border flex-1 flex flex-col min-h-0">
           <div role="button" tabIndex={0}
             onClick={() => setQueueOpen((prev) => !prev)}
-            className="flex items-center gap-2 mb-2 cursor-pointer"
+            className="flex items-center gap-2 mb-2 cursor-pointer flex-shrink-0"
           >
             <div className="text-xs font-medium text-text uppercase tracking-wide">
               오늘 접수
@@ -1524,7 +1523,7 @@ ${historyLine}
               오늘 접수된 환자가 없습니다
             </div>
           ) : (
-            <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto">
+            <div className="flex flex-col gap-1 flex-1 overflow-y-auto min-h-0">
               {sortedQueue.map((item) => (
                 <div role="button" tabIndex={0}
                   key={item.id}
@@ -1586,12 +1585,66 @@ ${historyLine}
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => router.push("/home")}
-              className="text-sm text-[#EF6600] font-medium"
-            >
-              환자를 선택하세요 →
-            </button>
+            <div>
+              <button
+                onClick={() => setMobileQueueOpen((v) => !v)}
+                className="text-sm text-[#EF6600] font-medium flex items-center gap-1"
+              >
+                환자를 선택하세요
+                {mobileQueueOpen ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+              </button>
+              {mobileQueueOpen && (
+                <div className="mt-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+                  {queueLoading ? (
+                    <div className="w-5 h-5 border-2 border-[#EF6600] border-t-transparent rounded-full animate-spin mx-auto py-2" />
+                  ) : sortedQueue.length === 0 ? (
+                    <div className="text-xs text-muted text-center py-4">
+                      오늘 접수된 환자가 없습니다
+                    </div>
+                  ) : (
+                    sortedQueue.map((item) => (
+                      <div role="button" tabIndex={0}
+                        key={item.id}
+                        onClick={() => {
+                          setMobileQueueOpen(false);
+                          if (item.status === "waiting") {
+                            openStartConfirm(item);
+                            return;
+                          }
+                          setSelectedQueueItem(item);
+                          const patient = patients.find((p) => p.id === item.patient_id);
+                          if (patient) {
+                            applyPatient(patient);
+                          } else {
+                            getPatient(item.patient_id).then(applyPatient).catch(console.error);
+                          }
+                        }}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-bg transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-text truncate">{item.patient_name}</div>
+                          <div className="text-xs text-muted">
+                            {new Date(item.checked_in_at).toLocaleTimeString("ko-KR", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </div>
+                        <span
+                          className={`text-[10px] font-medium flex-shrink-0 ${getQueueStatusLabel(item.status).className}`}
+                        >
+                          {getQueueStatusLabel(item.status).label}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
         {/* 데스크톱 환자 정보 바 */}
@@ -1637,7 +1690,7 @@ ${historyLine}
         >
           {!selectedPatient && activeTab === "record" && (
             <div className="text-sm text-muted text-center py-16">
-              왼쪽에서 환자를 선택해주세요
+              환자를 선택해주세요
             </div>
           )}
 
