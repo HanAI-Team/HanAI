@@ -3,11 +3,14 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_TIMEOUT_MINUTES = 30
 const WARNING_BEFORE_MS = 60 * 1000
 
-export function useIdleTimeout() {
+// timeoutMinutes: 병원 설정값(Hospital.session_timeout_minutes). 없으면 30분 폴백.
+export function useIdleTimeout(timeoutMinutes?: number | null) {
   const router = useRouter()
+  const effectiveMinutes = timeoutMinutes || DEFAULT_TIMEOUT_MINUTES
+  const idleTimeoutMs = effectiveMinutes * 60 * 1000
   const [showWarning, setShowWarning] = useState(false)
   const showWarningRef = useRef(false)
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -26,9 +29,9 @@ export function useIdleTimeout() {
     warningTimerRef.current = setTimeout(() => {
       showWarningRef.current = true
       setShowWarning(true)
-    }, IDLE_TIMEOUT_MS - WARNING_BEFORE_MS)
-    logoutTimerRef.current = setTimeout(logout, IDLE_TIMEOUT_MS)
-  }, [logout])
+    }, idleTimeoutMs - WARNING_BEFORE_MS)
+    logoutTimerRef.current = setTimeout(logout, idleTimeoutMs)
+  }, [logout, idleTimeoutMs])
 
   useEffect(() => {
     if (!localStorage.getItem('token')) return
@@ -53,5 +56,5 @@ export function useIdleTimeout() {
     resetTimers()
   }, [resetTimers])
 
-  return { showWarning, extendSession }
+  return { showWarning, extendSession, effectiveMinutes }
 }

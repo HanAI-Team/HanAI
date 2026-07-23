@@ -447,6 +447,9 @@ async def get_me(
     institution_code = hospital.institution_code if hospital else None
     agency_code = hospital.agency_code if hospital else None
     approval_no = hospital.approval_no if hospital else None
+    session_timeout_minutes = (
+        hospital.session_timeout_minutes if hospital and hospital.session_timeout_minutes else 30
+    )
 
     last_login_result = await db.execute(
         select(LoginLog)
@@ -485,6 +488,7 @@ async def get_me(
             "institution_code": institution_code,
             "agency_code": agency_code,
             "approval_no": approval_no,
+            "session_timeout_minutes": session_timeout_minutes,
             "birth_date": user.birth_date,
             "tier": tier,
             "expired_at": expired_at,
@@ -505,6 +509,7 @@ async def get_me(
         "institution_code": institution_code,
         "agency_code": agency_code,
         "approval_no": approval_no,
+        "session_timeout_minutes": session_timeout_minutes,
         "tier": tier,
         "expired_at": expired_at,
         "is_expired": is_expired,
@@ -746,13 +751,14 @@ async def get_audit_logs(
     if user.role != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="오너 계정만 접근 가능합니다.")
 
-    doctor_ids = (await db.execute(
-        select(Doctor.id).where(Doctor.hospital_id == user.hospital_id)
-    )).scalars().all()
-    staff_ids = (await db.execute(
-        select(StaffAccount.id).where(StaffAccount.hospital_id == user.hospital_id)
-    )).scalars().all()
-    all_ids = list(doctor_ids) + list(staff_ids)
+    doctor_rows = (await db.execute(
+        select(Doctor.id, Doctor.name).where(Doctor.hospital_id == user.hospital_id)
+    )).all()
+    staff_rows = (await db.execute(
+        select(StaffAccount.id, StaffAccount.name).where(StaffAccount.hospital_id == user.hospital_id)
+    )).all()
+    name_map = {str(i): n for i, n in [*doctor_rows, *staff_rows]}
+    all_ids = [i for i, _ in doctor_rows] + [i for i, _ in staff_rows]
 
     stmt = select(AuditLog).where(AuditLog.actor_id.in_(all_ids))
     if table_name:
@@ -766,4 +772,20 @@ async def get_audit_logs(
     stmt = stmt.order_by(AuditLog.changed_at.desc()).limit(limit)
 
     result = await db.execute(stmt)
-    return result.scalars().all()
+    logs = result.scalars().all()
+
+    return [
+        {
+            "id": log.id,
+            "table_name": log.table_name,
+            "record_id": log.record_id,
+            "action": log.action,
+            "actor_id": str(log.actor_id) if log.actor_id else None,
+            "actor_type": log.actor_type,
+            "actor_name": name_map.get(str(log.actor_id)) if log.actor_id else None,
+            "changed_at": log.changed_at,
+            "detail": log.detail,
+            "ip_address": log.ip_address,
+        }
+        for log in logs
+    ]

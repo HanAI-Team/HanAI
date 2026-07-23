@@ -33,6 +33,10 @@ class Hospital(Base):
     institution_code = Column(String(8), nullable=True)  # 심평원 요양기관기호
     agency_code = Column(String(5), nullable=True)  # 대행청구단체기호 (EDI 레코드1 pos342-346)
     approval_no = Column(String(35), nullable=True)  # 소프트웨어 승인번호
+    # 로그인 세션 idle 타임아웃(분). 5~30 허용, 값 없으면 30분으로 동작.
+    # 상한이 30분인 이유: JWT_EXPIRE_MINUTES가 30분이라, 그보다 크게 두면 idle 타이머가
+    # 돌기 전에 JWT가 먼저 만료돼 401이 난다.
+    session_timeout_minutes = Column(Integer, nullable=True, default=30, server_default="30")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     doctors = relationship("Doctor", back_populates="hospital")
