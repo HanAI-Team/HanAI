@@ -29,6 +29,14 @@ async def update_hospital(
 ) -> Hospital:
     hospital = await get_hospital(db, doctor, hospital_id)
 
+    if data.session_timeout_minutes is not None and not (5 <= data.session_timeout_minutes <= 30):
+        # 상한 30분: JWT_EXPIRE_MINUTES(30분)보다 크면 idle 타이머가 돌기 전에
+        # 토큰이 먼저 만료되어 401이 발생한다.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="세션 타임아웃은 5~30분 사이로 설정해야 합니다.",
+        )
+
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(hospital, field, value)
 

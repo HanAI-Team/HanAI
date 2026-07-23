@@ -32,6 +32,12 @@ export default function GeneralTab() {
   const [anError, setAnError] = useState<string | null>(null)
   const [anSuccess, setAnSuccess] = useState(false)
 
+  const [isOwner, setIsOwner] = useState(false)
+  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState('')
+  const [stLoading, setStLoading] = useState(false)
+  const [stError, setStError] = useState<string | null>(null)
+  const [stSuccess, setStSuccess] = useState(false)
+
   const [birthDate, setBirthDate] = useState('')
   const [bdLoading, setBdLoading] = useState(false)
   const [bdError, setBdError] = useState<string | null>(null)
@@ -138,6 +144,33 @@ export default function GeneralTab() {
     }
   }
 
+  const handleSaveSessionTimeout = async () => {
+    if (!hospitalId) return
+    setStLoading(true)
+    setStError(null)
+    try {
+      const res = await fetch(`${BASE_URL}/api/hospitals/${hospitalId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ session_timeout_minutes: Number(sessionTimeoutMinutes) }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(parseErrorDetail(err?.detail) || '세션 타임아웃 저장에 실패했습니다.')
+      }
+      setStSuccess(true)
+      window.dispatchEvent(new Event('hanai:session-timeout-updated'))
+      setTimeout(() => setStSuccess(false), 3000)
+    } catch (e: any) {
+      setStError(e.message)
+    } finally {
+      setStLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetch(`${BASE_URL}/api/auth/me`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -152,6 +185,8 @@ export default function GeneralTab() {
         setChunaCertified(!!me.chuna_training_certified)
         setLastLoginIp(me.last_login_ip || null)
         setLastLoginAt(me.last_login_at || null)
+        setIsOwner(me.role === 'owner')
+        setSessionTimeoutMinutes(String(me.session_timeout_minutes ?? 30))
       })
       .catch(() => {})
   }, [])
@@ -322,6 +357,33 @@ export default function GeneralTab() {
               >
                 {anSuccess ? '✓ 저장 완료' : anLoading ? '저장중...' : '저장'}
               </button>
+
+              {isOwner && (
+                <>
+                  <div>
+                    <label className="block text-xs text-subtext mb-1.5">세션 타임아웃(분)</label>
+                    <p className="text-xs text-subtext mb-1.5">
+                      일정 시간 미사용 시 자동 로그아웃되는 시간입니다. 5~30분 사이로 설정할 수 있습니다.
+                    </p>
+                    <input
+                      type="number"
+                      min={5}
+                      max={30}
+                      value={sessionTimeoutMinutes}
+                      onChange={(e) => setSessionTimeoutMinutes(e.target.value)}
+                      className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-[#EF6600]"
+                    />
+                  </div>
+                  {stError && <div className="text-red-500 text-sm">{stError}</div>}
+                  <button
+                    onClick={handleSaveSessionTimeout}
+                    disabled={stLoading}
+                    className="w-full bg-[#EF6600] text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+                  >
+                    {stSuccess ? '✓ 저장 완료' : stLoading ? '저장중...' : '저장'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
