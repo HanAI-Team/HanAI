@@ -18,6 +18,7 @@ async def create_patient(
         birth_date=data.birth_date,
         gender=data.gender,
         phone=data.phone,
+        address=data.address,
         memo=data.memo,
     )
     db.add(patient)
