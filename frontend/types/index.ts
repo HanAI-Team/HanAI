@@ -10,6 +10,7 @@ export interface Patient {
   insurance_type?: string
   disability_grade?: string
   medical_aid_grade?: string
+  rrn_masked?: string
 }
 
 export interface DiagnosisResult {

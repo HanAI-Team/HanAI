@@ -1343,14 +1343,15 @@ async def list_claim_payments(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     method: str | None = Query(None, description="cash / card / transfer"),
+    patient_id: UUID | None = Query(None, description="특정 환자로 필터링"),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """수납 내역 모달 — 필터(날짜범위/수납방법) + 페이지네이션."""
+    """수납 내역 모달 — 필터(날짜범위/수납방법/환자) + 페이지네이션."""
     total, rows = await payment_service.list_payments(
-        db, current_user.hospital_id, start_date, end_date, method, page, size
+        db, current_user.hospital_id, start_date, end_date, method, page, size, patient_id
     )
     return ClaimPaymentListResponse(
         total=total,

@@ -40,6 +40,7 @@ function formatMoney(n: number): string {
 function getStatusLabel(status: QueueItem["status"]): { label: string; className: string } {
   if (status === "paid") return { label: "수납완료", className: "bg-green-500/15 text-green-600" };
   if (status === "done") return { label: "진료완료", className: "bg-blue-500/15 text-blue-600" };
+  if (status === "in_progress") return { label: "진료중", className: "bg-[#EF6600]/15 text-[#EF6600]" };
   return { label: "대기중", className: "bg-muted/20 text-muted" };
 }
 

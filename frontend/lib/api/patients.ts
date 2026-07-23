@@ -108,6 +108,30 @@ export async function getPatientRecords(patientId: string) {
   }>;
 }
 
+export interface PatientRecordItem {
+  id: string;
+  recorded_at: string | null;
+  chart_structured: string | null;
+  raw_transcription: string | null;
+  medical_history: string | null;
+  kcd_code: string | null;
+  secondary_kcd_codes: string[] | null;
+}
+
+export async function getPatientRecordsAll(patientId: string, page: number, size: number) {
+  const res = await fetch(
+    `${BASE_URL}/api/patients/${patientId}/records/all?page=${page}&size=${size}`,
+    { headers: getHeaders() },
+  );
+  if (!res.ok) throw new Error("진료 이력 조회 실패");
+  return res.json() as Promise<{
+    total: number;
+    page: number;
+    size: number;
+    items: PatientRecordItem[];
+  }>;
+}
+
 export async function importPatientsFromExcel(file: File) {
   const token = localStorage.getItem("token");
   const formData = new FormData();

@@ -155,7 +155,7 @@ async def pay_queue(
     if isinstance(current_user, Doctor) and str(current_user.role) != "owner":
         raise HTTPException(status_code=403, detail="owner 또는 staff 계정만 접근 가능합니다.")
     queue = await service.pay_queue(
-        db, queue_id, body.payment_method, current_user.hospital_id
+        db, queue_id, body.payment_method, current_user.hospital_id, current_user.name
     )
     return QueueResponse.from_orm_with_patient(queue)
 

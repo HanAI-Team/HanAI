@@ -43,7 +43,7 @@ export default function DashboardLayout({
   };
 
   const navLinks = [
-    { label: "홈", path: "/home" },
+    { label: "접수", path: "/home" },
     { label: "환자", path: "/patients" },
     { label: "진료", path: "/diagnosis" },
     { label: "청구", path: "/billing" },
@@ -53,7 +53,7 @@ export default function DashboardLayout({
   ];
 
   const mobileNavLinks = [
-    { label: "홈", path: "/home" },
+    { label: "접수", path: "/home" },
     { label: "환자", path: "/patients" },
     { label: "진료", path: "/diagnosis" },
     { label: "멤버쉽", path: "/membership" },

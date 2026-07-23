@@ -437,6 +437,7 @@ export async function listClaimPayments(params: {
   start_date?: string;
   end_date?: string;
   method?: string;
+  patient_id?: string;
   page?: number;
   size?: number;
 }): Promise<ClaimPaymentListResult> {
@@ -444,6 +445,7 @@ export async function listClaimPayments(params: {
   if (params.start_date) qs.set("start_date", params.start_date);
   if (params.end_date) qs.set("end_date", params.end_date);
   if (params.method) qs.set("method", params.method);
+  if (params.patient_id) qs.set("patient_id", params.patient_id);
   qs.set("page", String(params.page ?? 1));
   qs.set("size", String(params.size ?? 20));
   return apiCall(`/api/billing/payments?${qs.toString()}`);
