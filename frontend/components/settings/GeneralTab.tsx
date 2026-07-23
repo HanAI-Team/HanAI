@@ -344,6 +344,8 @@ export default function GeneralTab() {
                   required
                   value={birthDate}
                   onChange={(e) => setBirthDate(e.target.value)}
+                  min="1900-01-01"
+                  max={new Date().toISOString().slice(0, 10)}
                   className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-[#EF6600]"
                 />
               </div>
