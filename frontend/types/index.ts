@@ -5,6 +5,7 @@ export interface Patient {
   gender: string
   phone?: string
   birth_date?: string
+  address?: string
   memo?: string
   created_at: string
   insurance_type?: string

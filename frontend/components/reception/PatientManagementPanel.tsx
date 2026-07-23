@@ -158,6 +158,13 @@ export default function PatientManagementPanel() {
     return `${digits.slice(0, 6)}-${digits.slice(6)}`;
   }
 
+  function formatPhone(value: string): string {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+
   async function handleAddPatient(e: React.FormEvent) {
     e.preventDefault();
     setAddLoading(true);
@@ -482,7 +489,7 @@ export default function PatientManagementPanel() {
                 <input
                   value={newPatient.phone}
                   onChange={(e) =>
-                    setNewPatient((p) => ({ ...p, phone: e.target.value }))
+                    setNewPatient((p) => ({ ...p, phone: formatPhone(e.target.value) }))
                   }
                   placeholder="010-0000-0000"
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
@@ -664,7 +671,7 @@ export default function PatientManagementPanel() {
                 <input
                   value={editForm.phone}
                   onChange={(e) =>
-                    setEditForm((p) => ({ ...p, phone: e.target.value }))
+                    setEditForm((p) => ({ ...p, phone: formatPhone(e.target.value) }))
                   }
                   placeholder="010-0000-0000"
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"

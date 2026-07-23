@@ -160,6 +160,7 @@ class Patient(Base):
     birth_date = Column(Date)
     gender = Column(String)
     phone = Column(String)
+    address = Column(String, nullable=True)
     memo = Column(Text)
     insurance_type = Column(String, default="health")
     medical_aid_grade = Column(String(1), nullable=True)   # 의료급여 1종="1", 2종="2", 나머지 None

@@ -18,6 +18,13 @@ function genderLabel(g?: string | null): string {
   return g === "M" ? "남" : g === "F" ? "여" : "";
 }
 
+function formatPhone(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+}
+
 export default function CheckinSearchPanel({ onCheckedIn }: CheckinSearchPanelProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Patient[]>([]);
@@ -231,7 +238,7 @@ export default function CheckinSearchPanel({ onCheckedIn }: CheckinSearchPanelPr
                 <label className="text-xs text-subtext mb-1 block">전화번호</label>
                 <input
                   value={registerForm.phone}
-                  onChange={(e) => setRegisterForm((p) => ({ ...p, phone: e.target.value }))}
+                  onChange={(e) => setRegisterForm((p) => ({ ...p, phone: formatPhone(e.target.value) }))}
                   placeholder="010-0000-0000"
                   className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                 />

@@ -216,6 +216,7 @@ export async function updatePatient(
     birth_date?: string;
     gender?: string;
     phone?: string;
+    address?: string;
     memo?: string;
     insurance_type?: string;
     rrn?: string;
@@ -248,6 +249,7 @@ export async function createPatient(data: {
   birth_date?: string;
   gender?: string;
   phone?: string;
+  address?: string;
   memo?: string;
 }) {
   const res = await fetch(`${BASE_URL}/api/patients/register`, {
