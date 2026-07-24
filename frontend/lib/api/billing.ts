@@ -84,6 +84,30 @@ export async function resubmitClaim(
   }
 }
 
+export async function submitClaim(claimId: string, receiptNo: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/submit`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ receipt_no: receiptNo }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || "제출 처리 실패");
+  }
+}
+
+export async function rejectClaim(claimId: string, rejectionReasonCode: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/billing/claims/${claimId}/reject`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ rejection_reason_code: rejectionReasonCode }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || "반려 처리 실패");
+  }
+}
+
 export async function getClaims(params?: { month?: string; status?: string }): Promise<ClaimListItem[]> {
   const query = new URLSearchParams();
   if (params?.month) query.set("month", params.month);

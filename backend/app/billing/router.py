@@ -38,10 +38,13 @@ from app.billing.schema import (
     ClaimRejectionCodeCreate,
     ClaimRejectionCodeResponse,
     ClaimRejectionCodeUpdate,
+    ClaimRejectRequest,
     ClaimResubmissionResponse,
     ClaimResubmissionUpdate,
     ClaimReviewResultListResponse,
     ClaimReviewResultResponse,
+    ClaimStatusResponse,
+    ClaimSubmitRequest,
     ClaimReviewResultUploadResponse,
     ClaimStatementResponse,
     ClaimSummaryResponse,
@@ -85,8 +88,10 @@ from app.billing.service import (
     get_quick_fee_items as service_get_quick_fee_items,
     list_special_case_codes,
     preview_checkout_billing,
+    reject_claim,
     resolve_active_special_code,
     resolve_and_validate_acupoints,
+    submit_claim,
     update_claim_resubmission,
 )
 from app.core.config import settings
@@ -317,6 +322,52 @@ async def list_needs_review_claims(
     )
 
 
+@router.post("/claims/{claim_id}/submit", response_model=ClaimStatusResponse)
+async def submit_claim_endpoint(
+    claim_id: UUID,
+    body: ClaimSubmitRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await submit_claim(
+        db=db,
+        hospital_id=current_user.hospital_id,
+        actor_id=current_user.id,
+        claim_id=claim_id,
+        receipt_no=body.receipt_no,
+    )
+    return ClaimStatusResponse(
+        id=str(claim.id),
+        status=claim.status,
+        receipt_no=claim.receipt_no,
+        submitted_at=claim.submitted_at,
+        rejection_reason_code=claim.rejection_reason_code,
+    )
+
+
+@router.post("/claims/{claim_id}/reject", response_model=ClaimStatusResponse)
+async def reject_claim_endpoint(
+    claim_id: UUID,
+    body: ClaimRejectRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    claim = await reject_claim(
+        db=db,
+        hospital_id=current_user.hospital_id,
+        actor_id=current_user.id,
+        claim_id=claim_id,
+        rejection_reason_code=body.rejection_reason_code,
+    )
+    return ClaimStatusResponse(
+        id=str(claim.id),
+        status=claim.status,
+        receipt_no=claim.receipt_no,
+        submitted_at=claim.submitted_at,
+        rejection_reason_code=claim.rejection_reason_code,
+    )
+
+
 @router.patch("/claims/{claim_id}/resubmission", response_model=ClaimResubmissionResponse)
 async def patch_claim_resubmission(
     claim_id: UUID,
@@ -380,7 +431,9 @@ async def upload_review_results(
 ):
     """심사결과(수신) CSV 업로드. 실제 심평원 EDI 수신 연동 전까지의 임시 경로."""
     content = await file.read()
-    inserted, skipped = await create_review_results_from_csv(db, current_user.hospital_id, content)
+    inserted, skipped = await create_review_results_from_csv(
+        db, current_user.hospital_id, content, actor_id=current_user.id
+    )
     return ClaimReviewResultUploadResponse(inserted=inserted, skipped=skipped)
 
 

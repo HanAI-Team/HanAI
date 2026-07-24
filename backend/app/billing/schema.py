@@ -382,6 +382,28 @@ class ClaimSummaryResponse(BaseModel):
         from_attributes = True
 
 
+class ClaimSubmitRequest(BaseModel):
+    """"제출 처리" — 실제 제출은 앱 밖(요양기관정보마당 등)에서 일어나므로,
+    직원이 포털에서 확인한 접수번호를 직접 입력한다."""
+    receipt_no: int = Field(..., description="심평원이 발급한 이 청구서의 접수번호")
+
+
+class ClaimRejectRequest(BaseModel):
+    """"반려 처리" — 심평원 통보(심사불능 사유)를 직원이 직접 입력한다."""
+    rejection_reason_code: str = Field(..., max_length=2, description="심사불능사유코드")
+
+
+class ClaimStatusResponse(BaseModel):
+    id: str
+    status: str
+    receipt_no: Optional[int] = None
+    submitted_at: Optional[datetime] = None
+    rejection_reason_code: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class ClaimResubmissionUpdate(BaseModel):
     """보완·추가청구 처리 — 반려(rejected)된 청구서에만 적용 가능."""
     claim_type: Literal["supplement", "addition"]
