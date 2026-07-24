@@ -263,3 +263,63 @@ export async function createPatient(data: {
   }
   return res.json();
 }
+
+export interface SpecialCaseRegistration {
+  id: string;
+  patient_id: string;
+  special_code: string;
+  category: string;
+  registered_disease_code: string | null;
+  disease_name: string | null;
+  registration_number: string | null;
+  prior_approval_number: string | null;
+  registered_at: string;
+  expires_at: string | null;
+  status: string;
+}
+
+export async function getSpecialCaseRegistrations(patientId: string): Promise<SpecialCaseRegistration[]> {
+  const res = await fetch(`${BASE_URL}/api/patients/${patientId}/special-case-registrations`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("산정특례 등록 이력 조회 실패");
+  const data = await res.json();
+  return data.items || [];
+}
+
+export async function createSpecialCaseRegistration(
+  patientId: string,
+  data: {
+    special_code: string;
+    category: string;
+    registered_disease_code?: string;
+    disease_name?: string;
+    registration_number?: string;
+    prior_approval_number?: string;
+    registered_at: string;
+    expires_at?: string;
+  },
+): Promise<SpecialCaseRegistration> {
+  const res = await fetch(`${BASE_URL}/api/patients/${patientId}/special-case-registrations`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.detail || "산정특례 등록 실패");
+  }
+  return res.json();
+}
+
+export async function deactivateSpecialCaseRegistration(
+  patientId: string,
+  registrationId: string,
+): Promise<SpecialCaseRegistration> {
+  const res = await fetch(
+    `${BASE_URL}/api/patients/${patientId}/special-case-registrations/${registrationId}/deactivate`,
+    { method: "POST", headers: getHeaders() },
+  );
+  if (!res.ok) throw new Error("산정특례 등록 취소 실패");
+  return res.json();
+}

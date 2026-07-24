@@ -169,6 +169,16 @@ export async function getBillableCatalog(): Promise<BillableItem[]> {
   return apiCall("/api/billing/catalog");
 }
 
+export interface SpecialCaseCodeItem {
+  code: string;
+  category: string;
+  description: string;
+}
+
+export async function getSpecialCaseCodes(): Promise<SpecialCaseCodeItem[]> {
+  return apiCall("/api/billing/special-case-codes");
+}
+
 export interface AcupuncturePointSearchResult {
   code: string;
   korean_name: string;

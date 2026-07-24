@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional
@@ -661,3 +662,84 @@ class ClaimReviewResultListResponse(BaseModel):
 class ClaimReviewResultUploadResponse(BaseModel):
     inserted: int
     skipped: int
+
+
+class SpecialCaseCodeItem(BaseModel):
+    """산정특례 특정기호 선택지 (등록 화면 드롭다운용)."""
+    code: str
+    category: str
+    description: str
+
+
+_REGISTRATION_NUMBER_PATTERN = re.compile(r"^[\d-]+$")
+
+
+def _validate_special_case_registration_number(v: Optional[str]) -> Optional[str]:
+    """MT014(9(20), 숫자 최대 20자리) 최소 형식 검증.
+
+    HIRA 원문상 자릿수는 보험유형·등록유형(일반/틀니/임플란트)에 따라
+    10~18자리로 갈리지만 이 구분 자체가 시스템에 모델링돼 있지 않아 정확한
+    자릿수는 강제하지 않는다. 다만 이 프로젝트의 기존 예시값(모델 주석
+    "01-24-00012345", 사전승인번호 "1-26-00000001")이 하이픈 구분자를 포함하고
+    있어, 숫자만 허용하면 기존 표기 관례와 충돌한다 — 숫자+하이픈을 허용하고,
+    하이픈을 제외한 실제 자릿수만 20자 이하로 제한한다.
+    """
+    if not v:
+        return v
+    if not _REGISTRATION_NUMBER_PATTERN.fullmatch(v):
+        raise ValueError("등록번호는 숫자와 하이픈(-)만 입력할 수 있습니다.")
+    if len(v.replace("-", "")) > 20:
+        raise ValueError("등록번호는 하이픈을 제외한 자릿수가 최대 20자를 넘을 수 없습니다.")
+    return v
+
+
+class SpecialCaseRegistrationCreate(BaseModel):
+    special_code: str = Field(..., max_length=4, description="특정기호 (예: V193=암)")
+    category: str = Field(..., max_length=20, description="암 / 결핵 / 뇌혈관 / 심장 / 신체기능저하군 등")
+    registered_disease_code: Optional[str] = Field(None, max_length=10, description="등록 상병코드 (KCD/ICD)")
+    disease_name: Optional[str] = Field(None, max_length=100, description="KCD 코드 없는 희귀질환 등의 실제 상병명 (MT028용)")
+    registration_number: Optional[str] = Field(None, max_length=20, description="건보공단 발급 산정특례 등록번호 (MT014용)")
+    prior_approval_number: Optional[str] = Field(None, max_length=30, description="V810 전용 사전승인번호")
+    registered_at: date
+    expires_at: Optional[date] = None
+
+    @field_validator("registration_number", "prior_approval_number")
+    @classmethod
+    def validate_registration_number(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_special_case_registration_number(v)
+
+
+class SpecialCaseRegistrationUpdate(BaseModel):
+    category: Optional[str] = Field(None, max_length=20)
+    registered_disease_code: Optional[str] = Field(None, max_length=10)
+    disease_name: Optional[str] = Field(None, max_length=100)
+    registration_number: Optional[str] = Field(None, max_length=20)
+    prior_approval_number: Optional[str] = Field(None, max_length=30)
+    registered_at: Optional[date] = None
+    expires_at: Optional[date] = None
+
+    @field_validator("registration_number", "prior_approval_number")
+    @classmethod
+    def validate_registration_number(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_special_case_registration_number(v)
+
+
+class SpecialCaseRegistrationResponse(BaseModel):
+    id: UUID
+    patient_id: UUID
+    special_code: str
+    category: str
+    registered_disease_code: Optional[str] = None
+    disease_name: Optional[str] = None
+    registration_number: Optional[str] = None
+    prior_approval_number: Optional[str] = None
+    registered_at: date
+    expires_at: Optional[date] = None
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class SpecialCaseRegistrationListResponse(BaseModel):
+    items: list[SpecialCaseRegistrationResponse]

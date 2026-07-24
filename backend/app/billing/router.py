@@ -71,6 +71,7 @@ from app.billing.schema import (
     PrescriptionCheckRequest,
     PrescriptionCheckResponse,
     QuickFeeItemsResponse,
+    SpecialCaseCodeItem,
     ViolationItem,
 )
 from app.billing.service import (
@@ -82,6 +83,7 @@ from app.billing.service import (
     generate_claim_edi,
     generate_claim_sam_files,
     get_quick_fee_items as service_get_quick_fee_items,
+    list_special_case_codes,
     preview_checkout_billing,
     resolve_active_special_code,
     resolve_and_validate_acupoints,
@@ -1432,6 +1434,11 @@ async def get_billable_catalog(current_user=Depends(get_current_user)):
         )
         for item in BILLABLE_CATALOG
     ]
+
+
+@router.get("/special-case-codes", response_model=list[SpecialCaseCodeItem])
+async def get_special_case_codes(current_user=Depends(get_current_user)):
+    return list_special_case_codes()
 
 
 def _line_item_to_response(item: ClaimLineItem) -> ClaimLineItemResponse:

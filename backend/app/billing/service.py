@@ -30,9 +30,13 @@ from app.billing.notice_rules import validate_notice_rules
 from app.billing.schema import (
     ClaimPrescriptionResponse,
     ClaimStatementResponse,
+    SpecialCaseCodeItem,
+    SpecialCaseRegistrationCreate,
+    SpecialCaseRegistrationUpdate,
     StatementProcedureRow,
 )
 from app.charting.service import update_kcd_code
+from app.core.audit import write_audit
 from app.core.config import settings
 from app.core.timezone import KST, today_kst
 from app.core.models import (
@@ -122,6 +126,32 @@ _SPECIAL_CASE_COPAY_RATE: dict[str, tuple[Decimal, bool]] = {
 }
 _UNKNOWN_SPECIAL_CODE_RATE = (Decimal("0.19"), True)  # 위 테이블에 없는 특정기호
 
+# 산정특례 등록 화면 드롭다운용 — _SPECIAL_CASE_COPAY_RATE와 동일한 코드 목록에
+# 사람이 읽을 category/설명만 붙인 것 (코율 계산 자체는 위 테이블을 그대로 사용).
+_SPECIAL_CASE_CODE_INFO: dict[str, tuple[str, str]] = {
+    "V193": ("암", "암"),
+    "V000": ("결핵", "결핵"),
+    "V010": ("결핵", "잠복결핵"),
+    "V221": ("희귀질환", "레쉬-니한증후군 (별표4)"),
+    "V247": ("중증화상", "중증화상 (중증도기준1+체표면적기준1)"),
+    "V248": ("중증화상", "중증화상 (중증도기준2+체표면적기준2)"),
+    "V250": ("중증화상", "중증화상 (별표3 4호 상병)"),
+    "V305": ("중증화상", "중증화상 (2021개정 — 외래)"),
+    "V306": ("중증화상", "중증화상 (2021개정 — 수술)"),
+    "V800": ("중증치매", "중증치매 (별표4의2 구분6 — 일수제한 없음)"),
+    "V810": ("중증치매", "중증치매 (별표4의2 구분7 — 연간 60일, 사전승인번호 필요)"),
+    "V811": ("중증치매", "중증치매 (가정간호)"),
+    "V900": ("희귀질환", "극희귀질환"),
+    "V901": ("희귀질환", "기타염색체이상질환"),
+    "V999": ("희귀질환", "상세불명 희귀질환"),
+    "V191": ("뇌혈관", "뇌혈관 (수술O) — 입원 전제"),
+    "V268": ("뇌혈관", "뇌혈관 (중증뇌출혈, 급성기) — 입원 전제"),
+    "V275": ("뇌혈관", "뇌경색 — 입원 전제"),
+    "V192": ("심장", "심장 — 수술/약제투여 전제"),
+    "V273": ("중증외상", "중증외상 (ISS≥15, 권역외상센터 입원) — 입원 전제"),
+    "F006": ("신체기능저하군", "신체기능저하군"),
+}
+
 
 def _has_f006_concurrent_exception(active: list["SpecialCaseRegistration"]) -> bool:
     """F006(신체기능저하군)이 다른 산정특례와 동시 활성인 경우.
@@ -198,6 +228,143 @@ async def resolve_active_special_code(db: AsyncSession, patient_id: UUID) -> Spe
         registered_disease_code=chosen.registered_disease_code,
         disease_name=chosen.disease_name,
     )
+
+
+def list_special_case_codes() -> list[SpecialCaseCodeItem]:
+    """산정특례 등록 화면 드롭다운용 특정기호 목록."""
+    return [
+        SpecialCaseCodeItem(code=code, category=category, description=description)
+        for code, (category, description) in _SPECIAL_CASE_CODE_INFO.items()
+    ]
+
+
+async def _get_patient_in_hospital(db: AsyncSession, hospital_id: UUID, patient_id: UUID) -> Patient:
+    result = await db.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.hospital_id == hospital_id)
+    )
+    patient = result.scalar_one_or_none()
+    if patient is None:
+        raise HTTPException(status_code=404, detail="환자를 찾을 수 없습니다.")
+    return patient
+
+
+async def create_special_case_registration(
+    db: AsyncSession, doctor: Doctor, patient_id: UUID, data: SpecialCaseRegistrationCreate
+) -> SpecialCaseRegistration:
+    await _get_patient_in_hospital(db, doctor.hospital_id, patient_id)
+
+    registration = SpecialCaseRegistration(
+        patient_id=patient_id,
+        special_code=data.special_code,
+        category=data.category,
+        registered_disease_code=data.registered_disease_code,
+        disease_name=data.disease_name,
+        registration_number=data.registration_number,
+        prior_approval_number=data.prior_approval_number,
+        registered_at=data.registered_at,
+        expires_at=data.expires_at,
+    )
+    db.add(registration)
+    await db.flush()
+    await write_audit(
+        db,
+        table_name="special_case_registrations",
+        record_id=str(registration.id),
+        action="INSERT",
+        actor_id=doctor.id,
+        actor_type="doctor",
+        detail=f"특정기호={data.special_code}",
+    )
+    await db.commit()
+    await db.refresh(registration)
+    return registration
+
+
+async def get_special_case_registrations(
+    db: AsyncSession, doctor: Doctor, patient_id: UUID
+) -> list[SpecialCaseRegistration]:
+    await _get_patient_in_hospital(db, doctor.hospital_id, patient_id)
+
+    result = await db.execute(
+        select(SpecialCaseRegistration)
+        .where(SpecialCaseRegistration.patient_id == patient_id)
+        .order_by(SpecialCaseRegistration.registered_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def update_special_case_registration(
+    db: AsyncSession,
+    doctor: Doctor,
+    patient_id: UUID,
+    registration_id: UUID,
+    data: SpecialCaseRegistrationUpdate,
+) -> SpecialCaseRegistration:
+    await _get_patient_in_hospital(db, doctor.hospital_id, patient_id)
+
+    result = await db.execute(
+        select(SpecialCaseRegistration).where(
+            SpecialCaseRegistration.id == registration_id,
+            SpecialCaseRegistration.patient_id == patient_id,
+        )
+    )
+    registration = result.scalar_one_or_none()
+    if registration is None:
+        raise HTTPException(status_code=404, detail="산정특례 등록 이력을 찾을 수 없습니다.")
+
+    updates = data.model_dump(exclude_none=True)
+    for field, value in updates.items():
+        setattr(registration, field, value)
+
+    await db.commit()
+    await db.refresh(registration)
+
+    await write_audit(
+        db,
+        table_name="special_case_registrations",
+        record_id=str(registration.id),
+        action="UPDATE",
+        actor_id=doctor.id,
+        actor_type="doctor",
+        detail=f"변경 필드: {', '.join(updates.keys())}",
+    )
+    await db.commit()
+
+    return registration
+
+
+async def deactivate_special_case_registration(
+    db: AsyncSession, doctor: Doctor, patient_id: UUID, registration_id: UUID
+) -> SpecialCaseRegistration:
+    """산정특례 등록 취소 (실제 삭제 대신 status="cancelled"로 변경 — 청구 이력 추적용)."""
+    await _get_patient_in_hospital(db, doctor.hospital_id, patient_id)
+
+    result = await db.execute(
+        select(SpecialCaseRegistration).where(
+            SpecialCaseRegistration.id == registration_id,
+            SpecialCaseRegistration.patient_id == patient_id,
+        )
+    )
+    registration = result.scalar_one_or_none()
+    if registration is None:
+        raise HTTPException(status_code=404, detail="산정특례 등록 이력을 찾을 수 없습니다.")
+
+    registration.status = "cancelled"
+    await db.commit()
+    await db.refresh(registration)
+
+    await write_audit(
+        db,
+        table_name="special_case_registrations",
+        record_id=str(registration.id),
+        action="DEACTIVATE",
+        actor_id=doctor.id,
+        actor_type="doctor",
+        detail="산정특례 등록 취소",
+    )
+    await db.commit()
+
+    return registration
 
 
 async def _count_annual_chuna_sessions(
@@ -1203,6 +1370,10 @@ async def _build_claim_edi_file(
             else:
                 mt014_content = special_case.registration_number
             if mt014_content:
+                # HIRA 원문 MT014 규격은 "9(20)"(숫자만) — 화면 표시·DB 저장은
+                # 하이픈 포함 형식(예: "01-24-00012345")을 그대로 허용하므로
+                # EDI 조립 시점에만 제거한다 (patient_rrn과 동일한 방식).
+                mt014_content = mt014_content.replace("-", "")
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     record_group_type="1",
