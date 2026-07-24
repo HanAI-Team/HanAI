@@ -661,3 +661,52 @@ class ClaimReviewResultListResponse(BaseModel):
 class ClaimReviewResultUploadResponse(BaseModel):
     inserted: int
     skipped: int
+
+
+class SpecialCaseCodeItem(BaseModel):
+    """산정특례 특정기호 선택지 (등록 화면 드롭다운용)."""
+    code: str
+    category: str
+    description: str
+
+
+class SpecialCaseRegistrationCreate(BaseModel):
+    special_code: str = Field(..., max_length=4, description="특정기호 (예: V193=암)")
+    category: str = Field(..., max_length=20, description="암 / 결핵 / 뇌혈관 / 심장 / 신체기능저하군 등")
+    registered_disease_code: Optional[str] = Field(None, max_length=10, description="등록 상병코드 (KCD/ICD)")
+    disease_name: Optional[str] = Field(None, max_length=100, description="KCD 코드 없는 희귀질환 등의 실제 상병명 (MT028용)")
+    registration_number: Optional[str] = Field(None, max_length=20, description="건보공단 발급 산정특례 등록번호 (MT014용)")
+    prior_approval_number: Optional[str] = Field(None, max_length=30, description="V810 전용 사전승인번호")
+    registered_at: date
+    expires_at: Optional[date] = None
+
+
+class SpecialCaseRegistrationUpdate(BaseModel):
+    category: Optional[str] = Field(None, max_length=20)
+    registered_disease_code: Optional[str] = Field(None, max_length=10)
+    disease_name: Optional[str] = Field(None, max_length=100)
+    registration_number: Optional[str] = Field(None, max_length=20)
+    prior_approval_number: Optional[str] = Field(None, max_length=30)
+    registered_at: Optional[date] = None
+    expires_at: Optional[date] = None
+
+
+class SpecialCaseRegistrationResponse(BaseModel):
+    id: UUID
+    patient_id: UUID
+    special_code: str
+    category: str
+    registered_disease_code: Optional[str] = None
+    disease_name: Optional[str] = None
+    registration_number: Optional[str] = None
+    prior_approval_number: Optional[str] = None
+    registered_at: date
+    expires_at: Optional[date] = None
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class SpecialCaseRegistrationListResponse(BaseModel):
+    items: list[SpecialCaseRegistrationResponse]

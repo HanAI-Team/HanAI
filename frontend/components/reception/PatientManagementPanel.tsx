@@ -10,7 +10,12 @@ import {
   downloadPatientsCsv,
   downloadRecordsCsv,
   anonymizePatient,
+  getSpecialCaseRegistrations,
+  createSpecialCaseRegistration,
+  deactivateSpecialCaseRegistration,
+  SpecialCaseRegistration,
 } from "@/lib/api/patients";
+import { getSpecialCaseCodes, SpecialCaseCodeItem } from "@/lib/api/billing";
 import { Patient } from "@/types";
 import { Search, Plus, X } from "lucide-react";
 import PatientHistoryModal from "./PatientHistoryModal";
@@ -48,6 +53,17 @@ export default function PatientManagementPanel() {
     disability_grade: "",
   });
   const [editLoading, setEditLoading] = useState(false);
+
+  const [specialCaseCodes, setSpecialCaseCodes] = useState<SpecialCaseCodeItem[]>([]);
+  const [registrations, setRegistrations] = useState<SpecialCaseRegistration[]>([]);
+  const [registrationsLoading, setRegistrationsLoading] = useState(false);
+  const [newRegistration, setNewRegistration] = useState({
+    special_code: "",
+    registered_at: "",
+    registration_number: "",
+    expires_at: "",
+  });
+  const [registrationSaving, setRegistrationSaving] = useState(false);
 
   const [anonymizeTarget, setAnonymizeTarget] = useState<Patient | null>(null);
   const [anonymizeLoading, setAnonymizeLoading] = useState(false);
@@ -104,6 +120,10 @@ export default function PatientManagementPanel() {
 
   useEffect(() => {
     getMe().then((me) => setIsOwner(me?.role === "owner"));
+  }, []);
+
+  useEffect(() => {
+    getSpecialCaseCodes().then(setSpecialCaseCodes).catch(console.error);
   }, []);
 
   function calcAge(birth?: string) {
@@ -183,7 +203,7 @@ export default function PatientManagementPanel() {
     }
   }
 
-  function openEditModal(p: Patient) {
+  async function openEditModal(p: Patient) {
     setEditTarget(p);
     setEditForm({
       name: p.name,
@@ -195,6 +215,49 @@ export default function PatientManagementPanel() {
       medical_aid_grade: p.medical_aid_grade || "",
       disability_grade: p.disability_grade || "",
     });
+    setNewRegistration({ special_code: "", registered_at: "", registration_number: "", expires_at: "" });
+    setRegistrationsLoading(true);
+    try {
+      setRegistrations(await getSpecialCaseRegistrations(p.id));
+    } catch (e: any) {
+      setErrorMessage(e.message || "산정특례 등록 이력 조회에 실패했습니다.");
+    } finally {
+      setRegistrationsLoading(false);
+    }
+  }
+
+  async function handleAddRegistration(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget || !newRegistration.special_code || !newRegistration.registered_at) return;
+    setRegistrationSaving(true);
+    try {
+      const category = specialCaseCodes.find((c) => c.code === newRegistration.special_code)?.category || "";
+      const created = await createSpecialCaseRegistration(editTarget.id, {
+        special_code: newRegistration.special_code,
+        category,
+        registered_at: newRegistration.registered_at,
+        ...(newRegistration.registration_number.trim()
+          ? { registration_number: newRegistration.registration_number.trim() }
+          : {}),
+        ...(newRegistration.expires_at ? { expires_at: newRegistration.expires_at } : {}),
+      });
+      setRegistrations((prev) => [created, ...prev]);
+      setNewRegistration({ special_code: "", registered_at: "", registration_number: "", expires_at: "" });
+    } catch (e: any) {
+      setErrorMessage(e.message || "산정특례 등록에 실패했습니다.");
+    } finally {
+      setRegistrationSaving(false);
+    }
+  }
+
+  async function handleDeactivateRegistration(registrationId: string) {
+    if (!editTarget) return;
+    try {
+      const updated = await deactivateSpecialCaseRegistration(editTarget.id, registrationId);
+      setRegistrations((prev) => prev.map((r) => (r.id === registrationId ? updated : r)));
+    } catch (e: any) {
+      setErrorMessage(e.message || "산정특례 등록 취소에 실패했습니다.");
+    }
   }
 
   async function handleEditSave(e: React.FormEvent) {
@@ -586,7 +649,7 @@ export default function PatientManagementPanel() {
       {/* 환자 정보 수정 모달 */}
       {editTarget && (
         <div className="fixed inset-0 bg-[#232323]/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-card rounded-xl w-full max-w-sm shadow-xl">
+          <div className="bg-card rounded-xl w-full max-w-sm shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <div className="text-sm font-medium text-text">
                 환자 정보 수정
@@ -752,6 +815,105 @@ export default function PatientManagementPanel() {
                 {editLoading ? "저장 중..." : "저장"}
               </button>
             </form>
+
+            <div className="border-t border-border p-5 flex flex-col gap-3">
+              <div className="text-sm font-medium text-text">산정특례 등록</div>
+              {registrationsLoading ? (
+                <div className="text-xs text-subtext">불러오는 중...</div>
+              ) : registrations.length === 0 ? (
+                <div className="text-xs text-subtext">등록된 산정특례가 없습니다.</div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {registrations.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between bg-fill border border-border rounded-md px-3 py-2"
+                    >
+                      <div className="text-xs text-text">
+                        <span className="font-medium">{r.special_code}</span> · {r.category}
+                        <span className="text-subtext ml-1">
+                          ({r.registered_at}
+                          {r.expires_at ? ` ~ ${r.expires_at}` : ""})
+                        </span>
+                        {r.status === "cancelled" && (
+                          <span className="text-subtext ml-1">[취소됨]</span>
+                        )}
+                      </div>
+                      {r.status === "active" && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeactivateRegistration(r.id)}
+                          className="text-xs text-subtext hover:text-text transition-colors"
+                        >
+                          취소
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <form onSubmit={handleAddRegistration} className="flex flex-col gap-3">
+                <div>
+                  <label className="text-xs text-subtext mb-1 block">특정기호 *</label>
+                  <select
+                    value={newRegistration.special_code}
+                    onChange={(e) =>
+                      setNewRegistration((p) => ({ ...p, special_code: e.target.value }))
+                    }
+                    required
+                    className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                  >
+                    <option value="">선택</option>
+                    {specialCaseCodes.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code} — {c.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-subtext mb-1 block">등록일 *</label>
+                  <input
+                    type="date"
+                    value={newRegistration.registered_at}
+                    onChange={(e) =>
+                      setNewRegistration((p) => ({ ...p, registered_at: e.target.value }))
+                    }
+                    required
+                    className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-subtext mb-1 block">등록번호</label>
+                  <input
+                    value={newRegistration.registration_number}
+                    onChange={(e) =>
+                      setNewRegistration((p) => ({ ...p, registration_number: e.target.value }))
+                    }
+                    placeholder="선택 입력"
+                    className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-subtext mb-1 block">만료일</label>
+                  <input
+                    type="date"
+                    value={newRegistration.expires_at}
+                    onChange={(e) =>
+                      setNewRegistration((p) => ({ ...p, expires_at: e.target.value }))
+                    }
+                    className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={registrationSaving || !newRegistration.special_code || !newRegistration.registered_at}
+                  className="w-full bg-fill border border-border text-text rounded-md py-2 text-xs disabled:opacity-50 hover:bg-border transition-colors"
+                >
+                  {registrationSaving ? "등록 중..." : "산정특례 등록 추가"}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}

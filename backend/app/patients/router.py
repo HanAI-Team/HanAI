@@ -4,6 +4,13 @@ from datetime import date, datetime, timezone
 from uuid import UUID
 
 import pandas as pd
+from app.billing import service as billing_service
+from app.billing.schema import (
+    SpecialCaseRegistrationCreate,
+    SpecialCaseRegistrationListResponse,
+    SpecialCaseRegistrationResponse,
+    SpecialCaseRegistrationUpdate,
+)
 from app.core.audit import write_audit
 from app.core.database import get_db
 from app.core.deps import get_current_doctor, get_current_user
@@ -636,3 +643,63 @@ async def anonymize_patient(
     if str(doctor.role) != "owner":
         raise HTTPException(status_code=403, detail="owner 계정만 접근 가능합니다.")
     return await service.anonymize_patient(db, doctor, patient_id)
+
+
+@router.post(
+    "/{patient_id}/special-case-registrations",
+    response_model=SpecialCaseRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_special_case_registration(
+    patient_id: UUID,
+    data: SpecialCaseRegistrationCreate,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
+):
+    return await billing_service.create_special_case_registration(db, doctor, patient_id, data)
+
+
+@router.get(
+    "/{patient_id}/special-case-registrations",
+    response_model=SpecialCaseRegistrationListResponse,
+)
+async def get_special_case_registrations(
+    patient_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
+):
+    registrations = await billing_service.get_special_case_registrations(db, doctor, patient_id)
+    return SpecialCaseRegistrationListResponse(
+        items=[SpecialCaseRegistrationResponse.model_validate(r) for r in registrations]
+    )
+
+
+@router.patch(
+    "/{patient_id}/special-case-registrations/{registration_id}",
+    response_model=SpecialCaseRegistrationResponse,
+)
+async def update_special_case_registration(
+    patient_id: UUID,
+    registration_id: UUID,
+    data: SpecialCaseRegistrationUpdate,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
+):
+    return await billing_service.update_special_case_registration(
+        db, doctor, patient_id, registration_id, data
+    )
+
+
+@router.post(
+    "/{patient_id}/special-case-registrations/{registration_id}/deactivate",
+    response_model=SpecialCaseRegistrationResponse,
+)
+async def deactivate_special_case_registration(
+    patient_id: UUID,
+    registration_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    doctor: Doctor | StaffAccount = Depends(get_current_user),
+):
+    return await billing_service.deactivate_special_case_registration(
+        db, doctor, patient_id, registration_id
+    )
