@@ -886,11 +886,12 @@ export default function PatientManagementPanel() {
                 <div>
                   <label className="text-xs text-subtext mb-1 block">등록번호</label>
                   <input
+                    inputMode="numeric"
                     value={newRegistration.registration_number}
                     onChange={(e) =>
                       setNewRegistration((p) => ({ ...p, registration_number: e.target.value }))
                     }
-                    placeholder="선택 입력"
+                    placeholder="숫자와 하이픈(-)만 입력 (선택 입력)"
                     className="w-full bg-fill border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-[#EF6600] transition-colors"
                   />
                 </div>

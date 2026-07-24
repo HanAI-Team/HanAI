@@ -1370,6 +1370,10 @@ async def _build_claim_edi_file(
             else:
                 mt014_content = special_case.registration_number
             if mt014_content:
+                # HIRA 원문 MT014 규격은 "9(20)"(숫자만) — 화면 표시·DB 저장은
+                # 하이픈 포함 형식(예: "01-24-00012345")을 그대로 허용하므로
+                # EDI 조립 시점에만 제거한다 (patient_rrn과 동일한 방식).
+                mt014_content = mt014_content.replace("-", "")
                 special_records.append((serial, SpecialRecord(
                     key=rec_key,
                     record_group_type="1",

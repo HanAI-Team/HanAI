@@ -188,3 +188,81 @@ async def test_등록_전에는_일반요율_등록_후에는_산정특례요율
     after = await resolve_active_special_code(db, UUID(patient_id))
     assert after.special_code == "V193"
     assert after.review_reason is None
+
+
+# ── 등록번호/사전승인번호 최소 형식 검증 (MT014, HIRA "9(20)": 숫자 최대 20자리) ──
+# 정확한 자릿수(10/11/13/15/18)는 보험유형·등록유형(일반/틀니/임플란트)에 따라
+# 갈리는데 이 구분이 시스템에 모델링돼 있지 않아 강제하지 않는다. 다만 기존
+# 모델 주석("01-24-00012345")과 테스트 데이터(REGISTRATION_DATA의
+# "1-26-00000001")가 이미 하이픈 포함 표기를 쓰고 있어, 숫자만 허용하면 기존
+# 관례와 충돌한다 — 숫자+하이픈만 허용하고 하이픈 제외 자릿수만 20자로 제한한다.
+
+
+async def test_등록번호_숫자와_하이픈만_있으면_통과(client, approved_doctor):
+    _, headers = approved_doctor
+    patient_id = await _create_patient(client, headers)
+
+    resp = await client.post(
+        f"/api/patients/{patient_id}/special-case-registrations",
+        json={**REGISTRATION_DATA, "registration_number": "01-24-00012345"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["registration_number"] == "01-24-00012345"
+
+
+async def test_등록번호_문자_포함시_거부(client, approved_doctor):
+    _, headers = approved_doctor
+    patient_id = await _create_patient(client, headers)
+
+    resp = await client.post(
+        f"/api/patients/{patient_id}/special-case-registrations",
+        json={**REGISTRATION_DATA, "registration_number": "V193abc"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+async def test_등록번호_하이픈_제외_21자리_이상이면_거부(client, approved_doctor):
+    _, headers = approved_doctor
+    patient_id = await _create_patient(client, headers)
+
+    resp = await client.post(
+        f"/api/patients/{patient_id}/special-case-registrations",
+        json={**REGISTRATION_DATA, "registration_number": "1" * 21},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+async def test_등록번호_생략하면_통과(client, approved_doctor):
+    """registration_number는 선택 입력 필드이므로 아예 안 보내도 정상 등록된다."""
+    _, headers = approved_doctor
+    patient_id = await _create_patient(client, headers)
+
+    data = {k: v for k, v in REGISTRATION_DATA.items() if k != "registration_number"}
+    resp = await client.post(
+        f"/api/patients/{patient_id}/special-case-registrations",
+        json=data,
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["registration_number"] is None
+
+
+async def test_사전승인번호도_동일한_형식_검증_적용(client, approved_doctor):
+    """V810 전용 prior_approval_number도 MT014 공통 형식(숫자+하이픈)을 따른다."""
+    _, headers = approved_doctor
+    patient_id = await _create_patient(client, headers)
+
+    resp = await client.post(
+        f"/api/patients/{patient_id}/special-case-registrations",
+        json={
+            **REGISTRATION_DATA,
+            "special_code": "V810",
+            "category": "중증치매",
+            "prior_approval_number": "1-26-00000001abc",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422
