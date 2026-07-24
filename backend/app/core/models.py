@@ -227,6 +227,7 @@ class Claim(Base):
     # 청구구분: null=최초, "supplement"=보완, "addition"=추가
     # ※ kmishe_writer.py의 claim_type(보험자종별: 건강보험/의료급여/보훈)과는 무관한 별개 필드
     claim_type = Column(String, nullable=True)
+    receipt_no = Column(Integer, nullable=True)               # 이 청구서 자체가 심평원으로부터 발급받은 접수번호 ("제출 처리" 시 기재)
     original_receipt_no = Column(Integer, nullable=True)      # 당초 청구명세서 접수번호 (보완·추가청구 시)
     original_record_serial = Column(Integer, nullable=True)   # 명일련 (보완·추가청구 시)
     rejection_reason_code = Column(String(2), nullable=True)  # 심사불능사유코드 (보완청구 시만)

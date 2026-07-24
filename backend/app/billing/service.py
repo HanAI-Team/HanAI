@@ -743,6 +743,73 @@ async def create_claim(
     return claim
 
 
+async def submit_claim(
+    db: AsyncSession,
+    hospital_id: UUID,
+    actor_id: UUID,
+    claim_id: UUID,
+    receipt_no: int,
+) -> Claim:
+    """"제출 처리" — 실제 제출(요양기관정보마당 등 외부 채널)은 이 앱 밖에서
+    일어나므로, 직원이 포털에서 확인한 접수번호를 직접 입력해 제출 완료를
+    기록한다. draft 상태에서만 허용."""
+    result = await db.execute(select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id))
+    claim = result.scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+    if claim.status != "draft":
+        raise HTTPException(
+            status_code=409, detail="작성중(draft) 상태의 청구서만 제출 처리할 수 있습니다."
+        )
+
+    claim.status = "submitted"
+    claim.receipt_no = receipt_no
+    claim.submitted_at = datetime.now(timezone.utc)
+
+    await write_audit(
+        db, table_name="claims", record_id=str(claim.id), action="UPDATE",
+        actor_id=actor_id, actor_type="doctor",
+        detail=f"상태 변경: draft → submitted (접수번호: {receipt_no})",
+    )
+
+    await db.commit()
+    await db.refresh(claim)
+    return claim
+
+
+async def reject_claim(
+    db: AsyncSession,
+    hospital_id: UUID,
+    actor_id: UUID,
+    claim_id: UUID,
+    rejection_reason_code: str,
+) -> Claim:
+    """"반려 처리" — 심평원 통보(심사불능 사유)를 직원이 직접 입력해 반영한다.
+    submitted 상태에서만 허용. 반송(접수 자체가 형식오류로 튕기는 경우)은
+    사유코드 체계와 길이(an(70))가 달라 이번 스코프에서 지원하지 않는다."""
+    result = await db.execute(select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id))
+    claim = result.scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=404, detail="청구서를 찾을 수 없습니다.")
+    if claim.status != "submitted":
+        raise HTTPException(
+            status_code=409, detail="제출완료(submitted) 상태의 청구서만 반려 처리할 수 있습니다."
+        )
+
+    claim.status = "rejected"
+    claim.rejection_reason_code = rejection_reason_code
+
+    await write_audit(
+        db, table_name="claims", record_id=str(claim.id), action="UPDATE",
+        actor_id=actor_id, actor_type="doctor",
+        detail=f"상태 변경: submitted → rejected (사유코드: {rejection_reason_code})",
+    )
+
+    await db.commit()
+    await db.refresh(claim)
+    return claim
+
+
 async def update_claim_resubmission(
     db: AsyncSession,
     hospital_id: UUID,
@@ -753,7 +820,11 @@ async def update_claim_resubmission(
     original_record_serial: int,
     rejection_reason_code: str | None,
 ) -> Claim:
-    """보완·추가청구 처리. 반려(rejected)된 청구서에만 적용 가능하며 상태는 바꾸지 않는다."""
+    """보완·추가청구 처리. 반려(rejected)된 청구서에만 적용 가능하며, 처리(재제출
+    간주) 후 status를 submitted로 전이한다 (2026-07-24: 이전엔 상태를 바꾸지
+    않았으나, 보완·추가청구 정보를 채워 넣는 행위 자체가 실질적인 재제출이므로
+    submitted로 전이하도록 변경 — line_item 삭제·수정 가드(draft/rejected만
+    허용)가 재제출 후 자연스럽게 다시 걸리게 된다)."""
     result = await db.execute(select(Claim).where(Claim.id == claim_id, Claim.hospital_id == hospital_id))
     claim = result.scalar_one_or_none()
     if claim is None:
@@ -769,6 +840,7 @@ async def update_claim_resubmission(
     claim.original_receipt_no = original_receipt_no
     claim.original_record_serial = original_record_serial
     claim.rejection_reason_code = reason_code
+    claim.status = "submitted"
 
     db.add(ClaimResubmissionHistory(
         id=uuid.uuid4(),
@@ -779,6 +851,11 @@ async def update_claim_resubmission(
         record_serial=original_record_serial,
         reason_code=reason_code,
     ))
+    await write_audit(
+        db, table_name="claims", record_id=str(claim.id), action="UPDATE",
+        actor_id=actor_id, actor_type="doctor",
+        detail=f"상태 변경: rejected → submitted (보완·추가청구 재제출: {claim_type})",
+    )
 
     await db.commit()
     await db.refresh(claim)
@@ -1798,11 +1875,52 @@ def parse_review_result_csv(content: bytes) -> tuple[list[dict], int]:
     return rows, skipped
 
 
+# 심사결과(ClaimReviewResult.result_code) → Claim.status 매핑.
+# "인정"/"삭감" 모두 approved로 전이한다 — "삭감"은 HIRA 용어상 청구 금액의
+# 일부가 깎였다는 뜻일 뿐 청구 자체는 심사·처리가 끝난 것이라 "반려"와는
+# 다른 개념이다. "보류"(추가 자료 대기 등)는 심사가 아직 끝나지 않은 상태라
+# 전이 대상이 아니다.
+# 이 CSV 포맷에는 실제 "반려"(심사불능·반송)에 대응하는 값이 없다 — 그건
+# Claim.rejection_reason_code(별첨6/7 심사불능사유코드) 체계이고 이번
+# result_code("인정"/"삭감"/"보류")와는 완전히 다른 코드 체계라 여기서
+# rejected로 전이시키지 않는다 (2026-07-24 조사 결과).
+_CLAIM_APPROVING_RESULT_CODES = {"인정", "삭감"}
+
+
+async def _transition_claim_status_from_review(
+    db: AsyncSession, claim: Claim, result_code: str, actor_id: UUID | None
+) -> None:
+    """심사결과에 따라 Claim.status를 전이한다 (approved로만 — 위 설명 참조).
+
+    이 함수가 만드는 목표 상태가 항상 "approved"뿐이라 draft/submitted로
+    역행하는 경우는 구조적으로 없다. 이미 approved인 청구서에 재심사·이의신청
+    결과가 다시 들어와도 상태 변화가 없으므로 감사로그를 남기지 않는다.
+    """
+    if result_code not in _CLAIM_APPROVING_RESULT_CODES:
+        return
+    if claim.status == "approved":
+        return
+    old_status = claim.status
+    claim.status = "approved"
+    await write_audit(
+        db, table_name="claims", record_id=str(claim.id), action="UPDATE",
+        actor_id=actor_id, actor_type="doctor",
+        detail=f"상태 변경: {old_status} → approved (심사결과: {result_code})",
+    )
+
+
 async def create_review_results_from_csv(
-    db: AsyncSession, hospital_id: UUID, content: bytes
+    db: AsyncSession, hospital_id: UUID, content: bytes, actor_id: UUID | None = None
 ) -> tuple[int, int]:
     """CSV를 파싱해 ClaimReviewResult 레코드를 생성한다. 접수번호가 어느 청구의
-    original_receipt_no와 일치하면 claim_id를 채운다 (일치하지 않으면 null)."""
+    receipt_no("제출 처리" 시 기재하는, 이 청구서 자체의 접수번호)와 일치하면
+    claim_id를 채우고(일치하지 않으면 null), 심사결과에 따라 해당 청구의
+    status도 전이한다 (_transition_claim_status_from_review 참고).
+
+    2026-07-24: 매칭 기준을 original_receipt_no(보완·추가청구 시에만 채워지는
+    "당초 청구서" 참조값이라 최초 청구는 항상 null이었음)에서 receipt_no로
+    전환 — 이제 최초 청구도 "제출 처리"만 거치면 매칭된다.
+    """
     rows, skipped = parse_review_result_csv(content)
     if not rows:
         return 0, skipped
@@ -1814,26 +1932,26 @@ async def create_review_results_from_csv(
         except ValueError:
             pass
 
-    claim_by_receipt: dict[int, UUID] = {}
+    claim_by_receipt: dict[int, Claim] = {}
     if receipt_ints:
         result = await db.execute(
-            select(Claim.original_receipt_no, Claim.id).where(
+            select(Claim).where(
                 Claim.hospital_id == hospital_id,
-                Claim.original_receipt_no.in_(receipt_ints),
+                Claim.receipt_no.in_(receipt_ints),
             )
         )
-        claim_by_receipt = {receipt_no: claim_id for receipt_no, claim_id in result.all()}
+        claim_by_receipt = {claim.receipt_no: claim for claim in result.scalars().all()}
 
     for r in rows:
-        claim_id = None
+        claim = None
         try:
-            claim_id = claim_by_receipt.get(int(r["receipt_number"]))
+            claim = claim_by_receipt.get(int(r["receipt_number"]))
         except ValueError:
             pass
         db.add(ClaimReviewResult(
             id=uuid.uuid4(),
             hospital_id=hospital_id,
-            claim_id=claim_id,
+            claim_id=claim.id if claim else None,
             receipt_number=r["receipt_number"],
             review_type=r["review_type"],
             result_code=r["result_code"],
@@ -1844,6 +1962,8 @@ async def create_review_results_from_csv(
             review_date=r["review_date"],
             raw_content=r["raw_content"],
         ))
+        if claim is not None:
+            await _transition_claim_status_from_review(db, claim, r["result_code"], actor_id)
 
     await db.commit()
     return len(rows), skipped

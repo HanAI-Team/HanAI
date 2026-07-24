@@ -15,8 +15,10 @@ import {
   getClaimStatement,
   getClaims,
   getHospitalDoctors,
+  rejectClaim,
   resubmitClaim,
   searchRejectionCodes,
+  submitClaim,
   statusLabel,
   updateClaimApproval,
   updateClaimBillingAgent,
@@ -52,6 +54,8 @@ export default function BillingPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
   const [resubmitTarget, setResubmitTarget] = useState<ClaimListItem | null>(null);
+  const [submitTarget, setSubmitTarget] = useState<ClaimListItem | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<ClaimListItem | null>(null);
   const [billingAgentTarget, setBillingAgentTarget] = useState<ClaimListItem | null>(null);
   const [testMode, setTestMode] = useState(false);
   const [editingApprovalId, setEditingApprovalId] = useState<string | null>(null);
@@ -844,6 +848,30 @@ export default function BillingPage() {
                       >
                         {downloading === claim.id ? "생성 중..." : "다운로드"}
                       </button>
+                      {claim.status === "draft" && (
+                        <button
+                          onClick={() => {
+                            if (isExpired) {
+                              alert("구독이 만료됐습니다. 멤버십 페이지에서 갱신해주세요.");
+                              return;
+                            }
+                            setSubmitTarget(claim);
+                          }}
+                          className={`px-3 py-1 text-xs rounded-md border border-[#EF6600] text-[#EF6600] hover:bg-[#EF6600] hover:text-white transition-all whitespace-nowrap ${
+                            isExpired ? "opacity-50 cursor-not-allowed" : ""
+                          }`}
+                        >
+                          제출 처리
+                        </button>
+                      )}
+                      {claim.status === "submitted" && (
+                        <button
+                          onClick={() => setRejectTarget(claim)}
+                          className="px-3 py-1 text-xs rounded-md border border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-all whitespace-nowrap"
+                        >
+                          반려 처리
+                        </button>
+                      )}
                       {claim.status === "rejected" && (
                         <button
                           onClick={() => {
@@ -980,6 +1008,28 @@ export default function BillingPage() {
           onClose={() => setResubmitTarget(null)}
           onDone={() => {
             setResubmitTarget(null);
+            reload();
+          }}
+        />
+      )}
+
+      {submitTarget && (
+        <SubmitModal
+          claim={submitTarget}
+          onClose={() => setSubmitTarget(null)}
+          onDone={() => {
+            setSubmitTarget(null);
+            reload();
+          }}
+        />
+      )}
+
+      {rejectTarget && (
+        <RejectModal
+          claim={rejectTarget}
+          onClose={() => setRejectTarget(null)}
+          onDone={() => {
+            setRejectTarget(null);
             reload();
           }}
         />
@@ -1165,6 +1215,204 @@ function ResubmissionModal({
             className="flex-1 px-3 py-2 text-xs rounded-md bg-[#EF6600] text-white hover:bg-[#d45a00] disabled:opacity-50 transition-all"
           >
             {submitting ? "처리 중..." : "제출"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SubmitModal({
+  claim,
+  onClose,
+  onDone,
+}: {
+  claim: ClaimListItem;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [receiptNo, setReceiptNo] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setError(null);
+    if (!receiptNo) {
+      setError("접수번호를 입력해주세요.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await submitClaim(claim.id, Number(receiptNo));
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "제출 처리에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div role="button" tabIndex={0} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div role="button" tabIndex={0}
+        className="bg-card border border-border rounded-lg p-6 w-[380px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="font-serif text-lg text-text mb-1">제출 처리</h2>
+        <p className="text-xs text-subtext mb-4">
+          {claim.patient_name} · {claim.claim_period}
+        </p>
+        <p className="text-xs text-subtext mb-4">
+          요양기관정보마당 등에서 실제 제출을 완료한 뒤, 확인한 접수번호를 입력해주세요.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-subtext mb-1">접수번호</label>
+            <input
+              type="number"
+              autoFocus
+              value={receiptNo}
+              onChange={(e) => setReceiptNo(e.target.value)}
+              className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
+            />
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="flex-1 px-3 py-2 text-xs rounded-md border border-border text-subtext hover:text-text transition-all"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 px-3 py-2 text-xs rounded-md bg-[#EF6600] text-white hover:bg-[#d45a00] disabled:opacity-50 transition-all"
+          >
+            {submitting ? "처리 중..." : "제출 완료로 표시"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RejectModal({
+  claim,
+  onClose,
+  onDone,
+}: {
+  claim: ClaimListItem;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [reasonCode, setReasonCode] = useState("");
+  const [reasonQuery, setReasonQuery] = useState("");
+  const [reasonResults, setReasonResults] = useState<RejectionCodeSearchResult[]>([]);
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!reasonQuery.trim()) {
+      setReasonResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      searchRejectionCodes(reasonQuery, "심사불능")
+        .then(setReasonResults)
+        .catch(() => setReasonResults([]));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [reasonQuery]);
+
+  function selectReason(item: RejectionCodeSearchResult) {
+    setReasonCode(item.code);
+    setReasonQuery(`${item.code} ${item.description}`);
+    setReasonOpen(false);
+    setReasonResults([]);
+  }
+
+  async function handleSubmit() {
+    setError(null);
+    if (!reasonCode) {
+      setError("심사불능사유코드를 입력해주세요.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await rejectClaim(claim.id, reasonCode);
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "반려 처리에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div role="button" tabIndex={0} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div role="button" tabIndex={0}
+        className="bg-card border border-border rounded-lg p-6 w-[380px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="font-serif text-lg text-text mb-1">반려 처리</h2>
+        <p className="text-xs text-subtext mb-4">
+          {claim.patient_name} · {claim.claim_period}
+        </p>
+
+        <div className="space-y-3">
+          <div className="relative">
+            <label className="block text-xs text-subtext mb-1">심사불능사유코드</label>
+            <input
+              type="text"
+              autoFocus
+              value={reasonQuery}
+              onChange={(e) => {
+                setReasonQuery(e.target.value);
+                setReasonCode("");
+                setReasonOpen(true);
+              }}
+              onFocus={() => setReasonOpen(true)}
+              onBlur={() => setTimeout(() => setReasonOpen(false), 150)}
+              placeholder="코드 또는 사유 내용 검색"
+              className="w-full bg-fill border border-border rounded-md px-3 py-1.5 text-sm text-text"
+            />
+            {reasonOpen && reasonResults.length > 0 && (
+              <ul className="absolute z-10 mt-1 w-full bg-card border border-border rounded-md max-h-48 overflow-y-auto shadow-lg">
+                {reasonResults.map((item) => (
+                  <li key={`${item.code}-${item.detail_code}`}>
+                    <button
+                      type="button"
+                      onMouseDown={() => selectReason(item)}
+                      className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-fill transition-colors"
+                    >
+                      <span className="font-medium">{item.code}</span> {item.description}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="flex-1 px-3 py-2 text-xs rounded-md border border-border text-subtext hover:text-text transition-all"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 px-3 py-2 text-xs rounded-md bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-all"
+          >
+            {submitting ? "처리 중..." : "반려 처리"}
           </button>
         </div>
       </div>
